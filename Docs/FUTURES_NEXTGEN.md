@@ -429,7 +429,7 @@ Option 2 (two implementations) is better when:
 
 ### Recommendation
 
-**Option 2 is the pragmatic choice given the current state of the project.** The Wintab knowledge is now thoroughly documented. The C# implementation is proven. Writing the C++ implementation from the existing docs and reference code is straightforward — a developer who reads the WINTAB_SESSION_GUIDE and the C# source can produce a correct C++ implementation in a day.
+**Option 2 is the pragmatic choice given the current state of the project.** The Wintab knowledge is now thoroughly documented. The C# implementation is proven. Writing the C++ implementation from the existing docs and reference code is straightforward — a developer who reads the documentation and the C# source can produce a correct C++ implementation in a day.
 
 The cost of maintaining two ~400-line implementations is far lower than the cost of the FFI boundary, ABI stability constraints, mixed-mode debugging, and deployment complexity that Option 1 introduces.
 

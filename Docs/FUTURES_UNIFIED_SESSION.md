@@ -29,7 +29,7 @@ The app shouldn't need to know which API is running. The session abstraction han
 
 ## Available APIs
 
-See [WIN_PEN_API_LANDSCAPE.md](WIN_PEN_API_LANDSCAPE.md) for the full comparison. Summary:
+See the [Windows Pen API Landscape](https://github.com/TheSevenPens/devnotes) in the devnotes repo for the full comparison. Summary:
 
 | API | Pressure Range | Tilt Format | Coords | Threading | Twist | Hi-Res |
 |---|---|---|---|---|---|---|
@@ -279,7 +279,7 @@ Both exist:
 Implemented as `WinUiPointerSession` in `PenSession.WinUI.dll`. WinUI 3 apps offer all four APIs in a dropdown: System, Digitizer, WM_Pointer (won't work — see framework-specificity section above), and WinUI Pointer.
 
 ### 5. API Coexistence
-Wintab and WM_POINTER may conflict at the driver level (see [WIN_PEN_API_LANDSCAPE.md](WIN_PEN_API_LANDSCAPE.md) — "Wintab vs Windows Ink Driver Conflict"). In practice, switching between them via the dropdown works because `Stop()` closes the previous session before `Start()` opens the new one. However, some driver configurations may require that Wintab32.dll not be loaded at all for WM_POINTER to work correctly. This is driver-dependent and not fully tested across all configurations.
+Wintab and WM_POINTER may conflict at the driver level (see [Wintab and Windows Ink Coexistence](https://github.com/TheSevenPens/devnotes) in the devnotes repo). In practice, switching between them via the dropdown works because `Stop()` closes the previous session before `Start()` opens the new one. However, some driver configurations may require that Wintab32.dll not be loaded at all for WM_POINTER to work correctly. This is driver-dependent and not fully tested across all configurations.
 
 ## Implementation Status
 
@@ -574,9 +574,7 @@ Our approach: the *app* creates session objects at runtime. Switching is `sessio
 
 This runtime-switching capability is one of the strongest arguments for building our own unified session rather than depending on a framework's built-in tablet support.
 
-## Relationship to Existing Docs
+## Relationship to Other Docs
 
-- [WIN_PEN_API_LANDSCAPE.md](WIN_PEN_API_LANDSCAPE.md) — Detailed comparison of all APIs (coordinates, pressure, tilt, threading)
-- [FUTURE_INPUT_ARCHITECTURE.md](FUTURE_INPUT_ARCHITECTURE.md) — Earlier version of this layered architecture discussion
-- [WINTAB_SESSION_GUIDE.md](WINTAB_SESSION_GUIDE.md) — Current WintabSession consumer guide (buttons, eraser, coordinates)
-- [FUTURES_NEXTGEN.md](FUTURES_NEXTGEN.md) — Native C/C++ implementation phases
+- [Windows Pen API Landscape](https://github.com/TheSevenPens/devnotes) — Detailed comparison of all APIs (moved to devnotes repo)
+- [FUTURES_NEXTGEN.md](FUTURES_NEXTGEN.md) — Phase plan and implementation history

@@ -80,9 +80,10 @@ pen_session_destroy(session);
 See the [Docs/](Docs/) folder for:
 - [GETTING-STARTED.md](Docs/GETTING-STARTED.md) — Project overview and setup
 - [FUTURES_UNIFIED_SESSION.md](Docs/FUTURES_UNIFIED_SESSION.md) — Architecture and design decisions
-- [WIN_PEN_API_LANDSCAPE.md](Docs/WIN_PEN_API_LANDSCAPE.md) — Comparison of all Windows pen APIs
 - [HOW_TO_USE.md](Docs/HOW_TO_USE.md) — Usage guide with gotchas and best practices
 - [FUTURES_WPF_RENDERING.md](Docs/FUTURES_WPF_RENDERING.md) — Rendering approach across frameworks
+
+For general pen input knowledge (API comparisons, DPI handling, Wintab gotchas), see the [devnotes](https://github.com/TheSevenPens/devnotes) repo.
 
 ## History
 
