@@ -1,15 +1,14 @@
 # WinPenSession
 
-Unified pen input SDK for Windows. Abstracts over Wintab, WM_POINTER, and framework-native pen APIs behind a single `IPenSession` interface with runtime API switching — no restart required.
+This is a unified pen input SDK for modern Windows writen for someone devleoping a drawing application or something similar. It is SIMPLE and EASY.
 
-## Features
 
-- **7 input backends**: Wintab System, Wintab Digitizer (hi-res), WM_POINTER, WinUI Pointer, WPF Stylus, WinForms Pointer, Avalonia Pointer
-- **Runtime API switching** via dropdown — unlike Krita/Qt which require a restart
-- **Framework-agnostic core** + framework-specific extensions
-- **Both managed (C#) and native (C++) implementations**
-- **Rust FFI bindings** with safe wrapper
-- **Consistent PenPoint data** across all APIs — desktop coordinates, both tilt representations (Azimuth/Altitude + TiltX/TiltY), all in tenths of degree
+# Benefits
+- You don't need to know anything about the complications of Windows Pen Input
+- You don't need to know anything about the complications of WinTab drivers
+- Both managed and unmanaged libraries are provided so you can use the languages you want
+- Can switch APIs in your apps dynamically without even restarting the app
+- Supports WinTab high-resolution 
 
 ## Packages
 
@@ -24,7 +23,7 @@ Unified pen input SDK for Windows. Abstracts over Wintab, WM_POINTER, and framew
 
 ## Scribble Apps
 
-Seven demo apps proving the SDK end-to-end, all with bitmap-backed rendering and ribbon UI:
+These demo apps proving the SDK end-to-end, all with bitmap-backed rendering and ribbon UI:
 
 | App | Framework | Renderer | Language |
 |---|---|---|---|
