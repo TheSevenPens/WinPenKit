@@ -2,19 +2,11 @@
 
 ## Prerequisites
 
-- A Wacom tablet driver installed (for Wintab support). If no Wintab driver is available, the apps will still work with the built-in Windows Pointer support.
-- Visual Studio 2022+ or .NET 10 SDK
-- For C++ projects: MSBuild / Visual Studio C++ workload
-- For Rust: `cargo` (Rust toolchain)
+A Wacom tablet driver is needed for Wintab support. If no Wintab driver is available, the apps will still work with the built-in Windows Pointer support.
 
-## Building
+See [BUILD.md](BUILD.md) for build instructions, prerequisites, and build order.
 
-1. Open `WinPenSession.slnx` in Visual Studio, or build from the command line with `dotnet build WinPenSession.slnx`.
-2. For the C++ projects (PenSession.Native + Scribble.Win32), open `NativeCpp.sln` or build with MSBuild.
-3. For Scribble.Rust, run `cargo build` in the `Scribble.Rust` directory.
-4. Select an app to run (e.g., Scribble.WinUI, Scribble.WinForms) and launch from Visual Studio or `dotnet run`.
-
-## Projects in the Solution
+## Projects
 
 ### PenSession Libraries
 
