@@ -1,0 +1,10 @@
+<UserControl
+    x:Class="Scribble.WinUI.Controls.DrawingCanvas"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid x:Name="CanvasArea" Background="#F0F0F0">
+        <Image x:Name="DrawImage" Stretch="None"
+               HorizontalAlignment="Left" VerticalAlignment="Top" />
+    </Grid>
+</UserControl>

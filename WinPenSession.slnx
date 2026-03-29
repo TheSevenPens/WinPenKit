@@ -1,0 +1,23 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="PenSession/PenSession.csproj" />
+  <Project Path="PenSession.Native/PenSession.Native.vcxproj" Id="b1a2c3d4-e5f6-7890-abcd-ef1234567890" />
+  <Project Path="PenSession.TestConsole/PenSession.TestConsole.csproj" />
+  <Project Path="PenSession.WinUI/PenSession.WinUI.csproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="PenSession.Wpf/PenSession.Wpf.csproj" />
+  <Project Path="PenSession.WinForms/PenSession.WinForms.csproj" />
+  <Project Path="PenSession.Avalonia/PenSession.Avalonia.csproj" />
+  <Project Path="Scribble.Win32/Scribble.Win32.vcxproj" Id="a1b2c3d4-e5f6-7890-abcd-ef9876543210" />
+  <Project Path="Scribble.Rust/Cargo.toml" />
+  <Project Path="Scribble.WinUI/Scribble.WinUI.csproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="Scribble.Wpf/Scribble.Wpf.csproj" />
+  <Project Path="Scribble.WinForms/Scribble.WinForms.csproj" />
+  <Project Path="Scribble.Avalonia/Scribble.Avalonia.csproj" />
+</Solution>

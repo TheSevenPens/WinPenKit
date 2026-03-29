@@ -1,0 +1,192 @@
+<UserControl
+    x:Class="Scribble.WinUI.Controls.ScribbleRibbon"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="0,0,0,1" Padding="8,6,8,8">
+        <StackPanel Orientation="Horizontal" Spacing="0">
+
+            <!-- ═══ APP ═══ -->
+            <StackPanel Margin="0,0,16,0">
+                <TextBlock Text="APP" FontWeight="Bold" FontSize="10"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,4" />
+                <ComboBox x:Name="ContextModeCombo" SelectedIndex="0"
+                          Padding="8,0" MinHeight="0" Height="24" Width="110"
+                          SelectionChanged="ContextModeCombo_SelectionChanged" />
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                    <Button Content="Clear" Padding="8,2" MinHeight="0" Height="24"
+                            Click="ClearButton_Click" />
+                    <HyperlinkButton Content="Log" Padding="4,0"
+                                     Click="LogLink_Click" />
+                </StackPanel>
+            </StackPanel>
+
+            <Border Width="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    Margin="0,0,16,0" />
+
+            <!-- ═══ BRUSH ═══ -->
+            <StackPanel Margin="0,0,16,0">
+                <TextBlock Text="BRUSH" FontWeight="Bold" FontSize="10"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,4" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Size" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               VerticalAlignment="Center" />
+                    <TextBlock x:Name="BrushSizeLabel" Style="{StaticResource CaptionTextBlockStyle}"
+                               VerticalAlignment="Center" Text="6 px" MinWidth="36" />
+                </StackPanel>
+                <Slider x:Name="BrushSizeSlider" Minimum="1" Maximum="500" Value="6"
+                        Width="120" Padding="0" MinHeight="0" Height="20" Margin="0,2,0,0" />
+            </StackPanel>
+
+            <Border Width="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    Margin="0,0,16,0" />
+
+            <!-- ═══ PEN ═══ -->
+            <StackPanel Margin="0,0,16,0">
+                <TextBlock Text="PEN" FontWeight="Bold" FontSize="10"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,4" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Ellipse x:Name="ProximityIndicator" Width="8" Height="8"
+                             Fill="{ThemeResource SystemFillColorNeutralBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="Proximity" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0">
+                    <TextBlock Text="Cursor:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="CursorValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="--" />
+                </StackPanel>
+            </StackPanel>
+
+            <Border Width="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    Margin="0,0,16,0" />
+
+            <!-- ═══ BUTTONS ═══ -->
+            <StackPanel Margin="0,0,16,0">
+                <TextBlock Text="BUTTONS" FontWeight="Bold" FontSize="10"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,4" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Ellipse x:Name="TipIndicator" Width="8" Height="8"
+                             Fill="{ThemeResource SystemFillColorNeutralBrush}" />
+                    <TextBlock Text="Tip" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Ellipse x:Name="EraserIndicator" Width="8" Height="8"
+                             Fill="{ThemeResource SystemFillColorNeutralBrush}" />
+                    <TextBlock Text="Era" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
+                    <Ellipse x:Name="Barrel1Indicator" Width="8" Height="8"
+                             Fill="{ThemeResource SystemFillColorNeutralBrush}" />
+                    <TextBlock Text="B1" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Ellipse x:Name="Barrel2Indicator" Width="8" Height="8"
+                             Fill="{ThemeResource SystemFillColorNeutralBrush}" />
+                    <TextBlock Text="B2" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Ellipse x:Name="Barrel3Indicator" Width="8" Height="8"
+                             Fill="{ThemeResource SystemFillColorNeutralBrush}" />
+                    <TextBlock Text="B3" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
+                    <TextBlock x:Name="RawButtonValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="0x00000000" />
+                </StackPanel>
+            </StackPanel>
+
+            <Border Width="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    Margin="0,0,16,0" />
+
+            <!-- ═══ POSITION ═══ -->
+            <StackPanel Margin="0,0,16,0">
+                <TextBlock Text="POSITION" FontWeight="Bold" FontSize="10"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,4" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Raw:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" MinWidth="46" />
+                    <TextBlock x:Name="RawPosValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="--,--" MinWidth="90" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1,0,0">
+                    <TextBlock Text="Screen:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" MinWidth="46" />
+                    <TextBlock x:Name="ScreenPosValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="--,--" MinWidth="90" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1,0,0">
+                    <TextBlock Text="App:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" MinWidth="46" />
+                    <TextBlock x:Name="AppPosValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="--,--" MinWidth="90" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1,0,0">
+                    <TextBlock Text="Canvas:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" MinWidth="46" />
+                    <TextBlock x:Name="CanvasPosValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="--,--" MinWidth="90" />
+                </StackPanel>
+            </StackPanel>
+
+            <Border Width="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    Margin="0,0,16,0" />
+
+            <!-- ═══ PRESSURE ═══ -->
+            <StackPanel Margin="0,0,16,0">
+                <TextBlock Text="PRESSURE" FontWeight="Bold" FontSize="10"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,4" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Raw:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="RawPressureValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="--" MinWidth="44" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1,0,0">
+                    <TextBlock Text="Norm:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="NormalizedPressureValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="--" MinWidth="44" />
+                </StackPanel>
+            </StackPanel>
+
+            <Border Width="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    Margin="0,0,16,0" />
+
+            <!-- ═══ ORIENTATION ═══ -->
+            <StackPanel>
+                <TextBlock Text="ORIENTATION" FontWeight="Bold" FontSize="10"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,4" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Azimuth:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="AzimuthValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="--" MinWidth="40" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1,0,0">
+                    <TextBlock Text="Altitude:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="AltitudeValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="--" MinWidth="36" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1,0,0">
+                    <TextBlock Text="Twist:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="TwistValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="--" MinWidth="36" />
+                </StackPanel>
+            </StackPanel>
+
+        </StackPanel>
+    </Border>
+</UserControl>

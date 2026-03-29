@@ -1,0 +1,89 @@
+<Window x:Class="Scribble.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Scribble WPF - PenSession" Width="1200" Height="700">
+    <DockPanel>
+        <!-- Ribbon -->
+        <Border DockPanel.Dock="Top" Background="#F5F5F5" BorderBrush="#CCCCCC"
+                BorderThickness="0,0,0,1" Padding="8,6">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- APP -->
+                <StackPanel Margin="0,0,16,0">
+                    <TextBlock Text="APP" FontWeight="Bold" FontSize="10"
+                               Foreground="#555" Margin="0,0,0,4" />
+                    <ComboBox x:Name="ApiCombo" Width="110" Height="24"
+                              SelectionChanged="ApiCombo_SelectionChanged" />
+                    <Button Content="Clear" Height="24" Width="60" Margin="0,4,0,0"
+                            Click="Clear_Click" />
+                </StackPanel>
+                <Rectangle Width="1" Fill="#DDD" Margin="0,0,16,0" />
+
+                <!-- BRUSH -->
+                <StackPanel Margin="0,0,16,0">
+                    <TextBlock Text="BRUSH" FontWeight="Bold" FontSize="10"
+                               Foreground="#555" Margin="0,0,0,4" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Size" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <TextBlock x:Name="BrushSizeLabel" Text="6 px"
+                                   VerticalAlignment="Center" Width="35" />
+                    </StackPanel>
+                    <Slider x:Name="BrushSizeSlider" Width="100" Minimum="1" Maximum="50"
+                            Value="6" IsSnapToTickEnabled="True" TickFrequency="1"
+                            ValueChanged="BrushSize_Changed" />
+                </StackPanel>
+                <Rectangle Width="1" Fill="#DDD" Margin="0,0,16,0" />
+
+                <!-- PEN -->
+                <StackPanel Margin="0,0,16,0" Width="80">
+                    <TextBlock Text="PEN" FontWeight="Bold" FontSize="10"
+                               Foreground="#555" Margin="0,0,0,4" />
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="ProximityDot" Width="8" Height="8"
+                                 Fill="Gray" Margin="0,0,4,0" />
+                        <TextBlock x:Name="ProximityLabel" Text="Out"
+                                   Foreground="#888" FontSize="11" />
+                    </StackPanel>
+                    <TextBlock x:Name="CursorLabel" Text="Cursor: --"
+                               FontSize="11" Foreground="#555" />
+                </StackPanel>
+                <Rectangle Width="1" Fill="#DDD" Margin="0,0,16,0" />
+
+                <!-- POSITION -->
+                <StackPanel Margin="0,0,16,0" Width="160">
+                    <TextBlock Text="POSITION" FontWeight="Bold" FontSize="10"
+                               Foreground="#555" Margin="0,0,0,4" />
+                    <TextBlock x:Name="RawPosLabel" Text="Raw: --,--" FontSize="11" />
+                    <TextBlock x:Name="ScreenPosLabel" Text="Screen: --,--" FontSize="11" />
+                    <TextBlock x:Name="AppPosLabel" Text="App: --,--" FontSize="11" />
+                    <TextBlock x:Name="CanvasPosLabel" Text="Canvas: --,--" FontSize="11" />
+                </StackPanel>
+                <Rectangle Width="1" Fill="#DDD" Margin="0,0,16,0" />
+
+                <!-- PRESSURE -->
+                <StackPanel Margin="0,0,16,0" Width="90">
+                    <TextBlock Text="PRESSURE" FontWeight="Bold" FontSize="10"
+                               Foreground="#555" Margin="0,0,0,4" />
+                    <TextBlock x:Name="RawPressureLabel" Text="Raw: --" FontSize="11" />
+                    <TextBlock x:Name="NormPressureLabel" Text="Norm: --" FontSize="11" />
+                </StackPanel>
+                <Rectangle Width="1" Fill="#DDD" Margin="0,0,16,0" />
+
+                <!-- ORIENTATION -->
+                <StackPanel Margin="0,0,16,0" Width="100">
+                    <TextBlock Text="ORIENTATION" FontWeight="Bold" FontSize="10"
+                               Foreground="#555" Margin="0,0,0,4" />
+                    <TextBlock x:Name="AzimuthLabel" Text="Azimuth: --" FontSize="11" />
+                    <TextBlock x:Name="AltitudeLabel" Text="Altitude: --" FontSize="11" />
+                    <TextBlock x:Name="TwistLabel" Text="Twist: --" FontSize="11" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Canvas — bitmap-backed for performance -->
+        <Border x:Name="CanvasArea" Background="#F0F0F0" ClipToBounds="True"
+                SizeChanged="CanvasArea_SizeChanged">
+            <Image x:Name="DrawImage" Stretch="None"
+                   HorizontalAlignment="Left" VerticalAlignment="Top" />
+        </Border>
+    </DockPanel>
+</Window>

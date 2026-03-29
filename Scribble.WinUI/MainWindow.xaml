@@ -1,0 +1,20 @@
+<Window
+    x:Class="Scribble.WinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Scribble.WinUI.Controls"
+    Title="WinTab Scribble - WinUI 3">
+
+    <Grid KeyboardAcceleratorPlacementMode="Hidden">
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="D" Modifiers="Menu" Invoked="CopyPenData_Invoked" />
+        </Grid.KeyboardAccelerators>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <controls:ScribbleRibbon x:Name="Toolbar" Grid.Row="0" />
+        <controls:DrawingCanvas x:Name="Canvas" Grid.Row="1" />
+    </Grid>
+</Window>
