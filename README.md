@@ -79,9 +79,10 @@ pen_session_destroy(session);
 
 See the [Docs/](Docs/) folder for:
 - [GETTING-STARTED.md](Docs/GETTING-STARTED.md) — Project overview and setup
-- [FUTURES_UNIFIED_SESSION.md](Docs/FUTURES_UNIFIED_SESSION.md) — Architecture and design decisions
 - [HOW_TO_USE.md](Docs/HOW_TO_USE.md) — Usage guide with gotchas and best practices
-- [FUTURES_WPF_RENDERING.md](Docs/FUTURES_WPF_RENDERING.md) — Rendering approach across frameworks
+- [SCRIBBLE-APPS.md](Docs/SCRIBBLE-APPS.md) — Details on each scribble demo app
+- [BUILD.md](Docs/BUILD.md) — Build instructions
+- [Planning/](Docs/Planning/) — Architecture decisions, phase plan, NuGet plan, rendering notes
 
 For general pen input knowledge (API comparisons, DPI handling, Wintab gotchas), see the [devnotes](https://github.com/TheSevenPens/devnotes) repo.
 
