@@ -10,8 +10,9 @@ GitHub Actions builds all projects on every push to main and on pull requests. T
 
 ### Build order
 1. **C++ first** — `msbuild NativeCpp.sln` (produces PenSession.Native.dll/.lib)
-2. **.NET** — `dotnet build WinPenSession.slnx` (all managed projects including WinUI)
-3. **Rust** — `cargo build --release` in Scribble.Rust (links against PenSession.Native.lib)
+2. **.NET** — `dotnet build WinPenSession.slnx` (all managed projects except WinUI)
+3. **WinUI** — `msbuild` on individual .csproj files (see CI notes)
+4. **Rust** — `cargo build --release` in Scribble.Rust (links against PenSession.Native.lib)
 
 ### Release artifacts
 On tagged releases, the workflow uploads:
@@ -24,11 +25,13 @@ On tagged releases, the workflow uploads:
 
 | Solution | Contents | Built with |
 |---|---|---|
-| `WinPenSession.slnx` | All managed projects (including WinUI) | `dotnet build` |
+| `WinPenSession.slnx` | All managed projects except WinUI | `dotnet build` |
 | `NativeCpp.sln` | PenSession.Native + Scribble.Win32 | `msbuild` |
+| WinUI projects | PenSession.WinUI + Scribble.WinUI | `msbuild` (individual .csproj) |
 
 ### CI notes
 - The runner has VS 2022 (v143 toolset). The C++ build overrides `PlatformToolset=v143` since the local projects use v145 (VS 2025).
+- WinUI requires `msbuild` in CI due to a .NET 10 preview gap: the `ExpandPriContent` PRI task DLL is missing from the dotnet CLI SDK. This may be resolved in a future .NET 10 / Windows App SDK release.
 
 ## Versioning
 

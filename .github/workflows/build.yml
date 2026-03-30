@@ -30,10 +30,17 @@ jobs:
       - name: Build C++ (PenSession.Native + Scribble.Win32)
         run: msbuild NativeCpp.sln -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -m
 
-      # --- .NET (all managed projects including WinUI) ---
+      # --- .NET ---
+      # WinUI requires msbuild due to a .NET 10 preview gap: the ExpandPriContent
+      # PRI task DLL is missing from the dotnet CLI SDK.
 
       - name: Build .NET
         run: dotnet build WinPenSession.slnx -c Release
+
+      - name: Build WinUI (msbuild)
+        run: |
+          msbuild PenSession.WinUI/PenSession.WinUI.csproj -p:Configuration=Release -p:Platform=x64 -restore
+          msbuild Scribble.WinUI/Scribble.WinUI.csproj -p:Configuration=Release -p:Platform=x64 -restore
 
       # --- Rust ---
 
