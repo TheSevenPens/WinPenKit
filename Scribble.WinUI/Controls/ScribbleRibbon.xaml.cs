@@ -95,9 +95,9 @@ public sealed partial class ScribbleRibbon : UserControl
         NormalizedPressureValue.Text = $"{pressurePct:F1}%";
 
         // Sensors
-        AzimuthValue.Text = $"{pt.Azimuth / 10.0:F1}°";
-        AltitudeValue.Text = $"{pt.Altitude / 10.0:F1}°";
-        TwistValue.Text = $"{pt.Twist / 10.0:F1}°";
+        AzimuthValue.Text = $"{pt.Azimuth:F1}°";
+        AltitudeValue.Text = $"{pt.Altitude:F1}°";
+        TwistValue.Text = $"{pt.Twist:F1}°";
     }
 
     public void UpdateButtons(PenPoint pt)

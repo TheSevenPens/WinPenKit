@@ -78,10 +78,10 @@ Regardless of which backend is active, every `PenPoint` provides:
 |---|---|---|---|
 | `DesktopX/Y` | Screen pixels or ScaleAxis-converted | `ptPixelLocationRaw` | Physical desktop pixels (double) |
 | `Pressure` | 0 to device max | 0 to 1024 | Raw, normalize via `MaxPressure` |
-| `Azimuth` | Native | Computed from TiltX/TiltY | Tenths of degree (0–3600) |
-| `Altitude` | Native | Computed from TiltX/TiltY | Tenths of degree (0–900) |
-| `TiltX/TiltY` | Computed from Azimuth/Altitude | Native (×10) | Tenths of degree (-900 to +900) |
-| `Twist` | Native | Native (×10) | Tenths of degree (0–3600) |
+| `Azimuth` | Native (÷10) | Computed from TiltX/TiltY | Degrees (0.0–360.0) |
+| `Altitude` | Native (÷10) | Computed from TiltX/TiltY | Degrees (0.0–90.0) |
+| `TiltX/TiltY` | Computed from Azimuth/Altitude | Native | Degrees (-90.0 to +90.0) |
+| `Twist` | Native (÷10) | Native | Degrees (0.0–360.0) |
 | `Z` | Native | Not available (0) | Height above surface |
 | `Cursor` | 13=pen, 14=eraser | Mapped from PEN_FLAG_INVERTED | Consistent cursor type |
 
@@ -89,20 +89,20 @@ Both tilt representations are always present. Consumers use whichever suits thei
 
 ### Tilt Conversion Formulas
 
-Each backend computes whichever tilt representation it doesn't have natively. All values are in tenths of degree.
+Each backend computes whichever tilt representation it doesn't have natively. All values are in degrees.
 
 **WM_POINTER → Spherical** (TiltX/TiltY native, compute Azimuth/Altitude):
 ```
-tiltMag  = sqrt(tiltX^2 + tiltY^2)         // tenths of degree from vertical
-Altitude = 900 - tiltMag
-Azimuth  = atan2(-tiltX, tiltY) * 1800/PI  (mod 3600)
+tiltMag  = sqrt(tiltX^2 + tiltY^2)         // degrees from vertical
+Altitude = 90 - tiltMag
+Azimuth  = atan2(-tiltX, tiltY) * 180/PI  (mod 360)
 ```
 
 **Wintab → Planar** (Azimuth/Altitude native, compute TiltX/TiltY):
 ```
-tiltMag = 900 - Altitude                    // tenths of degree from vertical
-TiltX   = -tiltMag * sin(Azimuth * PI/1800)
-TiltY   =  tiltMag * cos(Azimuth * PI/1800)
+tiltMag = 90 - Altitude                    // degrees from vertical
+TiltX   = -tiltMag * sin(Azimuth * PI/180)
+TiltY   =  tiltMag * cos(Azimuth * PI/180)
 ```
 
 These conversions are lossy at extreme angles but accurate enough for brush engines. Calligraphy brushes may prefer Azimuth, physics-based brushes may prefer TiltX/TiltY.

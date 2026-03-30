@@ -106,18 +106,18 @@ public sealed class AvaloniaPointerSession : IPenSession
         uint pressure = (uint)(props.Pressure * 1024f);
 
         // Tilt: Avalonia provides XTilt/YTilt as float, not nullable in all versions.
-        int tiltX = 0, tiltY = 0;
+        double tiltX = 0, tiltY = 0;
         try
         {
-            tiltX = (int)(props.XTilt * 10);
-            tiltY = (int)(props.YTilt * 10);
+            tiltX = props.XTilt;
+            tiltY = props.YTilt;
         }
         catch { }
 
-        TiltToSpherical(tiltX, tiltY, out int azimuth, out int altitude);
+        TiltToSpherical(tiltX, tiltY, out double azimuth, out double altitude);
 
-        int twist = 0;
-        try { twist = (int)(props.Twist * 10); }
+        double twist = 0;
+        try { twist = props.Twist; }
         catch { }
 
         uint buttons = 0;
@@ -146,24 +146,22 @@ public sealed class AvaloniaPointerSession : IPenSession
         _hasNewData = true;
     }
 
-    private static void TiltToSpherical(int tiltX, int tiltY,
-        out int azimuth, out int altitude)
+    private static void TiltToSpherical(double tiltX, double tiltY,
+        out double azimuth, out double altitude)
     {
-        double tx = tiltX;
-        double ty = tiltY;
-        double mag = Math.Sqrt(tx * tx + ty * ty);
+        double mag = Math.Sqrt(tiltX * tiltX + tiltY * tiltY);
 
-        altitude = Math.Clamp((int)(900.0 - mag), 0, 900);
+        altitude = Math.Clamp(90.0 - mag, 0.0, 90.0);
 
-        if (mag > 5.0)
+        if (mag > 0.5)
         {
-            double rad = Math.Atan2(-tx, ty);
-            int tenths = (int)(rad * 1800.0 / Math.PI);
-            azimuth = ((tenths % 3600) + 3600) % 3600;
+            double rad = Math.Atan2(-tiltX, tiltY);
+            double deg = rad * 180.0 / Math.PI;
+            azimuth = ((deg % 360.0) + 360.0) % 360.0;
         }
         else
         {
-            azimuth = 0;
+            azimuth = 0.0;
         }
     }
 }

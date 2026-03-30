@@ -117,20 +117,20 @@ public sealed class WpfStylusSession : IPenSession
 
             // Tilt: try to read XTiltOrientation / YTiltOrientation.
             // WPF reports in hundredths of degree (-9000 to +9000).
-            // We need tenths of degree (-900 to +900).
-            int tiltX = 0, tiltY = 0;
+            // We need degrees (-90 to +90).
+            double tiltX = 0, tiltY = 0;
             if (sp.HasProperty(StylusPointProperties.XTiltOrientation))
-                tiltX = sp.GetPropertyValue(StylusPointProperties.XTiltOrientation) / 10;
+                tiltX = sp.GetPropertyValue(StylusPointProperties.XTiltOrientation) / 100.0;
             if (sp.HasProperty(StylusPointProperties.YTiltOrientation))
-                tiltY = sp.GetPropertyValue(StylusPointProperties.YTiltOrientation) / 10;
+                tiltY = sp.GetPropertyValue(StylusPointProperties.YTiltOrientation) / 100.0;
 
             // Convert to spherical.
-            TiltToSpherical(tiltX, tiltY, out int azimuth, out int altitude);
+            TiltToSpherical(tiltX, tiltY, out double azimuth, out double altitude);
 
-            // Twist.
-            int twist = 0;
+            // Twist in degrees.
+            double twist = 0;
             if (sp.HasProperty(StylusPointProperties.TwistOrientation))
-                twist = sp.GetPropertyValue(StylusPointProperties.TwistOrientation) / 10;
+                twist = sp.GetPropertyValue(StylusPointProperties.TwistOrientation) / 100.0;
 
             // Buttons.
             uint buttons = 0;
@@ -170,24 +170,22 @@ public sealed class WpfStylusSession : IPenSession
 
     // ── Tilt conversion ──────────────────────────────────────────
 
-    private static void TiltToSpherical(int tiltX, int tiltY,
-        out int azimuth, out int altitude)
+    private static void TiltToSpherical(double tiltX, double tiltY,
+        out double azimuth, out double altitude)
     {
-        double tx = tiltX;
-        double ty = tiltY;
-        double mag = Math.Sqrt(tx * tx + ty * ty);
+        double mag = Math.Sqrt(tiltX * tiltX + tiltY * tiltY);
 
-        altitude = Math.Clamp((int)(900.0 - mag), 0, 900);
+        altitude = Math.Clamp(90.0 - mag, 0.0, 90.0);
 
-        if (mag > 5.0)
+        if (mag > 0.5)
         {
-            double rad = Math.Atan2(-tx, ty);
-            int tenths = (int)(rad * 1800.0 / Math.PI);
-            azimuth = ((tenths % 3600) + 3600) % 3600;
+            double rad = Math.Atan2(-tiltX, tiltY);
+            double deg = rad * 180.0 / Math.PI;
+            azimuth = ((deg % 360.0) + 360.0) % 360.0;
         }
         else
         {
-            azimuth = 0;
+            azimuth = 0.0;
         }
     }
 }

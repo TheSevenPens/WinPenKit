@@ -69,8 +69,8 @@ private:
 
     void on_pointer_message(UINT msg, WPARAM wp, LPARAM lp);
 
-    static void tilt_to_spherical(int tiltX, int tiltY,
-                                   int& azimuth, int& altitude);
+    static void tilt_to_spherical(double tiltX, double tiltY,
+                                   double& azimuth, double& altitude);
 };
 
 } // namespace wintab

@@ -48,7 +48,7 @@ WinUI 3 drawing app with the most detailed ribbon UI.
   - **BUTTONS** — tip, eraser, barrel 1/2/3 status indicators with raw hex value
   - **POSITION** — Raw, Screen, App, Canvas coordinates
   - **PRESSURE** — raw value and normalized percentage
-  - **ORIENTATION** — azimuth, altitude, twist, tiltX, tiltY (all in tenths of a degree)
+  - **ORIENTATION** — azimuth, altitude, twist, tiltX, tiltY (all in degrees)
 - **SkiaSharp bitmap-backed rendering** — `SKCanvas.DrawLine()` to `SKBitmap`, copied to WinUI `WriteableBitmap` via `IBuffer.AsStream()`
 - Correct DPI handling on high-DPI multi-monitor setups (225%+ scaling)
 - Digitizer hi-res mode preserving full tablet-native precision (~5280 LPI)

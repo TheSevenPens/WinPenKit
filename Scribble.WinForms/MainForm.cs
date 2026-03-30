@@ -348,9 +348,9 @@ public sealed class MainForm : Form
         _rawPressureLabel.Text = $"Raw: {last.Pressure}";
         _normPressureLabel.Text = $"Norm: {pct:F1}%";
 
-        _azimuthLabel.Text = $"Azimuth: {last.Azimuth / 10.0:F1}";
-        _altitudeLabel.Text = $"Altitude: {last.Altitude / 10.0:F1}";
-        _twistLabel.Text = $"Twist: {last.Twist / 10.0:F1}";
+        _azimuthLabel.Text = $"Azimuth: {last.Azimuth:F1}";
+        _altitudeLabel.Text = $"Altitude: {last.Altitude:F1}";
+        _twistLabel.Text = $"Twist: {last.Twist:F1}";
     }
 }
 

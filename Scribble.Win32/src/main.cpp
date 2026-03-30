@@ -560,9 +560,9 @@ static void paint_ribbon(HDC hdc) {
 
     if (g_has_pen_data) {
         char az[16], al[16], tw[16];
-        snprintf(az, sizeof(az), "%d", g_last_pen.azimuth);
-        snprintf(al, sizeof(al), "%d", g_last_pen.altitude);
-        snprintf(tw, sizeof(tw), "%d", g_last_pen.twist);
+        snprintf(az, sizeof(az), "%.1f", g_last_pen.azimuth);
+        snprintf(al, sizeof(al), "%.1f", g_last_pen.altitude);
+        snprintf(tw, sizeof(tw), "%.1f", g_last_pen.twist);
         rp.draw_label_value(ori_x, 0, "Azimuth: ", az);
         rp.draw_label_value(ori_x, 1, "Altitude: ", al);
         rp.draw_label_value(ori_x, 2, "Twist: ", tw);

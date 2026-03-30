@@ -293,9 +293,9 @@ public partial class MainWindow : Window
         RawPressureLabel.Text = $"Raw: {last.Pressure}";
         NormPressureLabel.Text = $"Norm: {pct:F1}%";
 
-        AzimuthLabel.Text = $"Azimuth: {last.Azimuth / 10.0:F1}";
-        AltitudeLabel.Text = $"Altitude: {last.Altitude / 10.0:F1}";
-        TwistLabel.Text = $"Twist: {last.Twist / 10.0:F1}";
+        AzimuthLabel.Text = $"Azimuth: {last.Azimuth:F1}";
+        AltitudeLabel.Text = $"Altitude: {last.Altitude:F1}";
+        TwistLabel.Text = $"Twist: {last.Twist:F1}";
     }
 
     // ── Event handlers ───────────────────────────────────────────

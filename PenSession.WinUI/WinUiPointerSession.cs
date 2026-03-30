@@ -123,15 +123,15 @@ public sealed class WinUiPointerSession : IPenSession
         // Pressure: PointerPoint gives 0.0–1.0, scale to 0–1024.
         uint pressure = (uint)(props.Pressure * 1024f);
 
-        // Tilt: XTilt/YTilt in degrees → tenths of degree.
-        int tiltX = (int)(props.XTilt * 10);
-        int tiltY = (int)(props.YTilt * 10);
+        // Tilt: XTilt/YTilt in degrees.
+        double tiltX = props.XTilt;
+        double tiltY = props.YTilt;
 
         // Convert to spherical.
-        TiltToSpherical(tiltX, tiltY, out int azimuth, out int altitude);
+        TiltToSpherical(tiltX, tiltY, out double azimuth, out double altitude);
 
-        // Twist: degrees → tenths of degree.
-        int twist = (int)(props.Twist * 10);
+        // Twist in degrees.
+        double twist = props.Twist;
 
         // Buttons.
         uint buttons = 0;
@@ -193,24 +193,22 @@ public sealed class WinUiPointerSession : IPenSession
 
     // ── Tilt conversion ──────────────────────────────────────────
 
-    private static void TiltToSpherical(int tiltX, int tiltY,
-        out int azimuth, out int altitude)
+    private static void TiltToSpherical(double tiltX, double tiltY,
+        out double azimuth, out double altitude)
     {
-        double tx = tiltX;
-        double ty = tiltY;
-        double mag = Math.Sqrt(tx * tx + ty * ty);
+        double mag = Math.Sqrt(tiltX * tiltX + tiltY * tiltY);
 
-        altitude = Math.Clamp((int)(900.0 - mag), 0, 900);
+        altitude = Math.Clamp(90.0 - mag, 0.0, 90.0);
 
-        if (mag > 5.0)
+        if (mag > 0.5)
         {
-            double rad = Math.Atan2(-tx, ty);
-            int tenths = (int)(rad * 1800.0 / Math.PI);
-            azimuth = ((tenths % 3600) + 3600) % 3600;
+            double rad = Math.Atan2(-tiltX, tiltY);
+            double deg = rad * 180.0 / Math.PI;
+            azimuth = ((deg % 360.0) + 360.0) % 360.0;
         }
         else
         {
-            azimuth = 0;
+            azimuth = 0.0;
         }
     }
 }

@@ -34,23 +34,23 @@ public readonly record struct PenPoint(
     /// <summary>Raw pen tip pressure (0 to <see cref="IPenSession.MaxPressure"/>).</summary>
     uint Pressure,
 
-    /// <summary>Pen azimuth (compass direction) in tenths of a degree (0–3600).
+    /// <summary>Pen azimuth (compass direction) in degrees (0.0–360.0).
     /// APIs that report TiltX/TiltY are converted to azimuth/altitude.</summary>
-    int Azimuth,
+    double Azimuth,
 
-    /// <summary>Pen altitude (angle from tablet surface) in tenths of a degree (0–900).</summary>
-    int Altitude,
+    /// <summary>Pen altitude (angle from tablet surface) in degrees (0.0–90.0).</summary>
+    double Altitude,
 
-    /// <summary>Pen barrel twist in tenths of a degree (0–3600). 0 if unsupported.</summary>
-    int Twist,
+    /// <summary>Pen barrel twist in degrees (0.0–360.0). 0 if unsupported.</summary>
+    double Twist,
 
-    /// <summary>Planar tilt X in tenths of a degree (-900 to +900). Positive = tilt right.
-    /// Computed from Azimuth/Altitude for Wintab; native (×10) for WM_POINTER.</summary>
-    int TiltX,
+    /// <summary>Planar tilt X in degrees (-90.0 to +90.0). Positive = tilt right.
+    /// Computed from Azimuth/Altitude for Wintab; native for WM_POINTER.</summary>
+    double TiltX,
 
-    /// <summary>Planar tilt Y in tenths of a degree (-900 to +900). Positive = tilt toward user.
-    /// Computed from Azimuth/Altitude for Wintab; native (×10) for WM_POINTER.</summary>
-    int TiltY,
+    /// <summary>Planar tilt Y in degrees (-90.0 to +90.0). Positive = tilt toward user.
+    /// Computed from Azimuth/Altitude for Wintab; native for WM_POINTER.</summary>
+    double TiltY,
 
     /// <summary>Height above the tablet surface. 0 if unsupported.</summary>
     int Z,

@@ -343,9 +343,9 @@ impl eframe::App for ScribbleApp {
                 ui.vertical(|ui| {
                     ui.strong("ORIENTATION");
                     if let Some(pt) = &self.last_point {
-                        ui.label(format!("Azi: {:.1}", pt.azimuth as f32 / 10.0));
-                        ui.label(format!("Alt: {:.1}", pt.altitude as f32 / 10.0));
-                        ui.label(format!("Twist: {:.1}", pt.twist as f32 / 10.0));
+                        ui.label(format!("Azi: {:.1}", pt.azimuth));
+                        ui.label(format!("Alt: {:.1}", pt.altitude));
+                        ui.label(format!("Twist: {:.1}", pt.twist));
                     }
                 });
             });

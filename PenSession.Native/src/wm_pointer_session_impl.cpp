@@ -130,9 +130,9 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
             std::lock_guard<std::mutex> lock(points_mutex_);
             for (int i = static_cast<int>(count) - 1; i >= 0; i--) {
                 auto& pi = history[i];
-                int tx = (pi.penMask & PEN_MASK_TILT_X) ? pi.tiltX * 10 : 0;
-                int ty = (pi.penMask & PEN_MASK_TILT_Y) ? pi.tiltY * 10 : 0;
-                int az = 0, alt = 900;
+                double tx = (pi.penMask & PEN_MASK_TILT_X) ? static_cast<double>(pi.tiltX) : 0.0;
+                double ty = (pi.penMask & PEN_MASK_TILT_Y) ? static_cast<double>(pi.tiltY) : 0.0;
+                double az = 0.0, alt = 90.0;
                 tilt_to_spherical(tx, ty, az, alt);
 
                 PenPoint pt = {};
@@ -143,7 +143,7 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
                 pt.pressure  = (pi.penMask & PEN_MASK_PRESSURE) ? pi.pressure : 0;
                 pt.azimuth   = az;
                 pt.altitude  = alt;
-                pt.twist     = (pi.penMask & PEN_MASK_ROTATION) ? static_cast<int>(pi.rotation) * 10 : 0;
+                pt.twist     = (pi.penMask & PEN_MASK_ROTATION) ? static_cast<double>(pi.rotation) : 0.0;
                 pt.tilt_x    = tx;
                 pt.tilt_y    = ty;
                 pt.buttons   = ((pi.penFlags & PEN_FLAG_BARREL) ? 0x0001u : 0u) |
@@ -169,20 +169,20 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
     if (pen_info.penMask & PEN_MASK_PRESSURE)
         pressure = pen_info.pressure;
 
-    // Native TiltX/TiltY (degrees from driver, stored as tenths of degree).
-    int native_tilt_x = 0, native_tilt_y = 0;
-    if (pen_info.penMask & PEN_MASK_TILT_X) native_tilt_x = pen_info.tiltX * 10;
-    if (pen_info.penMask & PEN_MASK_TILT_Y) native_tilt_y = pen_info.tiltY * 10;
+    // Native TiltX/TiltY in degrees from driver.
+    double native_tilt_x = 0.0, native_tilt_y = 0.0;
+    if (pen_info.penMask & PEN_MASK_TILT_X) native_tilt_x = static_cast<double>(pen_info.tiltX);
+    if (pen_info.penMask & PEN_MASK_TILT_Y) native_tilt_y = static_cast<double>(pen_info.tiltY);
 
-    // Convert TiltX/TiltY → Azimuth/Altitude (spherical, tenths of degree).
-    int azimuth = 0, altitude = 900;
+    // Convert TiltX/TiltY → Azimuth/Altitude (spherical, degrees).
+    double azimuth = 0.0, altitude = 90.0;
     if (pen_info.penMask & (PEN_MASK_TILT_X | PEN_MASK_TILT_Y))
         tilt_to_spherical(native_tilt_x, native_tilt_y, azimuth, altitude);
 
-    // Twist/rotation.
-    int twist = 0;
+    // Twist/rotation in degrees.
+    double twist = 0.0;
     if (pen_info.penMask & PEN_MASK_ROTATION)
-        twist = static_cast<int>(pen_info.rotation) * 10; // degrees → tenths
+        twist = static_cast<double>(pen_info.rotation);
 
     // Buttons: encode eraser/barrel in a simple bitmask.
     uint32_t buttons = 0;
@@ -225,33 +225,30 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
 
 // ── Tilt conversion ──────────────────────────────────────────────
 //
-// Input: TiltX/TiltY in tenths of degree (-900 to +900).
-// Output: Azimuth (0-3600 tenths of degree), Altitude (0-900 tenths).
+// Input: TiltX/TiltY in degrees (-90 to +90).
+// Output: Azimuth (0-360 degrees), Altitude (0-90 degrees).
 //
 // Azimuth = compass direction of the tilt (clockwise from north/up).
-// Altitude = angle from the tablet surface (0=flat, 900=vertical).
+// Altitude = angle from the tablet surface (0=flat, 90=vertical).
 
 void WmPointerSessionImpl::tilt_to_spherical(
-    int tiltX, int tiltY, int& azimuth, int& altitude)
+    double tiltX, double tiltY, double& azimuth, double& altitude)
 {
-    double tx = static_cast<double>(tiltX);
-    double ty = static_cast<double>(tiltY);
+    double tilt_magnitude = std::sqrt(tiltX * tiltX + tiltY * tiltY);
 
-    double tilt_magnitude = std::sqrt(tx * tx + ty * ty); // tenths of degree
-
-    // Altitude: 900 (vertical) minus the tilt magnitude.
-    altitude = static_cast<int>(900.0 - tilt_magnitude);
-    if (altitude < 0) altitude = 0;
-    if (altitude > 900) altitude = 900;
+    // Altitude: 90 (vertical) minus the tilt magnitude.
+    altitude = 90.0 - tilt_magnitude;
+    if (altitude < 0.0) altitude = 0.0;
+    if (altitude > 90.0) altitude = 90.0;
 
     // Azimuth: compass direction of the tilt vector.
     // atan2(-tiltX, tiltY) gives angle from Y+ axis (north), clockwise.
-    if (tilt_magnitude > 5.0) { // ~0.5 degrees threshold
-        double angle_rad = std::atan2(-tx, ty);
-        int angle_tenths = static_cast<int>(angle_rad * 1800.0 / M_PI);
-        azimuth = ((angle_tenths % 3600) + 3600) % 3600;
+    if (tilt_magnitude > 0.5) { // degrees threshold
+        double angle_rad = std::atan2(-tiltX, tiltY);
+        double angle_deg = angle_rad * 180.0 / M_PI;
+        azimuth = std::fmod(std::fmod(angle_deg, 360.0) + 360.0, 360.0);
     } else {
-        azimuth = 0;
+        azimuth = 0.0;
     }
 }
 

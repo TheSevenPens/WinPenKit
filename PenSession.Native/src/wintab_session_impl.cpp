@@ -341,13 +341,13 @@ void WintabSessionImpl::on_packet(WPARAM serial) {
         last_cursor_ = pkt.pkCursor;
     }
 
-    // Convert Azimuth/Altitude (spherical, tenths of degree) → TiltX/TiltY (planar, tenths of degree).
-    int tilt_x = 0, tilt_y = 0;
+    // Convert Azimuth/Altitude (spherical, Wintab tenths) → TiltX/TiltY (planar, degrees).
+    double tilt_x = 0.0, tilt_y = 0.0;
     {
-        double tilt_mag = 900.0 - pkt.pkOrientation.orAltitude; // tenths of degree from vertical
-        double az_rad = pkt.pkOrientation.orAzimuth * M_PI / 1800.0;
-        tilt_x = static_cast<int>(-tilt_mag * std::sin(az_rad));
-        tilt_y = static_cast<int>( tilt_mag * std::cos(az_rad));
+        double tilt_mag = 90.0 - pkt.pkOrientation.orAltitude / 10.0; // degrees from vertical
+        double az_rad = pkt.pkOrientation.orAzimuth / 10.0 * M_PI / 180.0;
+        tilt_x = -tilt_mag * std::sin(az_rad);
+        tilt_y =  tilt_mag * std::cos(az_rad);
     }
 
     PenPoint pt = {};
@@ -356,9 +356,9 @@ void WintabSessionImpl::on_packet(WPARAM serial) {
     pt.raw_x     = pkt.pkX;
     pt.raw_y     = pkt.pkY;
     pt.pressure  = pkt.pkNormalPressure;
-    pt.azimuth   = pkt.pkOrientation.orAzimuth;
-    pt.altitude  = pkt.pkOrientation.orAltitude;
-    pt.twist     = pkt.pkOrientation.orTwist;
+    pt.azimuth   = pkt.pkOrientation.orAzimuth / 10.0;
+    pt.altitude  = pkt.pkOrientation.orAltitude / 10.0;
+    pt.twist     = pkt.pkOrientation.orTwist / 10.0;
     pt.tilt_x    = tilt_x;
     pt.tilt_y    = tilt_y;
     pt.z         = pkt.pkZ;

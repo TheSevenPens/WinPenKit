@@ -25,8 +25,8 @@ foreach (var pt in points)
 {
     // pt.DesktopX/Y  — physical screen pixels (double)
     // pt.Pressure    — 0 to session.MaxPressure
-    // pt.Azimuth/Altitude — spherical tilt (tenths of degree)
-    // pt.TiltX/TiltY — planar tilt (tenths of degree)
+    // pt.Azimuth/Altitude — spherical tilt (degrees)
+    // pt.TiltX/TiltY — planar tilt (degrees)
 }
 
 // 4. Switch APIs at runtime — no restart needed.
@@ -86,11 +86,11 @@ Every `PenPoint` contains:
 | `DesktopX/Y` | `double` | Physical screen pixels. Sub-pixel precision in digitizer mode. |
 | `RawX/Y` | `int` | Raw values from the API. Tablet-native in digitizer mode, screen pixels otherwise. |
 | `Pressure` | `uint` | Raw tip pressure. 0 = hovering. Normalize: `(float)pt.Pressure / session.MaxPressure` |
-| `Azimuth` | `int` | Spherical: compass direction in tenths of degree (0–3600). |
-| `Altitude` | `int` | Spherical: angle from surface in tenths of degree (0–900). 900 = perpendicular. |
-| `TiltX` | `int` | Planar: tilt right/left in tenths of degree (-900 to +900). |
-| `TiltY` | `int` | Planar: tilt toward/away in tenths of degree (-900 to +900). |
-| `Twist` | `int` | Barrel rotation in tenths of degree (0–3600). |
+| `Azimuth` | `double` | Spherical: compass direction in degrees (0.0–360.0). |
+| `Altitude` | `double` | Spherical: angle from surface in degrees (0.0–90.0). 90 = perpendicular. |
+| `TiltX` | `double` | Planar: tilt right/left in degrees (-90.0 to +90.0). |
+| `TiltY` | `double` | Planar: tilt toward/away in degrees (-90.0 to +90.0). |
+| `Twist` | `double` | Barrel rotation in degrees (0.0–360.0). |
 | `Z` | `int` | Height above tablet surface. 0 if unsupported. |
 | `Buttons` | `uint` | Button state. Wintab: `(action << 16) \| buttonNumber`. |
 | `Cursor` | `uint` | Cursor type. 13 = pen tip, 14 = eraser (Wacom). |

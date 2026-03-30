@@ -125,15 +125,15 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
         uint pressure = (penInfo.penMask & PointerApi.PEN_MASK_PRESSURE) != 0
             ? penInfo.pressure : 0;
 
-        int tiltX = (penInfo.penMask & PointerApi.PEN_MASK_TILT_X) != 0
-            ? penInfo.tiltX * 10 : 0;
-        int tiltY = (penInfo.penMask & PointerApi.PEN_MASK_TILT_Y) != 0
-            ? penInfo.tiltY * 10 : 0;
+        double tiltX = (penInfo.penMask & PointerApi.PEN_MASK_TILT_X) != 0
+            ? penInfo.tiltX : 0.0;
+        double tiltY = (penInfo.penMask & PointerApi.PEN_MASK_TILT_Y) != 0
+            ? penInfo.tiltY : 0.0;
 
-        TiltToSpherical(tiltX, tiltY, out int azimuth, out int altitude);
+        TiltToSpherical(tiltX, tiltY, out double azimuth, out double altitude);
 
-        int twist = (penInfo.penMask & PointerApi.PEN_MASK_ROTATION) != 0
-            ? (int)penInfo.rotation * 10 : 0;
+        double twist = (penInfo.penMask & PointerApi.PEN_MASK_ROTATION) != 0
+            ? penInfo.rotation : 0.0;
 
         uint buttons = 0;
         if ((penInfo.penFlags & PointerApi.PEN_FLAG_BARREL) != 0) buttons |= 0x0001;
@@ -162,24 +162,22 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
         _hasNewData = true;
     }
 
-    private static void TiltToSpherical(int tiltX, int tiltY,
-        out int azimuth, out int altitude)
+    private static void TiltToSpherical(double tiltX, double tiltY,
+        out double azimuth, out double altitude)
     {
-        double tx = tiltX;
-        double ty = tiltY;
-        double mag = Math.Sqrt(tx * tx + ty * ty);
+        double mag = Math.Sqrt(tiltX * tiltX + tiltY * tiltY);
 
-        altitude = Math.Clamp((int)(900.0 - mag), 0, 900);
+        altitude = Math.Clamp(90.0 - mag, 0.0, 90.0);
 
-        if (mag > 5.0)
+        if (mag > 0.5)
         {
-            double rad = Math.Atan2(-tx, ty);
-            int tenths = (int)(rad * 1800.0 / Math.PI);
-            azimuth = ((tenths % 3600) + 3600) % 3600;
+            double rad = Math.Atan2(-tiltX, tiltY);
+            double deg = rad * 180.0 / Math.PI;
+            azimuth = ((deg % 360.0) + 360.0) % 360.0;
         }
         else
         {
-            azimuth = 0;
+            azimuth = 0.0;
         }
     }
 }

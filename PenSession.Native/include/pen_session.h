@@ -62,7 +62,7 @@ typedef enum {
 //
 // Universal pen data record. Desktop coordinates are in physical
 // screen pixels (double for sub-pixel precision in digitizer mode).
-// All orientation fields are in tenths of a degree.
+// All orientation fields are in degrees (double).
 //
 // IMPORTANT: pkContext in the Wintab PACKET struct is HCTX (pointer-sized).
 // See HOW_TO_USE.md gotcha #10 for why this matters for struct layout.
@@ -73,11 +73,11 @@ typedef struct {
     int32_t  raw_x;
     int32_t  raw_y;
     uint32_t pressure;
-    int32_t  azimuth;     // spherical: tenths of degree (0-3600), clockwise from north
-    int32_t  altitude;    // spherical: tenths of degree (0-900), 0=flat, 900=vertical
-    int32_t  twist;       // barrel rotation: tenths of degree (0-3600)
-    int32_t  tilt_x;      // planar: tenths of degree (-900 to +900), positive = tilt right
-    int32_t  tilt_y;      // planar: tenths of degree (-900 to +900), positive = tilt toward user
+    double   azimuth;     // spherical: degrees (0.0-360.0), clockwise from north
+    double   altitude;    // spherical: degrees (0.0-90.0), 0=flat, 90=vertical
+    double   twist;       // barrel rotation: degrees (0.0-360.0)
+    double   tilt_x;      // planar: degrees (-90.0 to +90.0), positive = tilt right
+    double   tilt_y;      // planar: degrees (-90.0 to +90.0), positive = tilt toward user
     int32_t  z;
     uint32_t status;
     uint32_t buttons;

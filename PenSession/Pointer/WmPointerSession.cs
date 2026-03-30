@@ -130,18 +130,18 @@ internal sealed class WmPointerSession : IPenSession
         uint pressure = (penInfo.penMask & PointerNative.PEN_MASK_PRESSURE) != 0
             ? penInfo.pressure : 0;
 
-        // Native TiltX/TiltY (degrees from driver → tenths of degree).
-        int tiltX = (penInfo.penMask & PointerNative.PEN_MASK_TILT_X) != 0
-            ? penInfo.tiltX * 10 : 0;
-        int tiltY = (penInfo.penMask & PointerNative.PEN_MASK_TILT_Y) != 0
-            ? penInfo.tiltY * 10 : 0;
+        // Native TiltX/TiltY in degrees from driver.
+        double tiltX = (penInfo.penMask & PointerNative.PEN_MASK_TILT_X) != 0
+            ? penInfo.tiltX : 0.0;
+        double tiltY = (penInfo.penMask & PointerNative.PEN_MASK_TILT_Y) != 0
+            ? penInfo.tiltY : 0.0;
 
-        // Convert TiltX/TiltY → Azimuth/Altitude (tenths of degree).
-        TiltToSpherical(tiltX, tiltY, out int azimuth, out int altitude);
+        // Convert TiltX/TiltY → Azimuth/Altitude (degrees).
+        TiltToSpherical(tiltX, tiltY, out double azimuth, out double altitude);
 
-        // Twist (degrees → tenths of degree).
-        int twist = (penInfo.penMask & PointerNative.PEN_MASK_ROTATION) != 0
-            ? (int)penInfo.rotation * 10 : 0;
+        // Twist in degrees.
+        double twist = (penInfo.penMask & PointerNative.PEN_MASK_ROTATION) != 0
+            ? penInfo.rotation : 0.0;
 
         // Buttons.
         uint buttons = 0;
@@ -174,27 +174,25 @@ internal sealed class WmPointerSession : IPenSession
 
     // ── Tilt conversion ──────────────────────────────────────────
     //
-    // Input: TiltX/TiltY in tenths of degree (-900 to +900).
-    // Output: Azimuth (0-3600), Altitude (0-900), tenths of degree.
+    // Input: TiltX/TiltY in degrees (-90 to +90).
+    // Output: Azimuth (0-360), Altitude (0-90), degrees.
 
-    private static void TiltToSpherical(int tiltX, int tiltY,
-        out int azimuth, out int altitude)
+    private static void TiltToSpherical(double tiltX, double tiltY,
+        out double azimuth, out double altitude)
     {
-        double tx = tiltX;
-        double ty = tiltY;
-        double mag = Math.Sqrt(tx * tx + ty * ty);
+        double mag = Math.Sqrt(tiltX * tiltX + tiltY * tiltY);
 
-        altitude = Math.Clamp((int)(900.0 - mag), 0, 900);
+        altitude = Math.Clamp(90.0 - mag, 0.0, 90.0);
 
-        if (mag > 5.0) // ~0.5 degrees threshold
+        if (mag > 0.5) // degrees threshold
         {
-            double rad = Math.Atan2(-tx, ty);
-            int tenths = (int)(rad * 1800.0 / Math.PI);
-            azimuth = ((tenths % 3600) + 3600) % 3600;
+            double rad = Math.Atan2(-tiltX, tiltY);
+            double deg = rad * 180.0 / Math.PI;
+            azimuth = ((deg % 360.0) + 360.0) % 360.0;
         }
         else
         {
-            azimuth = 0;
+            azimuth = 0.0;
         }
     }
 }

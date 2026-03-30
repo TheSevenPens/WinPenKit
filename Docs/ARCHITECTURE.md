@@ -125,7 +125,7 @@ ExtensionTestApp ──► WintabDN
 
 2. **Desktop pixels as the universal coordinate space.** Every backend normalizes to physical screen pixels. Framework adapters convert to canvas-local coordinates.
 
-3. **Both tilt representations.** PenPoint carries Azimuth/Altitude (spherical) and TiltX/TiltY (planar), all in tenths of degree. Each backend computes whichever it doesn't have natively.
+3. **Both tilt representations.** PenPoint carries Azimuth/Altitude (spherical) and TiltX/TiltY (planar), all in degrees (double). Each backend computes whichever it doesn't have natively.
 
 4. **Factory for framework-agnostic, constructors for framework-specific.** `PenSessionFactory.Create()` handles Wintab and WM_POINTER. Framework-specific sessions need UI elements and are created directly by the app.
 

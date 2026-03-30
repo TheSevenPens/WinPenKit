@@ -172,9 +172,9 @@ internal abstract class WintabSessionBase : IPenSession
                 RawX: pkt.pkX,
                 RawY: pkt.pkY,
                 Pressure: pkt.pkNormalPressure,
-                Azimuth: pkt.pkOrientation.orAzimuth,
-                Altitude: pkt.pkOrientation.orAltitude,
-                Twist: pkt.pkOrientation.orTwist,
+                Azimuth: pkt.pkOrientation.orAzimuth / 10.0,
+                Altitude: pkt.pkOrientation.orAltitude / 10.0,
+                Twist: pkt.pkOrientation.orTwist / 10.0,
                 TiltX: SphericalToTiltX(pkt.pkOrientation.orAzimuth, pkt.pkOrientation.orAltitude),
                 TiltY: SphericalToTiltY(pkt.pkOrientation.orAzimuth, pkt.pkOrientation.orAltitude),
                 Z: pkt.pkZ,
@@ -211,18 +211,18 @@ internal abstract class WintabSessionBase : IPenSession
 
     // ── Tilt conversion ────────────────────────────────────────────
 
-    protected static int SphericalToTiltX(int azimuth, int altitude)
+    protected static double SphericalToTiltX(int azimuth, int altitude)
     {
-        double tiltMag = 900.0 - altitude; // tenths of degree from vertical
-        double azRad = azimuth * Math.PI / 1800.0;
-        return (int)(-tiltMag * Math.Sin(azRad));
+        double tiltMag = 90.0 - altitude / 10.0; // degrees from vertical
+        double azRad = azimuth / 10.0 * Math.PI / 180.0;
+        return -tiltMag * Math.Sin(azRad);
     }
 
-    protected static int SphericalToTiltY(int azimuth, int altitude)
+    protected static double SphericalToTiltY(int azimuth, int altitude)
     {
-        double tiltMag = 900.0 - altitude;
-        double azRad = azimuth * Math.PI / 1800.0;
-        return (int)(tiltMag * Math.Cos(azRad));
+        double tiltMag = 90.0 - altitude / 10.0;
+        double azRad = azimuth / 10.0 * Math.PI / 180.0;
+        return tiltMag * Math.Cos(azRad);
     }
 
     // ── Queries ──────────────────────────────────────────────────
