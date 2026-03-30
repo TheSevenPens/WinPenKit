@@ -10,8 +10,9 @@ GitHub Actions builds all projects on every push to main and on pull requests. T
 
 ### Build order
 1. **C++ first** — `msbuild NativeCpp.sln` (produces PenSession.Native.dll/.lib)
-2. **.NET** — individual `dotnet build` for each managed project; `msbuild` for WinUI (PRI generation requires it)
-3. **Rust** — `cargo build --release` in Scribble.Rust (links against PenSession.Native.lib)
+2. **.NET** — `dotnet build WinPenSession.slnx` (all managed projects except WinUI)
+3. **WinUI** — `msbuild` for PenSession.WinUI + Scribble.WinUI (PRI generation requires msbuild, not dotnet CLI)
+4. **Rust** — `cargo build --release` in Scribble.Rust (links against PenSession.Native.lib)
 
 ### Release artifacts
 On tagged releases, the workflow uploads:
@@ -20,10 +21,18 @@ On tagged releases, the workflow uploads:
 - Scribble.Rust (exe + DLL)
 - Scribble.WinUI, Scribble.Wpf, Scribble.WinForms, Scribble.Avalonia (build output)
 
+### Solution files
+
+| Solution | Contents | Built with |
+|---|---|---|
+| `WinPenSession.slnx` | All managed projects except WinUI | `dotnet build` |
+| `NativeCpp.sln` | PenSession.Native + Scribble.Win32 | `msbuild` |
+| WinUI projects | PenSession.WinUI + Scribble.WinUI | `msbuild` (individual .csproj) |
+
+WinUI is built separately because its PRI resource generation requires `msbuild`, not the `dotnet` CLI.
+
 ### CI notes
 - The runner has VS 2022 (v143 toolset). The C++ build overrides `PlatformToolset=v143` since the local projects use v145 (VS 2025).
-- WinUI projects must be built with `msbuild`, not `dotnet build`, due to PRI resource generation.
-- The .slnx contains C++ .vcxproj files that `dotnet build` can't handle, so .NET projects are built individually.
 
 ## Versioning
 
