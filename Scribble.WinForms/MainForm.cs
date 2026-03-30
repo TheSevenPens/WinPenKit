@@ -104,8 +104,8 @@ public sealed class MainForm : Form
             {
                 string name = api switch
                 {
-                    InputApi.WintabSystem => "System",
-                    InputApi.WintabDigitizer => "Digitizer",
+                    InputApi.WintabSystem => "Wintab",
+                    InputApi.WintabDigitizer => "Wintab (high-res)",
                     InputApi.WinFormsPointer => "WinForms Pointer",
                     _ => api.ToString()
                 };

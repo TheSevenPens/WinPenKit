@@ -606,8 +606,8 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         for (int i = 0; i < g_api_count; i++) {
             const wchar_t* name = L"Unknown";
             switch (g_apis[i]) {
-                case PEN_API_WINTAB_SYSTEM:    name = L"System"; break;
-                case PEN_API_WINTAB_DIGITIZER: name = L"Digitizer"; break;
+                case PEN_API_WINTAB_SYSTEM:    name = L"Wintab"; break;
+                case PEN_API_WINTAB_DIGITIZER: name = L"Wintab (high-res)"; break;
                 case PEN_API_WM_POINTER:       name = L"WM_Pointer"; break;
             }
             SendMessageW(g_combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name));

@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using PenSession;
+using System.Linq;
 
 namespace Scribble.WinUI;
 
@@ -25,8 +26,10 @@ public sealed partial class MainWindow : Window
         _renderTimer.Tick += RenderTimer_Tick;
 
         // Populate the toolbar dropdown with discovered APIs + WinUI Pointer.
-        var apis = new List<InputApi>(PenSessionFactory.GetAvailableApis());
-        apis.Add(InputApi.WinUiPointer); // Always available in WinUI 3 apps
+        // WM_POINTER subclassing doesn't receive events in WinUI 3.
+        var apis = PenSessionFactory.GetAvailableApis()
+            .Where(a => a != InputApi.WmPointer).ToList();
+        apis.Add(InputApi.WinUiPointer);
         Toolbar.SetAvailableApis(apis);
 
         Toolbar.ContextModeChanged += (_, _) =>

@@ -55,9 +55,8 @@ public sealed partial class ScribbleRibbon : UserControl
         {
             string name = api switch
             {
-                InputApi.WintabSystem => "System",
-                InputApi.WintabDigitizer => "Digitizer",
-                InputApi.WmPointer => "WM_Pointer",
+                InputApi.WintabSystem => "Wintab",
+                InputApi.WintabDigitizer => "Wintab (high-res)",
                 InputApi.WinUiPointer => "WinUI Pointer",
                 _ => api.ToString()
             };

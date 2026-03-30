@@ -254,8 +254,8 @@ impl eframe::App for ScribbleApp {
                         .available_apis
                         .iter()
                         .map(|a| match a {
-                            PenInputApi::WintabSystem => "System",
-                            PenInputApi::WintabDigitizer => "Digitizer",
+                            PenInputApi::WintabSystem => "Wintab",
+                            PenInputApi::WintabDigitizer => "Wintab (high-res)",
                             PenInputApi::WmPointer => "WM_Pointer",
                             _ => "Unknown",
                         })

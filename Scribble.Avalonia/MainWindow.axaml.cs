@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using System.Linq;
 using PenSession;
 using PenSession.Avalonia;
 using SkiaSharp;
@@ -51,7 +52,9 @@ public partial class MainWindow : Window
 
         Opened += (_, _) =>
         {
-            var apiList = new List<InputApi>(PenSessionFactory.GetAvailableApis());
+            // WM_POINTER subclassing doesn't receive events in Avalonia.
+            var apiList = PenSessionFactory.GetAvailableApis()
+                .Where(a => a != InputApi.WmPointer).ToList();
             apiList.Add(InputApi.AvaloniaPointer);
             _apis = apiList;
 
@@ -59,9 +62,8 @@ public partial class MainWindow : Window
             {
                 string name = api switch
                 {
-                    InputApi.WintabSystem => "System",
-                    InputApi.WintabDigitizer => "Digitizer",
-                    InputApi.WmPointer => "WM_Pointer",
+                    InputApi.WintabSystem => "Wintab",
+                    InputApi.WintabDigitizer => "Wintab (high-res)",
                     InputApi.AvaloniaPointer => "Avalonia Pointer",
                     _ => api.ToString()
                 };

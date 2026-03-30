@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Linq;
 using PenSession;
 using PenSession.Wpf;
 using SkiaSharp;
@@ -37,7 +38,9 @@ public partial class MainWindow : Window
         {
             _hwnd = new WindowInteropHelper(this).Handle;
 
-            var apiList = new List<InputApi>(PenSessionFactory.GetAvailableApis());
+            // WM_POINTER subclassing doesn't receive events in WPF.
+            var apiList = PenSessionFactory.GetAvailableApis()
+                .Where(a => a != InputApi.WmPointer).ToList();
             apiList.Add(InputApi.WpfStylus);
             _apis = apiList;
 
@@ -45,9 +48,8 @@ public partial class MainWindow : Window
             {
                 string name = api switch
                 {
-                    InputApi.WintabSystem => "System",
-                    InputApi.WintabDigitizer => "Digitizer",
-                    InputApi.WmPointer => "WM_Pointer",
+                    InputApi.WintabSystem => "Wintab",
+                    InputApi.WintabDigitizer => "Wintab (high-res)",
                     InputApi.WpfStylus => "WPF Stylus",
                     _ => api.ToString()
                 };
