@@ -4,9 +4,6 @@ Known issues, planned improvements, and ideas for the future.
 
 ## Known Issues
 
-### WPF rendering stutter
-Scribble.Wpf has slight stutter compared to other scribble apps despite using the same SkiaSharp approach. Possible causes: `PointFromScreen` overhead per point, `DispatcherTimer` jitter, `Buffer.MemoryCopy` blocking, WPF compositor latency. Options: `SKElement`, `CompositionTarget.Rendering`, dirty-region copying, Direct2D interop.
-
 ### egui ribbon column width
 Scribble.Rust's ribbon columns shift width when telemetry values change (e.g., position goes from 3 to 5 digits). Mitigated with `exact_height(130.0)` but columns still shift horizontally. Fix: monospace font for values, or `egui::Grid` with fixed column widths.
 

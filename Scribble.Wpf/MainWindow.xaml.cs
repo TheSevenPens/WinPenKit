@@ -3,7 +3,6 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 using PenSession;
 using PenSession.Wpf;
 using SkiaSharp;
@@ -14,7 +13,7 @@ public partial class MainWindow : Window
 {
     private IPenSession? _session;
     private IntPtr _hwnd;
-    private readonly DispatcherTimer _renderTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    private bool _renderActive;
 
     private Point? _lastCanvasPoint;
     private double _brushSize = 6;
@@ -32,7 +31,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        _renderTimer.Tick += RenderTimer_Tick;
+        CompositionTarget.Rendering += RenderTimer_Tick;
 
         Loaded += (_, _) =>
         {
@@ -61,7 +60,7 @@ public partial class MainWindow : Window
 
         Closing += (_, _) =>
         {
-            _renderTimer.Stop();
+            _renderActive = false;
             _session?.Stop();
             _session?.Dispose();
             _skCanvas?.Dispose();
@@ -157,14 +156,14 @@ public partial class MainWindow : Window
         }
 
         Title = "Scribble WPF - PenSession";
-        _renderTimer.Start();
+        _renderActive = true;
     }
 
     // ── Render timer ─────────────────────────────────────────────
 
     private void RenderTimer_Tick(object? sender, EventArgs e)
     {
-        if (_session == null || _skCanvas == null) return;
+        if (!_renderActive || _session == null || _skCanvas == null) return;
 
         var points = _session.DrainPoints();
         if (points.Length == 0)
