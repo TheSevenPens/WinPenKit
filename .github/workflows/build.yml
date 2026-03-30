@@ -1,0 +1,98 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['release/v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Toolchains ---
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # --- C++ (must build first — Rust links against PenSession.Native.lib) ---
+
+      - name: Build C++ (PenSession.Native + Scribble.Win32)
+        run: msbuild NativeCpp.sln -p:Configuration=Release -p:Platform=x64 -m
+
+      # --- .NET ---
+
+      - name: Restore .NET
+        run: dotnet restore WinPenSession.slnx
+
+      - name: Build .NET
+        run: dotnet build WinPenSession.slnx -c Release --no-restore
+
+      # --- Rust ---
+
+      - name: Build Rust
+        working-directory: Scribble.Rust
+        env:
+          RUSTFLAGS: -L native=${{ github.workspace }}/PenSession.Native/bin/Release/x64
+        run: cargo build --release
+
+      - name: Copy PenSession.Native.dll to Rust output
+        run: copy PenSession.Native\bin\Release\x64\PenSession.Native.dll Scribble.Rust\target\release\
+
+      # --- Artifacts ---
+
+      - name: Stage release artifacts
+        if: startsWith(github.ref, 'refs/tags/release/v')
+        shell: bash
+        run: |
+          mkdir -p artifacts/PenSession.Native
+          mkdir -p artifacts/Scribble.Win32
+          mkdir -p artifacts/Scribble.Rust
+          mkdir -p artifacts/Scribble.WinUI
+          mkdir -p artifacts/Scribble.Wpf
+          mkdir -p artifacts/Scribble.WinForms
+          mkdir -p artifacts/Scribble.Avalonia
+
+          # Native DLL + headers
+          cp PenSession.Native/bin/Release/x64/PenSession.Native.dll artifacts/PenSession.Native/
+          cp PenSession.Native/bin/Release/x64/PenSession.Native.lib artifacts/PenSession.Native/
+          cp PenSession.Native/pen_session.h artifacts/PenSession.Native/
+
+          # Scribble.Win32
+          cp Scribble.Win32/bin/Release/x64/*.exe artifacts/Scribble.Win32/
+          cp PenSession.Native/bin/Release/x64/PenSession.Native.dll artifacts/Scribble.Win32/
+
+          # Scribble.Rust
+          cp Scribble.Rust/target/release/scribble-rust.exe artifacts/Scribble.Rust/
+          cp Scribble.Rust/target/release/PenSession.Native.dll artifacts/Scribble.Rust/
+
+          # Managed scribble apps — publish self-contained output
+          for app in Scribble.WinUI Scribble.Wpf Scribble.WinForms Scribble.Avalonia; do
+            cp -r "$app"/bin/Release/net10.0-windows*/* "artifacts/$app/" 2>/dev/null || true
+          done
+
+      - name: Upload build artifacts
+        if: startsWith(github.ref, 'refs/tags/release/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinPenSession-release
+          path: artifacts/
+
+      # --- GitHub Release ---
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/release/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-rc') || contains(github.ref, '-alpha') }}

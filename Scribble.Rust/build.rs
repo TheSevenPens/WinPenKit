@@ -1,11 +1,21 @@
 fn main() {
-    // Tell the linker where to find WintabSession.lib (the import library
-    // for WintabSession.dll which exports the pen_session_* C API).
+    // Tell the linker where to find PenSession.Native.lib (the import library
+    // for PenSession.Native.dll which exports the pen_session_* C API).
+    // Check Release first, then Debug.
+    let base = std::path::Path::new("../PenSession.Native/bin");
+    let release = base.join("Release/x64");
+    let debug = base.join("Debug/x64");
+
+    let lib_dir = if release.exists() {
+        release
+    } else if debug.exists() {
+        debug
+    } else {
+        panic!("PenSession.Native.lib not found — build the C++ DLL first");
+    };
+
     println!(
         "cargo:rustc-link-search=native={}",
-        std::path::Path::new("../PenSession.Native/bin/Debug/x64")
-            .canonicalize()
-            .expect("WintabSession.lib not found — build the C++ DLL first")
-            .display()
+        lib_dir.canonicalize().unwrap().display()
     );
 }
