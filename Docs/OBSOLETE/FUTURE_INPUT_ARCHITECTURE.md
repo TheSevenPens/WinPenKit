@@ -1,6 +1,6 @@
 # Input Architecture
 
-**Status: Implemented.** This was the early design discussion that evolved into the PenSession library. See [FUTURES_UNIFIED_SESSION.md](FUTURES_UNIFIED_SESSION.md) for the final design and [FUTURES_NEXTGEN.md](FUTURES_NEXTGEN.md) for the phased implementation plan.
+**Status: Implemented.** This was the early design discussion that evolved into the PenSession library. See [FUTURES_UNIFIED_SESSION.md](FUTURES_UNIFIED_SESSION.md) for the final design and [FUTURES_GENERAL.md](FUTURES_GENERAL.md) for the phased implementation plan.
 
 ---
 

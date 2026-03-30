@@ -577,4 +577,4 @@ This runtime-switching capability is one of the strongest arguments for building
 ## Relationship to Other Docs
 
 - [Windows Pen API Landscape](https://github.com/TheSevenPens/devnotes) — Detailed comparison of all APIs (moved to devnotes repo)
-- [FUTURES_NEXTGEN.md](FUTURES_NEXTGEN.md) — Phase plan and implementation history
+- [FUTURES_GENERAL.md](FUTURES_GENERAL.md) — Phase plan and implementation history
