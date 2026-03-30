@@ -64,7 +64,7 @@ WPF drawing app with SkiaSharp rendering.
 - `PointFromScreen` for automatic DPI-correct coordinate conversion
 - WPF Stylus backend uses `StylusMove`/`StylusDown` events
 
-Uses `PenSession` + `PenSession.Wpf`. See [FUTURES_WPF_RENDERING.md](Planning/FUTURES_WPF_RENDERING.md) for rendering performance notes.
+Uses `PenSession` + `PenSession.Wpf`.
 
 ## Scribble.WinForms
 

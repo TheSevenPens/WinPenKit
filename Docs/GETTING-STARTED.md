@@ -35,7 +35,7 @@ See [SCRIBBLE-APPS.md](SCRIBBLE-APPS.md) for details on each app.
 
 ## See Also
 
-- [FUTURES_UNIFIED_SESSION.md](Planning/FUTURES_UNIFIED_SESSION.md) — PenSession architecture and design decisions
+- [ARCHITECTURE.md](ARCHITECTURE.md) — PenSession architecture and design decisions
 - [HOW_TO_USE.md](HOW_TO_USE.md) — Usage guide with gotchas and best practices
 - [devnotes](https://github.com/TheSevenPens/devnotes) — General pen input knowledge (API comparisons, DPI handling, Wintab gotchas)
 - [Wintab Basics](https://developer-docs.wacom.com/docs/icbt/windows/wintab/wintab-basics/) — Wacom's Wintab documentation

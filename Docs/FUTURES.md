@@ -5,7 +5,7 @@ Known issues, planned improvements, and ideas for the future.
 ## Known Issues
 
 ### WPF rendering stutter
-Scribble.Wpf has slight stutter compared to other scribble apps despite using the same SkiaSharp approach. Possible causes: `PointFromScreen` overhead per point, `DispatcherTimer` jitter, `Buffer.MemoryCopy` blocking, WPF compositor latency. Options: `SKElement`, `CompositionTarget.Rendering`, dirty-region copying, Direct2D interop. See [Planning/FUTURES_WPF_RENDERING.md](Planning/FUTURES_WPF_RENDERING.md).
+Scribble.Wpf has slight stutter compared to other scribble apps despite using the same SkiaSharp approach. Possible causes: `PointFromScreen` overhead per point, `DispatcherTimer` jitter, `Buffer.MemoryCopy` blocking, WPF compositor latency. Options: `SKElement`, `CompositionTarget.Rendering`, dirty-region copying, Direct2D interop.
 
 ### egui ribbon column width
 Scribble.Rust's ribbon columns shift width when telemetry values change (e.g., position goes from 3 to 5 digits). Mitigated with `exact_height(130.0)` but columns still shift horizontally. Fix: monospace font for values, or `egui::Grid` with fixed column widths.
@@ -15,11 +15,8 @@ The interaction between Wintab and WM_POINTER within a single process is driver-
 
 ## Planned Work
 
-### GitHub Actions CI/Release (Phase 8)
-Automated builds for all projects (C#, C++, Rust) on `windows-latest`. Triggered by `release/v*` tags. Produces downloadable release artifacts.
-
-### NuGet Publishing (Phase 9)
-Publish PenSession packages to nuget.org. Package metadata in each .csproj, versioning from git tags, pre-release CI builds. See [Planning/FUTURES_NUGET.md](Planning/FUTURES_NUGET.md).
+- **GitHub Actions CI/Release** — Automated builds and release artifacts on tagged releases. See [Planning/FUTURES_CI.md](Planning/FUTURES_CI.md).
+- **NuGet Publishing** — Publish PenSession packages to nuget.org. See [Planning/FUTURES_NUGET.md](Planning/FUTURES_NUGET.md).
 
 ## Ideas
 
@@ -43,3 +40,17 @@ WintabDN is only needed for ExtensionTestApp (tablet extensions). If extension s
 
 ### Cross-platform (via octotablet)
 PenSession is Windows-only. For cross-platform pen input, [octotablet](https://github.com/Fuzzyzilla/octotablet) (Rust) is the closest equivalent. A future `PenSession.Linux` or `PenSession.macOS` could wrap platform-native APIs, but this is a major scope expansion.
+
+## Open Questions
+
+1. **Unified button model.** PenPoint stores raw `Buttons` field. Wintab uses relative encoding `(action << 16) | buttonNumber`. WM_POINTER/WinUI use flag bitmasks. Helper properties (`ButtonAction`, `ButtonNumber`, `IsEraser`) provide a common interface, but a fully unified button model (normalized bitmask) is still deferred.
+
+2. **Should the native DLL also handle desktop → canvas conversion?** Currently this is framework-specific (ClientToScreen + DPI for WinUI3, PointToClient for WinForms). The native DLL could accept an HWND and compute canvas-relative coordinates, but this ties it to Win32 windowing concepts that may not apply to all consumers (e.g., a headless recording tool).
+
+3. **Should the native DLL support multiple simultaneous sessions?** The current C# implementation creates one session at a time. Multiple sessions would require multiple Wintab contexts and careful overlap management.
+
+4. **Should the native DLL expose extension control (ExpressKeys, Touch Rings)?** This is a separate concern from pen input. It could be a separate DLL or a separate set of API functions in the same DLL.
+
+5. **What about the ChatGPT dual-context approach?** We discovered that opening a system context disabled (for mapping reference) alongside a digitizer context (for hi-res packets) caused the Wacom driver to stop delivering packets. The native DLL should document this and use the proven single-context approach (system context with tablet-native OutExt override).
+
+6. **License implications?** The current code is MIT-licensed Wacom sample code. A native DLL would be a new work — confirm it can be distributed under the same license.

@@ -87,6 +87,26 @@ Regardless of which backend is active, every `PenPoint` provides:
 
 Both tilt representations are always present. Consumers use whichever suits their algorithm.
 
+### Tilt Conversion Formulas
+
+Each backend computes whichever tilt representation it doesn't have natively. All values are in tenths of degree.
+
+**WM_POINTER → Spherical** (TiltX/TiltY native, compute Azimuth/Altitude):
+```
+tiltMag  = sqrt(tiltX^2 + tiltY^2)         // tenths of degree from vertical
+Altitude = 900 - tiltMag
+Azimuth  = atan2(-tiltX, tiltY) * 1800/PI  (mod 3600)
+```
+
+**Wintab → Planar** (Azimuth/Altitude native, compute TiltX/TiltY):
+```
+tiltMag = 900 - Altitude                    // tenths of degree from vertical
+TiltX   = -tiltMag * sin(Azimuth * PI/1800)
+TiltY   =  tiltMag * cos(Azimuth * PI/1800)
+```
+
+These conversions are lossy at extreme angles but accurate enough for brush engines. Calligraphy brushes may prefer Azimuth, physics-based brushes may prefer TiltX/TiltY.
+
 ## When to Use Which
 
 | Scenario | Recommended |
