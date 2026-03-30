@@ -31,12 +31,28 @@ jobs:
         run: msbuild NativeCpp.sln -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -m
 
       # --- .NET ---
+      # The .slnx includes C++ vcxproj and WinUI projects that don't work with
+      # `dotnet build`. Build the managed projects individually instead.
+      # WinUI projects need msbuild due to PRI resource generation.
 
-      - name: Restore .NET
-        run: dotnet restore WinPenSession.slnx
+      - name: Build .NET libraries
+        run: |
+          dotnet build PenSession/PenSession.csproj -c Release
+          dotnet build PenSession.Wpf/PenSession.Wpf.csproj -c Release
+          dotnet build PenSession.WinForms/PenSession.WinForms.csproj -c Release
+          dotnet build PenSession.Avalonia/PenSession.Avalonia.csproj -c Release
+          dotnet build PenSession.TestConsole/PenSession.TestConsole.csproj -c Release
 
-      - name: Build .NET
-        run: dotnet build WinPenSession.slnx -c Release --no-restore
+      - name: Build .NET apps
+        run: |
+          dotnet build Scribble.Wpf/Scribble.Wpf.csproj -c Release
+          dotnet build Scribble.WinForms/Scribble.WinForms.csproj -c Release
+          dotnet build Scribble.Avalonia/Scribble.Avalonia.csproj -c Release
+
+      - name: Build WinUI (msbuild)
+        run: |
+          msbuild PenSession.WinUI/PenSession.WinUI.csproj -p:Configuration=Release -p:Platform=x64 -restore
+          msbuild Scribble.WinUI/Scribble.WinUI.csproj -p:Configuration=Release -p:Platform=x64 -restore
 
       # --- Rust ---
 
