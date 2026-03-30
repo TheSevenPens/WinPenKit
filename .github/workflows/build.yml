@@ -30,16 +30,10 @@ jobs:
       - name: Build C++ (PenSession.Native + Scribble.Win32)
         run: msbuild NativeCpp.sln -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -m
 
-      # --- .NET ---
-      # WinUI projects need msbuild (not dotnet CLI) due to PRI resource generation.
+      # --- .NET (all managed projects including WinUI) ---
 
-      - name: Build .NET (non-WinUI)
+      - name: Build .NET
         run: dotnet build WinPenSession.slnx -c Release
-
-      - name: Build WinUI (msbuild)
-        run: |
-          msbuild PenSession.WinUI/PenSession.WinUI.csproj -p:Configuration=Release -p:Platform=x64 -restore
-          msbuild Scribble.WinUI/Scribble.WinUI.csproj -p:Configuration=Release -p:Platform=x64 -restore
 
       # --- Rust ---
 

@@ -16,14 +16,7 @@ Open `WinPenSession.slnx` in Visual Studio, or from the command line:
 dotnet build WinPenSession.slnx
 ```
 
-This builds all managed projects except WinUI: PenSession, PenSession.Wpf, PenSession.WinForms, PenSession.Avalonia, PenSession.TestConsole, and the corresponding Scribble apps.
-
-**WinUI projects** (PenSession.WinUI, Scribble.WinUI) require `msbuild` due to PRI resource generation — they cannot be built with the `dotnet` CLI. Build them from Visual Studio or with:
-
-```bash
-msbuild PenSession.WinUI/PenSession.WinUI.csproj -p:Configuration=Debug -p:Platform=x64 -restore
-msbuild Scribble.WinUI/Scribble.WinUI.csproj -p:Configuration=Debug -p:Platform=x64 -restore
-```
+This builds all managed projects: PenSession, PenSession.WinUI, PenSession.Wpf, PenSession.WinForms, PenSession.Avalonia, PenSession.TestConsole, and the managed Scribble apps.
 
 ## C++ Projects
 

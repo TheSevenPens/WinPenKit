@@ -5,9 +5,15 @@
   </Configurations>
   <Project Path="PenSession/PenSession.csproj" />
   <Project Path="PenSession.TestConsole/PenSession.TestConsole.csproj" />
+  <Project Path="PenSession.WinUI/PenSession.WinUI.csproj">
+    <Platform Project="x64" />
+  </Project>
   <Project Path="PenSession.Wpf/PenSession.Wpf.csproj" />
   <Project Path="PenSession.WinForms/PenSession.WinForms.csproj" />
   <Project Path="PenSession.Avalonia/PenSession.Avalonia.csproj" />
+  <Project Path="Scribble.WinUI/Scribble.WinUI.csproj">
+    <Platform Project="x64" />
+  </Project>
   <Project Path="Scribble.Wpf/Scribble.Wpf.csproj" />
   <Project Path="Scribble.WinForms/Scribble.WinForms.csproj" />
   <Project Path="Scribble.Avalonia/Scribble.Avalonia.csproj" />
