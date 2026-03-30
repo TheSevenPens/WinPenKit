@@ -28,7 +28,7 @@ jobs:
       # --- C++ (must build first — Rust links against PenSession.Native.lib) ---
 
       - name: Build C++ (PenSession.Native + Scribble.Win32)
-        run: msbuild NativeCpp.sln -p:Configuration=Release -p:Platform=x64 -m
+        run: msbuild NativeCpp.sln -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -m
 
       # --- .NET ---
 
