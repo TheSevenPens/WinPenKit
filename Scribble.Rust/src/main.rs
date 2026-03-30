@@ -313,14 +313,13 @@ impl eframe::App for ScribbleApp {
                 ui.vertical(|ui| {
                     ui.strong("POSITION");
                     if let Some(pt) = &self.last_point {
-                        ui.label(format!("Raw: {},{}", pt.raw_x, pt.raw_y));
-                        ui.label(format!("Screen: {:.0},{:.0}", pt.desktop_x, pt.desktop_y));
-                        // App = desktop/ppp - window_pos
+                        ui.monospace(format!("Raw: {},{}", pt.raw_x, pt.raw_y));
+                        ui.monospace(format!("Screen: {:.0},{:.0}", pt.desktop_x, pt.desktop_y));
                         let app_x = pt.desktop_x as f32 / ppp - window_pos.x;
                         let app_y = pt.desktop_y as f32 / ppp - window_pos.y;
-                        ui.label(format!("App: {app_x:.0},{app_y:.0}"));
+                        ui.monospace(format!("App: {app_x:.0},{app_y:.0}"));
                         if let Some((cx, cy)) = self.last_canvas_point {
-                            ui.label(format!("Canvas: {cx:.1},{cy:.1}"));
+                            ui.monospace(format!("Canvas: {cx:.1},{cy:.1}"));
                         }
                     }
                 });
@@ -334,8 +333,8 @@ impl eframe::App for ScribbleApp {
                         } else {
                             0.0
                         };
-                        ui.label(format!("Raw: {}", pt.pressure));
-                        ui.label(format!("Norm: {pct:.1}%"));
+                        ui.monospace(format!("Raw: {}", pt.pressure));
+                        ui.monospace(format!("Norm: {pct:.1}%"));
                     }
                 });
                 ui.separator();
@@ -343,9 +342,9 @@ impl eframe::App for ScribbleApp {
                 ui.vertical(|ui| {
                     ui.strong("ORIENTATION");
                     if let Some(pt) = &self.last_point {
-                        ui.label(format!("Azi: {:.1}", pt.azimuth));
-                        ui.label(format!("Alt: {:.1}", pt.altitude));
-                        ui.label(format!("Twist: {:.1}", pt.twist));
+                        ui.monospace(format!("Azi: {:.1}", pt.azimuth));
+                        ui.monospace(format!("Alt: {:.1}", pt.altitude));
+                        ui.monospace(format!("Twist: {:.1}", pt.twist));
                     }
                 });
             });

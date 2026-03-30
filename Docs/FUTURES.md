@@ -4,9 +4,6 @@ Known issues, planned improvements, and ideas for the future.
 
 ## Known Issues
 
-### egui ribbon column width
-Scribble.Rust's ribbon columns shift width when telemetry values change (e.g., position goes from 3 to 5 digits). Mitigated with `exact_height(130.0)` but columns still shift horizontally. Fix: monospace font for values, or `egui::Grid` with fixed column widths.
-
 ### Wintab/WM_POINTER process-level interaction
 The interaction between Wintab and WM_POINTER within a single process is driver-dependent. In our testing, runtime switching works cleanly. But some driver versions may suppress one API once the other has been used. Not fully characterized across all drivers.
 
