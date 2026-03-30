@@ -13,7 +13,6 @@
   <Project Path="PenSession.WinForms/PenSession.WinForms.csproj" />
   <Project Path="PenSession.Avalonia/PenSession.Avalonia.csproj" />
   <Project Path="Scribble.Win32/Scribble.Win32.vcxproj" Id="a1b2c3d4-e5f6-7890-abcd-ef9876543210" />
-  <Project Path="Scribble.Rust/Cargo.toml" />
   <Project Path="Scribble.WinUI/Scribble.WinUI.csproj">
     <Platform Project="x64" />
   </Project>
