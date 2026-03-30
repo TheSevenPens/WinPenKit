@@ -15,7 +15,7 @@ The interaction between Wintab and WM_POINTER within a single process is driver-
 
 ## Planned Work
 
-- **GitHub Actions CI/Release** — Automated builds and release artifacts on tagged releases. See [Planning/FUTURES_CI.md](Planning/FUTURES_CI.md).
+- **GitHub Actions CI/Release** — Done. See [CI.md](CI.md).
 - **NuGet Publishing** — Publish PenSession packages to nuget.org. See [Planning/FUTURES_NUGET.md](Planning/FUTURES_NUGET.md).
 
 ## Ideas
