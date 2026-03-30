@@ -130,3 +130,7 @@ ExtensionTestApp ──► WintabDN
 4. **Factory for framework-agnostic, constructors for framework-specific.** `PenSessionFactory.Create()` handles Wintab and WM_POINTER. Framework-specific sessions need UI elements and are created directly by the app.
 
 5. **No shared code between managed and native.** `PenSession` (C#) and `PenSession.Native` (C++) reimplement the same logic independently. The knowledge is shared via documentation, not code.
+
+6. **WM_POINTER coalescing requires history recovery.** When the UI thread is busy, Windows coalesces multiple `WM_POINTERUPDATE` messages into one. `WmPointerSession` calls `GetPointerPenInfoHistory` to recover all intermediate points — but only when `count > 1`. The `count == 1` history path returns subtly different data that causes silent data loss. Framework-specific sessions (WinUI, WPF, Avalonia) are not affected because those frameworks decoalesce pointer events internally.
+
+7. **Wintab/WM_POINTER coexistence is driver-dependent.** Once a Wintab context has been opened, some drivers may suppress WM_POINTER for the process lifetime. In practice, runtime switching works cleanly when sessions are stopped/started sequentially, but this is not fully characterized across all driver versions.
