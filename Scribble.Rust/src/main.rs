@@ -99,27 +99,21 @@ impl ScribbleApp {
     }
 
     fn clear_pixmap(&mut self) {
-        if let Some(ref mut pixmap) = self.pixmap {
+        if let Some(pixmap) = &mut self.pixmap {
             pixmap.fill(Color::from_rgba8(0xF0, 0xF0, 0xF0, 0xFF));
             self.needs_texture_update = true;
         }
     }
 
     fn process_points(&mut self, canvas_screen_min: egui::Pos2, pixels_per_point: f32) {
-        let session = match &self.session {
-            Some(s) => s,
-            None => return,
-        };
+        let Some(session) = &self.session else { return };
 
         let count = session.drain_points(&mut self.points_buffer);
         if count == 0 {
             return;
         }
 
-        let pixmap = match &mut self.pixmap {
-            Some(p) => p,
-            None => return,
-        };
+        let Some(pixmap) = &mut self.pixmap else { return };
 
         let max_p = self.max_pressure as f32;
         let mut drew = false;
@@ -183,10 +177,7 @@ impl ScribbleApp {
         }
         self.needs_texture_update = false;
 
-        let pixmap = match &self.pixmap {
-            Some(p) => p,
-            None => return,
-        };
+        let Some(pixmap) = &self.pixmap else { return };
 
         let image = egui::ColorImage::from_rgba_unmultiplied(
             [pixmap.width() as usize, pixmap.height() as usize],
