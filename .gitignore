@@ -26,6 +26,9 @@ Scribble.Rust/target/
 packages/
 *.nupkg
 
+# Claude Code
+.claude/
+
 # OS files
 Thumbs.db
 ehthumbs.db
