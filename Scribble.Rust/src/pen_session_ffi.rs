@@ -21,7 +21,7 @@ pub enum PenInputApi {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct PenPoint {
     pub desktop_x: f64,
     pub desktop_y: f64,

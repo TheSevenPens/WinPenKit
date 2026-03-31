@@ -45,7 +45,7 @@ impl ScribbleApp {
             available_apis: apis,
             selected_api_index: 0,
             session: None,
-            points_buffer: vec![unsafe { std::mem::zeroed() }; 128],
+            points_buffer: vec![PenPoint::default(); 128],
             hwnd: std::ptr::null_mut(),
             pixmap: None,
             texture: None,
@@ -216,22 +216,9 @@ impl eframe::App for ScribbleApp {
         });
 
         // Grab the HWND on first frame (needed for WM_POINTER sessions).
+        // GetActiveWindow is a pragmatic shortcut; the raw-window-handle
+        // crate would be the proper approach but adds dependency overhead.
         if self.hwnd.is_null() {
-            if let Some(id) = ctx.input(|i| i.viewport().native_pixels_per_point) {
-                // native_pixels_per_point confirms we have a real window.
-                // Get HWND via the viewport's window handle.
-                let _ = id; // just need the window to exist
-            }
-            // eframe exposes the HWND via raw-window-handle.
-            // Access it through the viewport's parent window handle.
-            ctx.input(|i| {
-                if let Some(rect) = i.viewport().inner_rect {
-                    // The window exists. On Windows, we can get the HWND
-                    // via FindWindow or the raw_window_handle crate.
-                    // For now, use the Win32 GetActiveWindow as a pragmatic shortcut.
-                    let _ = rect;
-                }
-            });
             #[link(name = "user32")]
             unsafe extern "system" {
                 fn GetActiveWindow() -> *mut std::ffi::c_void;
