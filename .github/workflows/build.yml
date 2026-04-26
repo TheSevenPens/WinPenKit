@@ -70,7 +70,7 @@ jobs:
           # Native DLL + headers
           cp PenSession.Native/bin/Release/x64/PenSession.Native.dll artifacts/PenSession.Native/
           cp PenSession.Native/bin/Release/x64/PenSession.Native.lib artifacts/PenSession.Native/
-          cp PenSession.Native/pen_session.h artifacts/PenSession.Native/
+          cp PenSession.Native/include/pen_session.h artifacts/PenSession.Native/
 
           # Scribble.Win32
           cp Scribble.Win32/bin/Release/x64/*.exe artifacts/Scribble.Win32/
