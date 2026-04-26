@@ -98,10 +98,24 @@ jobs:
           path: artifacts/
 
       # --- GitHub Release ---
+      # One zip per top-level folder in artifacts/ becomes one downloadable
+      # asset on the Release page. Keeps per-app downloads clean.
+
+      - name: Zip release assets
+        if: startsWith(github.ref, 'refs/tags/release/v')
+        shell: bash
+        working-directory: artifacts
+        run: |
+          for dir in */; do
+            name="${dir%/}"
+            7z a -tzip "../$name.zip" "$dir"*
+          done
+          ls -la ../*.zip
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/release/v')
         uses: softprops/action-gh-release@v2
         with:
+          files: '*.zip'
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-rc') || contains(github.ref, '-alpha') }}
