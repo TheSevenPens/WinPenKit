@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [main]
 
+# softprops/action-gh-release needs contents:write to create the Release.
+# The default GITHUB_TOKEN is read-only since GitHub tightened defaults.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
