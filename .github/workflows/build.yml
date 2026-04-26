@@ -85,10 +85,13 @@ jobs:
           cp Scribble.Rust/target/release/scribble-rust.exe artifacts/Scribble.Rust/
           cp Scribble.Rust/target/release/PenSession.Native.dll artifacts/Scribble.Rust/
 
-          # Managed scribble apps — publish self-contained output
-          for app in Scribble.WinUI Scribble.Wpf Scribble.WinForms Scribble.Avalonia; do
-            cp -r "$app"/bin/Release/net10.0-windows*/* "artifacts/$app/" 2>/dev/null || true
+          # Managed scribble apps — publish self-contained output.
+          # WinUI uses msbuild with -p:Platform=x64 so its output sits under
+          # bin/x64/Release/, unlike the others which use plain `dotnet build`.
+          for app in Scribble.Wpf Scribble.WinForms Scribble.Avalonia; do
+            cp -r "$app"/bin/Release/net10.0-windows*/* "artifacts/$app/"
           done
+          cp -r Scribble.WinUI/bin/x64/Release/net10.0-windows*/* artifacts/Scribble.WinUI/
 
       - name: Upload build artifacts
         if: startsWith(github.ref, 'refs/tags/release/v')
