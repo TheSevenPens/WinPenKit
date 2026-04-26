@@ -80,6 +80,7 @@ public sealed partial class MainWindow : Window
         _canvasInfo.PositionInWindow = Canvas.GetPositionInWindow();
 
         var api = Toolbar.SelectedApi;
+        Toolbar.ResetButtons();
         var error = _session.Start(api);
 
         if (error != null)

@@ -1,37 +1,43 @@
 # NuGet Publishing Plan
 
-Design discussion for publishing WintabSession as a shared library via NuGet.
+Design discussion for publishing PenSession as a shared library via NuGet.
 
 ## What to Publish
 
 There are three packaging options:
 
-### Option A: Managed NuGet (C# WintabSession + WintabDN)
+### Option A: Managed NuGets (C# PenSession + framework adapters)
 
-Standard .NET NuGet package. Consumers add a PackageReference and get the managed library.
+Standard .NET NuGet packages. Consumers add a PackageReference and get the managed library. The managed side is actually multiple packages — the framework-agnostic core plus a per-framework adapter that the consumer's UI stack pulls in:
 
 ```
-WintabSession.nupkg
+PenSession.nupkg                 (core: IPenSession, PenPoint, factory, Wintab + WM_POINTER backends)
 ├── lib/net10.0-windows/
-│   ├── WintabSession.dll
-│   └── WintabDN.dll
+│   └── PenSession.dll
+
+PenSession.Wpf.nupkg             (depends on PenSession; adds WpfStylusSession)
+PenSession.WinForms.nupkg        (depends on PenSession; adds WinFormsPointerSession)
+PenSession.Avalonia.nupkg        (depends on PenSession; adds AvaloniaPointerSession)
+PenSession.WinUI.nupkg           (depends on PenSession; adds WinUiPointerSession; needs Windows App SDK)
 ```
 
-**Pros:** Simplest to build, publish, and consume. Standard `dotnet add package` workflow.
-**Cons:** .NET only.
+`PenSession` has no third-party dependencies — it ships its own Wintab P/Invoke layer. (The legacy `WintabDN` library is used only by `ExtensionTestApp` for tablet ExpressKeys/Touch Rings and is out of scope here.)
+
+**Pros:** Simplest to build, publish, and consume. Standard `dotnet add package` workflow. Consumers only pull in the framework adapter they actually use.
+**Cons:** .NET only. Five packages to publish in lockstep.
 
 ### Option B: Native NuGet (C++ PenSession.Native.dll)
 
 Native NuGet with MSBuild glue to copy the DLL and set up include/lib paths.
 
 ```
-WintabSession.Native.nupkg
+PenSession.Native.nupkg
 ├── build/native/
-│   └── WintabSession.Native.targets
+│   └── PenSession.Native.targets
 ├── runtimes/win-x64/native/
 │   └── PenSession.Native.dll
 ├── include/
-│   └── wintab_session.h
+│   └── pen_session.h
 ├── lib/native/x64/
 │   └── PenSession.Native.lib
 ```
@@ -68,9 +74,9 @@ The `.targets` file tells MSBuild to copy the DLL, link the import library, and 
 Ship the native DLL inside a managed NuGet with a thin C# interop wrapper. This is how packages like SkiaSharp and SQLitePCLRaw work.
 
 ```
-WintabSession.nupkg
+PenSession.nupkg
 ├── lib/net10.0-windows/
-│   └── WintabSession.Interop.dll    (thin P/Invoke wrapper)
+│   └── PenSession.Interop.dll    (thin P/Invoke wrapper)
 ├── runtimes/win-x64/native/
 │   └── PenSession.Native.dll        (the C++ DLL)
 ```
@@ -80,28 +86,28 @@ WintabSession.nupkg
 
 ### Recommendation
 
-Start with **Option A** (managed only). It's the simplest, the C# WintabSession already works, and most consumers will be .NET apps. Add the native package later if demand exists.
+Start with **Option A** (managed only). It's the simplest, the C# PenSession already works, and most consumers will be .NET apps. Add the native package later if demand exists.
 
 ## Project Configuration
 
-Add NuGet metadata to `WintabSession.csproj`:
+Add NuGet metadata to `PenSession.csproj`:
 
 ```xml
 <PropertyGroup>
-  <PackageId>WintabSession</PackageId>
+  <PackageId>PenSession</PackageId>
   <Version>1.0.0</Version>
   <Authors>YourName</Authors>
-  <Description>Managed Wintab session library for .NET</Description>
+  <Description>Unified pen input SDK for Windows .NET apps (Wintab + WM_POINTER).</Description>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
   <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 </PropertyGroup>
 ```
 
-### WintabDN Dependency
+### Framework Adapter Packages
 
-Two approaches:
-- **Separate packages:** Publish WintabDN as its own NuGet, add a PackageReference from WintabSession. More modular — consumers who want raw Wintab access without the session abstraction can use WintabDN directly.
-- **Bundled:** Include WintabDN.dll inside the WintabSession package. Simpler for consumers, but less flexible.
+Each framework adapter (`PenSession.Wpf`, `PenSession.WinForms`, `PenSession.Avalonia`, `PenSession.WinUI`) needs its own `.csproj` NuGet metadata declaring `PenSession` as a `PackageReference` (with version). Publish all five together on each tag — version-skew between core and adapters is the most likely cause of consumer breakage.
+
+`PenSession.WinUI` additionally depends on Windows App SDK and must target a Windows 10 SDK version; expect that package to be more brittle than the others.
 
 ## Versioning
 
@@ -242,7 +248,7 @@ dotnet pack -c Release -o ./local-feed
 dotnet nuget add source ./local-feed --name local
 
 # Test in a separate project
-dotnet add package WintabSession --source local
+dotnet add package PenSession --source local
 ```
 
 ### Important: NuGet Packages Are Immutable
@@ -255,7 +261,7 @@ If CI/CD feels premature, you can publish manually:
 
 ```bash
 dotnet pack -c Release -o ./nupkgs
-dotnet nuget push ./nupkgs/WintabSession.1.0.0.nupkg \
+dotnet nuget push ./nupkgs/PenSession.1.0.0.nupkg \
   --source https://api.nuget.org/v3/index.json \
   --api-key YOUR_KEY
 ```

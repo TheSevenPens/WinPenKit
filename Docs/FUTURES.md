@@ -36,7 +36,7 @@ PenSession is Windows-only. For cross-platform pen input, [octotablet](https://g
 
 ## Open Questions
 
-1. **Unified button model.** PenPoint stores raw `Buttons` field. Wintab uses relative encoding `(action << 16) | buttonNumber`. WM_POINTER/WinUI use flag bitmasks. Helper properties (`ButtonAction`, `ButtonNumber`, `IsEraser`) provide a common interface, but a fully unified button model (normalized bitmask) is still deferred.
+1. **Unified button model.** PenPoint stores raw `Buttons` field. Wintab uses relative encoding `(action << 16) | buttonNumber`; WM_POINTER and the framework backends use absolute flag bitmasks. `PenButtonTracker` (added 2026-04) hides this difference for consumers — feed every PenPoint to the tracker and read `IsTipDown` / `IsBarrelDown(n)` / `IsEraser` regardless of source. The wire format itself is still split, and the per-button-identity ceiling stands: pointer-style backends only carry a single barrel flag, so B2/B3 remain Wintab-only. Fully normalizing the wire format (e.g. synthesizing Wintab-style events in non-Wintab backends) is still deferred.
 
 2. **Should the native DLL also handle desktop → canvas conversion?** Currently this is framework-specific (ClientToScreen + DPI for WinUI3, PointToClient for WinForms). The native DLL could accept an HWND and compute canvas-relative coordinates, but this ties it to Win32 windowing concepts that may not apply to all consumers (e.g., a headless recording tool).
 

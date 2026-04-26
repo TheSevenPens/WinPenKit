@@ -57,6 +57,14 @@ static int     g_max_pressure = 0;
 static POINT   g_last_app_pt = {};
 static POINT   g_last_canvas_pt = {};
 
+// Button state tracking (Wintab encoding: action << 16 | buttonNumber).
+// Action: 0=none, 1=released, 2=pressed. Button: 0=tip, 1-3=barrel.
+static bool    g_tip_down = false;
+static bool    g_barrel1_down = false;
+static bool    g_barrel2_down = false;
+static bool    g_barrel3_down = false;
+static uint32_t g_last_raw_buttons = 0;
+
 // ── DPI helpers ─────────────────────────────────────────────────
 
 static int dpi_scale(int value) {
@@ -145,6 +153,8 @@ static void start_session() {
     g_max_pressure = pen_session_get_max_pressure(g_session);
     g_has_last = false;
     g_has_pen_data = false;
+    g_tip_down = g_barrel1_down = g_barrel2_down = g_barrel3_down = false;
+    g_last_raw_buttons = 0;
 }
 
 // ── Process pen points ──────────────────────────────────────────
@@ -161,6 +171,40 @@ static void process_points(HWND hwnd) {
 
     for (int i = 0; i < n; i++) {
         const auto& pt = points[i];
+
+        // Wintab and pointer-style backends use different button encodings:
+        //   Wintab:  one event per packet, (action << 16) | buttonNumber
+        //   Pointer: absolute bitmask, 0x0001 = barrel, 0x0002 = eraser flag
+        // Pointer APIs only know "the barrel button" — no per-button identity,
+        // so B2/B3 cannot light up on those backends.
+        bool is_wintab = (pt.source == PEN_API_WINTAB_SYSTEM ||
+                          pt.source == PEN_API_WINTAB_DIGITIZER);
+        if (is_wintab) {
+            uint32_t btn_action = (pt.buttons >> 16) & 0xFFFF;
+            uint32_t btn_number = pt.buttons & 0xFFFF;
+            if (btn_action == 2) { // pressed
+                switch (btn_number) {
+                    case 0: g_tip_down = true; break;
+                    case 1: g_barrel1_down = true; break;
+                    case 2: g_barrel2_down = true; break;
+                    case 3: g_barrel3_down = true; break;
+                }
+            } else if (btn_action == 1) { // released
+                switch (btn_number) {
+                    case 0: g_tip_down = false; break;
+                    case 1: g_barrel1_down = false; break;
+                    case 2: g_barrel2_down = false; break;
+                    case 3: g_barrel3_down = false; break;
+                }
+            }
+        } else {
+            // Absolute bitmask — replaces prior state each packet.
+            g_barrel1_down = (pt.buttons & 0x0001) != 0;
+            g_barrel2_down = false;
+            g_barrel3_down = false;
+            // Tip is tracked via pressure>0 below (universal across backends).
+        }
+        if (pt.buttons != 0) g_last_raw_buttons = pt.buttons;
 
         POINT client_pt;
         client_pt.x = static_cast<LONG>(pt.desktop_x);
@@ -430,65 +474,64 @@ static void paint_ribbon(HDC hdc) {
     col += section_gap;
 
     // ── BUTTONS section ──────────────────────────────────────
+    // Tip/barrel state is tracked across packets in process_points()
+    // because Wintab encodes buttons relatively (one Pressed/Released event
+    // per state change), not as a per-packet bitmask.
     int btn_x = col;
     rp.draw_header(btn_x, "BUTTONS");
 
+    auto draw_btn_dot_label = [&](int x, int y, bool active, bool eraser_color, const char* label, int label_w) {
+        // Draw a colored dot followed by a label.
+        int r = MulDiv(4, g_dpi, 96);
+        COLORREF fill = active
+            ? (eraser_color ? RGB(220, 60, 30) : RGB(0, 140, 0))
+            : RGB(180, 180, 180);
+        HBRUSH br = CreateSolidBrush(fill);
+        HBRUSH oldbr = (HBRUSH)SelectObject(hdc, br);
+        HPEN pen = CreatePen(PS_SOLID, 1, fill);
+        HPEN oldpn = (HPEN)SelectObject(hdc, pen);
+        Ellipse(hdc, x - r, y - r, x + r, y + r);
+        SelectObject(hdc, oldpn);
+        SelectObject(hdc, oldbr);
+        DeleteObject(pen);
+        DeleteObject(br);
+
+        HFONT oldf = (HFONT)SelectObject(hdc, rp.label_font);
+        SetTextColor(hdc, RGB(80, 80, 80));
+        RECT lr = {x + dpi_scale(8), y - rp.row_h / 2, x + dpi_scale(8) + label_w, y + rp.row_h / 2};
+        DrawTextA(hdc, label, -1, &lr, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+        SelectObject(hdc, oldf);
+    };
+
     if (g_has_pen_data) {
-        uint32_t btns = g_last_pen.buttons;
-        bool tip = (btns & 0x0001) != 0;
         bool is_eraser = g_last_pen.cursor == 14;
+        bool tip_active = (g_tip_down || g_last_pen.pressure > 0) && !is_eraser;
 
-        // Row 0: Tip and Eraser dots
-        int dot_y0 = rp.content_y + rp.row_h / 2;
-        int dx = btn_x;
-        rp.draw_dot(dx + dpi_scale(4), dot_y0, tip);
-        {
-            HFONT old = (HFONT)SelectObject(hdc, rp.label_font);
-            SetTextColor(hdc, RGB(80, 80, 80));
-            RECT r = {dx + dpi_scale(12), rp.content_y, dx + dpi_scale(40), rp.content_y + rp.row_h};
-            DrawTextA(hdc, "Tip", -1, &r, DT_LEFT | DT_SINGLELINE);
-            SelectObject(hdc, old);
-        }
-        dx += dpi_scale(42);
-        rp.draw_dot(dx + dpi_scale(4), dot_y0, is_eraser);
-        {
-            HFONT old = (HFONT)SelectObject(hdc, rp.label_font);
-            SetTextColor(hdc, RGB(80, 80, 80));
-            RECT r = {dx + dpi_scale(12), rp.content_y, dx + dpi_scale(42), rp.content_y + rp.row_h};
-            DrawTextA(hdc, "Era", -1, &r, DT_LEFT | DT_SINGLELINE);
-            SelectObject(hdc, old);
-        }
+        // Row 0: Tip, Eraser
+        int y0 = rp.content_y + rp.row_h / 2;
+        int dx = btn_x + dpi_scale(4);
+        draw_btn_dot_label(dx, y0, tip_active, false, "Tip", dpi_scale(28));
+        dx += dpi_scale(38);
+        draw_btn_dot_label(dx, y0, is_eraser, true, "Era", dpi_scale(28));
 
-        // Row 1: B1 B2 B3 dots
-        int dot_y1 = rp.content_y + rp.row_h + rp.row_h / 2;
-        dx = btn_x;
-        // Decode barrel buttons from relative encoding
-        uint32_t btn_num = btns & 0xFFFF;
-        uint32_t btn_act = (btns >> 16) & 0xFFFF;
-        // Simplified: just show tip state and raw hex
-        for (int b = 1; b <= 3; b++) {
-            bool active = (btn_num == static_cast<uint32_t>(b) && btn_act == 2);
-            rp.draw_dot(dx + dpi_scale(4), dot_y1, active);
-            char bl[4]; snprintf(bl, sizeof(bl), "B%d", b);
-            HFONT old = (HFONT)SelectObject(hdc, rp.label_font);
-            SetTextColor(hdc, RGB(80, 80, 80));
-            RECT r = {dx + dpi_scale(12), rp.content_y + rp.row_h, dx + dpi_scale(40), rp.content_y + 2 * rp.row_h};
-            DrawTextA(hdc, bl, -1, &r, DT_LEFT | DT_SINGLELINE);
-            SelectObject(hdc, old);
-            dx += dpi_scale(35);
-        }
+        // Row 1: B1 B2 B3
+        int y1 = y0 + rp.row_h;
+        dx = btn_x + dpi_scale(4);
+        draw_btn_dot_label(dx, y1, g_barrel1_down, false, "B1", dpi_scale(22));
+        dx += dpi_scale(34);
+        draw_btn_dot_label(dx, y1, g_barrel2_down, false, "B2", dpi_scale(22));
+        dx += dpi_scale(34);
+        draw_btn_dot_label(dx, y1, g_barrel3_down, false, "B3", dpi_scale(22));
 
-        // Row 2: hex value
+        // Row 2: raw hex value (latest non-zero packet).
         char hex_buf[16];
-        snprintf(hex_buf, sizeof(hex_buf), "0x%08X", btns);
-        {
-            HFONT old = (HFONT)SelectObject(hdc, rp.label_font);
-            SetTextColor(hdc, RGB(120, 120, 120));
-            int y3 = rp.content_y + 2 * rp.row_h;
-            RECT r = {btn_x, y3, btn_x + dpi_scale(120), y3 + rp.row_h};
-            DrawTextA(hdc, hex_buf, -1, &r, DT_LEFT | DT_SINGLELINE);
-            SelectObject(hdc, old);
-        }
+        snprintf(hex_buf, sizeof(hex_buf), "0x%08X", g_last_raw_buttons);
+        HFONT oldf = (HFONT)SelectObject(hdc, rp.label_font);
+        SetTextColor(hdc, RGB(120, 120, 120));
+        int y2 = rp.content_y + 2 * rp.row_h;
+        RECT r = {btn_x, y2, btn_x + dpi_scale(120), y2 + rp.row_h};
+        DrawTextA(hdc, hex_buf, -1, &r, DT_LEFT | DT_SINGLELINE);
+        SelectObject(hdc, oldf);
     } else {
         rp.draw_value(btn_x, 0, "--");
     }

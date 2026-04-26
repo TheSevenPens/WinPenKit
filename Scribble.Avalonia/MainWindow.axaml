@@ -43,6 +43,29 @@
                 </StackPanel>
                 <Rectangle Width="1" Fill="#DDDDDD" />
 
+                <!-- BUTTONS -->
+                <StackPanel>
+                    <TextBlock Text="BUTTONS" FontWeight="Bold" FontSize="10"
+                               Foreground="#555555" Margin="0,0,0,4" />
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Ellipse x:Name="TipDot" Width="8" Height="8" Fill="Gray" />
+                        <TextBlock Text="Tip" FontSize="11" Margin="0,0,8,0" />
+                        <Ellipse x:Name="EraserDot" Width="8" Height="8" Fill="Gray" />
+                        <TextBlock Text="Era" FontSize="11" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0">
+                        <Ellipse x:Name="Barrel1Dot" Width="8" Height="8" Fill="Gray" />
+                        <TextBlock Text="B1" FontSize="11" Margin="0,0,8,0" />
+                        <Ellipse x:Name="Barrel2Dot" Width="8" Height="8" Fill="Gray" />
+                        <TextBlock Text="B2" FontSize="11" Margin="0,0,8,0" />
+                        <Ellipse x:Name="Barrel3Dot" Width="8" Height="8" Fill="Gray" />
+                        <TextBlock Text="B3" FontSize="11" />
+                    </StackPanel>
+                    <TextBlock x:Name="RawButtonsLabel" FontSize="11" Text="0x00000000"
+                               Margin="0,2,0,0" />
+                </StackPanel>
+                <Rectangle Width="1" Fill="#DDDDDD" />
+
                 <!-- POSITION -->
                 <StackPanel Width="160">
                     <TextBlock Text="POSITION" FontWeight="Bold" FontSize="10"

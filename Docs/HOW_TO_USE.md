@@ -125,17 +125,38 @@ See the [devnotes DPI article](https://github.com/TheSevenPens/devnotes) for the
 
 ## Buttons and Eraser
 
-### Button encoding (Wintab)
+### Use `PenButtonTracker` (recommended)
 
-Wintab encodes buttons as `(action << 16) | buttonNumber`:
-- Action: 0 = none, 1 = released, 2 = pressed
-- Button: 0 = tip, 1 = barrel1, 2 = barrel2, 3 = barrel3
+`PenPoint.Buttons` carries different encodings depending on the backend:
 
-Use the helper properties: `pt.ButtonAction`, `pt.ButtonNumber`, `pt.IsTipPressed`, `pt.IsButtonPressed(1)`.
+- **Wintab**: one event per packet, `(action << 16) | buttonNumber`. Action: 0=none, 1=released, 2=pressed. Button: 0=tip, 1-3=barrel.
+- **Pointer-style backends** (WM_POINTER, WinUI Pointer, WPF Stylus, WinForms Pointer, Avalonia Pointer): absolute flag bitmask. `0x0001` = barrel button, `0x0002` = eraser.
+
+`PenButtonTracker` hides this difference. Create one per session, feed every point through it, then read state:
+
+```csharp
+var buttons = new PenButtonTracker();
+foreach (var pt in session.DrainPoints())
+{
+    buttons.Update(pt);
+}
+
+if (buttons.IsTipDown) { ... }
+if (buttons.IsBarrelDown(1)) { ... }
+if (buttons.IsEraser) { ... }
+```
+
+Call `buttons.Reset()` when restarting a session.
+
+**Hard ceiling**: pointer-style backends only expose a single barrel flag — `IsBarrelDown(2)` and `IsBarrelDown(3)` always return `false` on those backends. Per-button identity for B2/B3 requires Wintab.
+
+### Raw access (advanced)
+
+If you need the raw event encoding, `PenPoint` exposes `pt.ButtonAction`, `pt.ButtonNumber`, `pt.IsTipPressed`, `pt.IsButtonPressed(int)`, `pt.IsButtonReleased(int)`. These match the Wintab encoding only — for non-Wintab backends you must read `pt.Buttons` as a bitmask.
 
 ### Eraser detection
 
-Eraser is detected via `pt.Cursor == 14` (or `pt.IsEraser`). In Wintab, cursor type changes on hover before contact. WM_POINTER uses `PEN_FLAG_INVERTED`, mapped to cursor 14 for consistency.
+Eraser is detected via `pt.IsEraser` (which checks `pt.Cursor == 14`). In Wintab, cursor type changes on hover before contact. WM_POINTER uses `PEN_FLAG_INVERTED`, mapped to cursor 14 for consistency. `PenButtonTracker.IsEraser` mirrors this from the latest point.
 
 ## Error Handling
 

@@ -13,6 +13,10 @@ public sealed class MainForm : Form
     private double _brushSize = 6;
     private IReadOnlyList<InputApi> _apis = [];
     private DateTime _lastPointTime;
+    private readonly PenButtonTracker _buttons = new();
+    private static readonly Color ActiveColor = Color.LimeGreen;
+    private static readonly Color InactiveColor = Color.Gray;
+    private static readonly Color EraserActiveColor = Color.OrangeRed;
 
     // SkiaSharp bitmap-backed canvas.
     private SKBitmap? _skBitmap;
@@ -41,6 +45,14 @@ public sealed class MainForm : Form
     private readonly Label _altitudeLabel = new() { Text = "Altitude: --", AutoSize = true };
     private readonly Label _twistLabel = new() { Text = "Twist: --", AutoSize = true };
 
+    // BUTTONS section — five circular indicators + raw hex.
+    private readonly CircleIndicator _tipDot = new();
+    private readonly CircleIndicator _eraserDot = new();
+    private readonly CircleIndicator _barrel1Dot = new();
+    private readonly CircleIndicator _barrel2Dot = new();
+    private readonly CircleIndicator _barrel3Dot = new();
+    private readonly Label _rawButtonsLabel = new() { Text = "0x00000000", AutoSize = true };
+
     public MainForm()
     {
         Text = "Scribble WinForms - PenSession";
@@ -61,6 +73,11 @@ public sealed class MainForm : Form
         ribbon.Controls.Add(MakeSection("BRUSH", _brushLabel, _brushSlider));
         ribbon.Controls.Add(MakeSeparator());
         ribbon.Controls.Add(MakeSection("PEN", _proximityLabel, _cursorLabel));
+        ribbon.Controls.Add(MakeSeparator());
+        ribbon.Controls.Add(MakeSection("BUTTONS",
+            MakeDotRow(_tipDot, "Tip", _eraserDot, "Era"),
+            MakeDotRow(_barrel1Dot, "B1", _barrel2Dot, "B2", _barrel3Dot, "B3"),
+            _rawButtonsLabel));
         ribbon.Controls.Add(MakeSeparator());
         ribbon.Controls.Add(MakeSection("POSITION", _rawPosLabel, _screenPosLabel, _appPosLabel, _canvasPosLabel));
         ribbon.Controls.Add(MakeSeparator());
@@ -154,6 +171,37 @@ public sealed class MainForm : Form
         return panel;
     }
 
+    private static FlowLayoutPanel MakeDotRow(params object[] items)
+    {
+        var row = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            WrapContents = false,
+            Margin = new Padding(0)
+        };
+        foreach (var item in items)
+        {
+            switch (item)
+            {
+                case Control c:
+                    c.Margin = new Padding(0, 3, 4, 0);
+                    row.Controls.Add(c);
+                    break;
+                case string text:
+                    row.Controls.Add(new Label
+                    {
+                        Text = text,
+                        AutoSize = true,
+                        Margin = new Padding(0, 0, 8, 0),
+                        ForeColor = Color.FromArgb(85, 85, 85)
+                    });
+                    break;
+            }
+        }
+        return row;
+    }
+
     private static Panel MakeSeparator()
     {
         return new Panel
@@ -242,6 +290,7 @@ public sealed class MainForm : Form
             _renderTimer.Stop();
             _session?.Stop();
             _session?.Dispose();
+            _buttons.Reset();
 
             var api = _apis[_apiCombo.SelectedIndex];
             System.Diagnostics.Debug.WriteLine($"[Scribble.WinForms] Starting session: {api}");
@@ -292,6 +341,8 @@ public sealed class MainForm : Form
 
         foreach (var pt in points)
         {
+            _buttons.Update(pt);
+
             var screenPt = new Point((int)pt.DesktopX, (int)pt.DesktopY);
             var canvasPt = _canvasPanel.PointToClient(screenPt);
 
@@ -351,6 +402,44 @@ public sealed class MainForm : Form
         _azimuthLabel.Text = $"Azimuth: {last.Azimuth:F1}";
         _altitudeLabel.Text = $"Altitude: {last.Altitude:F1}";
         _twistLabel.Text = $"Twist: {last.Twist:F1}";
+
+        _tipDot.SetState((_buttons.IsTipDown && !_buttons.IsEraser) ? ActiveColor : InactiveColor);
+        _eraserDot.SetState(_buttons.IsEraser ? EraserActiveColor : InactiveColor);
+        _barrel1Dot.SetState(_buttons.IsBarrelDown(1) ? ActiveColor : InactiveColor);
+        _barrel2Dot.SetState(_buttons.IsBarrelDown(2) ? ActiveColor : InactiveColor);
+        _barrel3Dot.SetState(_buttons.IsBarrelDown(3) ? ActiveColor : InactiveColor);
+        if (_buttons.LastRawButtons != 0)
+            _rawButtonsLabel.Text = $"0x{_buttons.LastRawButtons:X8}";
+    }
+}
+
+internal sealed class CircleIndicator : Control
+{
+    private Color _color = Color.Gray;
+
+    public CircleIndicator()
+    {
+        SetStyle(ControlStyles.AllPaintingInWmPaint
+                 | ControlStyles.OptimizedDoubleBuffer
+                 | ControlStyles.UserPaint
+                 | ControlStyles.SupportsTransparentBackColor, true);
+        BackColor = Color.Transparent;
+        Size = new Size(10, 10);
+        TabStop = false;
+    }
+
+    public void SetState(Color color)
+    {
+        if (_color == color) return;
+        _color = color;
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using var brush = new SolidBrush(_color);
+        e.Graphics.FillEllipse(brush, 0, 0, Width - 1, Height - 1);
     }
 }
 

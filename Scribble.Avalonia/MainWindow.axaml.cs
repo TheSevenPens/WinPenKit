@@ -21,6 +21,10 @@ public partial class MainWindow : Window
     private double _brushSize = 6;
     private IReadOnlyList<InputApi> _apis = [];
     private DateTime _lastPointTime;
+    private readonly PenButtonTracker _buttons = new();
+    private static readonly IBrush ActiveDot = Brushes.LimeGreen;
+    private static readonly IBrush InactiveDot = Brushes.Gray;
+    private static readonly IBrush EraserActiveDot = Brushes.OrangeRed;
 
     // Skia bitmap-backed canvas.
     private SKBitmap? _skBitmap;
@@ -154,6 +158,7 @@ public partial class MainWindow : Window
 
         _session?.Stop();
         _session?.Dispose();
+        _buttons.Reset();
 
         var api = _apis[ApiCombo.SelectedIndex];
         _session = api == InputApi.AvaloniaPointer
@@ -203,6 +208,8 @@ public partial class MainWindow : Window
 
         foreach (var pt in points)
         {
+            _buttons.Update(pt);
+
             // Convert desktop pixels to canvas-local coords.
             // Avalonia's PointToClient on the TopLevel, then adjust for canvas position.
             Point canvasPt;
@@ -296,6 +303,14 @@ public partial class MainWindow : Window
         AzimuthLabel.Text = $"Azimuth: {last.Azimuth:F1}";
         AltitudeLabel.Text = $"Altitude: {last.Altitude:F1}";
         TwistLabel.Text = $"Twist: {last.Twist:F1}";
+
+        TipDot.Fill = (_buttons.IsTipDown && !_buttons.IsEraser) ? ActiveDot : InactiveDot;
+        EraserDot.Fill = _buttons.IsEraser ? EraserActiveDot : InactiveDot;
+        Barrel1Dot.Fill = _buttons.IsBarrelDown(1) ? ActiveDot : InactiveDot;
+        Barrel2Dot.Fill = _buttons.IsBarrelDown(2) ? ActiveDot : InactiveDot;
+        Barrel3Dot.Fill = _buttons.IsBarrelDown(3) ? ActiveDot : InactiveDot;
+        if (_buttons.LastRawButtons != 0)
+            RawButtonsLabel.Text = $"0x{_buttons.LastRawButtons:X8}";
     }
 
     // ── Event handlers ───────────────────────────────────────────

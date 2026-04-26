@@ -20,7 +20,7 @@ public sealed partial class ScribbleRibbon : UserControl
     private static readonly SolidColorBrush EraserActiveBrush = new(Colors.OrangeRed);
 
     private DateTime _lastPointTime;
-    private bool _tipDown, _barrel1Down, _barrel2Down, _barrel3Down;
+    private readonly PenButtonTracker _buttons = new();
     private IReadOnlyList<InputApi> _availableApis = [];
 
     public event EventHandler? ContextModeChanged;
@@ -102,42 +102,22 @@ public sealed partial class ScribbleRibbon : UserControl
 
     public void UpdateButtons(PenPoint pt)
     {
-        // Track button press/release events
-        if (pt.ButtonAction == PenButtonAction.Pressed)
-        {
-            switch (pt.ButtonNumber)
-            {
-                case PenButtonNumber.Tip: _tipDown = true; break;
-                case PenButtonNumber.Barrel1: _barrel1Down = true; break;
-                case PenButtonNumber.Barrel2: _barrel2Down = true; break;
-                case PenButtonNumber.Barrel3: _barrel3Down = true; break;
-            }
-        }
-        else if (pt.ButtonAction == PenButtonAction.Released)
-        {
-            switch (pt.ButtonNumber)
-            {
-                case PenButtonNumber.Tip: _tipDown = false; break;
-                case PenButtonNumber.Barrel1: _barrel1Down = false; break;
-                case PenButtonNumber.Barrel2: _barrel2Down = false; break;
-                case PenButtonNumber.Barrel3: _barrel3Down = false; break;
-            }
-        }
+        _buttons.Update(pt);
 
-        bool tipActive = _tipDown || pt.Pressure > 0;
-        bool isEraser = pt.IsEraser;
+        SetIndicator(TipIndicator, _buttons.IsTipDown && !_buttons.IsEraser);
+        SetIndicator(EraserIndicator, _buttons.IsEraser, useEraserColor: true);
+        SetIndicator(Barrel1Indicator, _buttons.IsBarrelDown(1));
+        SetIndicator(Barrel2Indicator, _buttons.IsBarrelDown(2));
+        SetIndicator(Barrel3Indicator, _buttons.IsBarrelDown(3));
 
-        SetIndicator(TipIndicator, tipActive && !isEraser);
-        SetIndicator(EraserIndicator, isEraser, useEraserColor: true);
-        SetIndicator(Barrel1Indicator, _barrel1Down);
-        SetIndicator(Barrel2Indicator, _barrel2Down);
-        SetIndicator(Barrel3Indicator, _barrel3Down);
-
-        if (pt.Buttons != 0)
-            RawButtonValue.Text = $"0x{pt.Buttons:X8}";
+        if (_buttons.LastRawButtons != 0)
+            RawButtonValue.Text = $"0x{_buttons.LastRawButtons:X8}";
 
         CursorValue.Text = $"{pt.Cursor}";
     }
+
+    /// <summary>Resets the tracker — call when restarting a session.</summary>
+    public void ResetButtons() => _buttons.Reset();
 
     public void Tick()
     {

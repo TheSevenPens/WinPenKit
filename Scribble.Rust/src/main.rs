@@ -36,6 +36,13 @@ struct ScribbleApp {
     last_point: Option<PenPoint>,
     max_pressure: i32,
     last_point_time: std::time::Instant,
+
+    // Button state tracked from Wintab packet stream (relative encoding).
+    tip_down: bool,
+    barrel1_down: bool,
+    barrel2_down: bool,
+    barrel3_down: bool,
+    last_raw_buttons: u32,
 }
 
 impl ScribbleApp {
@@ -56,6 +63,11 @@ impl ScribbleApp {
             last_point: None,
             max_pressure: 0,
             last_point_time: std::time::Instant::now(),
+            tip_down: false,
+            barrel1_down: false,
+            barrel2_down: false,
+            barrel3_down: false,
+            last_raw_buttons: 0,
         }
     }
 
@@ -80,6 +92,11 @@ impl ScribbleApp {
 
         self.max_pressure = session.max_pressure();
         self.session = Some(session);
+        self.tip_down = false;
+        self.barrel1_down = false;
+        self.barrel2_down = false;
+        self.barrel3_down = false;
+        self.last_raw_buttons = 0;
     }
 
     fn ensure_pixmap(&mut self, width: usize, height: usize) {
@@ -120,6 +137,42 @@ impl ScribbleApp {
 
         for i in 0..count {
             let pt = self.points_buffer[i];
+
+            // Wintab and pointer-style backends use different button encodings.
+            // Wintab: one event per packet, (action << 16) | buttonNumber.
+            // Pointer: absolute bitmask (0x0001 = barrel, 0x0002 = eraser).
+            // Pointer APIs only expose a single barrel — B2/B3 cannot light up.
+            let is_wintab = pt.source == PenInputApi::WintabSystem as i32
+                || pt.source == PenInputApi::WintabDigitizer as i32;
+            if is_wintab {
+                let btn_action = (pt.buttons >> 16) & 0xFFFF;
+                let btn_number = pt.buttons & 0xFFFF;
+                match btn_action {
+                    2 => match btn_number {
+                        0 => self.tip_down = true,
+                        1 => self.barrel1_down = true,
+                        2 => self.barrel2_down = true,
+                        3 => self.barrel3_down = true,
+                        _ => {}
+                    },
+                    1 => match btn_number {
+                        0 => self.tip_down = false,
+                        1 => self.barrel1_down = false,
+                        2 => self.barrel2_down = false,
+                        3 => self.barrel3_down = false,
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            } else {
+                self.barrel1_down = (pt.buttons & 0x0001) != 0;
+                self.barrel2_down = false;
+                self.barrel3_down = false;
+                // tip is derived from pressure below.
+            }
+            if pt.buttons != 0 {
+                self.last_raw_buttons = pt.buttons;
+            }
 
             // Wintab gives physical desktop pixels. egui positions are in
             // logical points. Convert physical → logical, then subtract
@@ -285,6 +338,39 @@ impl eframe::App for ScribbleApp {
                     if let Some(pt) = &self.last_point {
                         ui.label(format!("Cursor: {}", pt.cursor));
                     }
+                });
+                ui.separator();
+
+                ui.vertical(|ui| {
+                    ui.strong("BUTTONS");
+                    let is_eraser = self
+                        .last_point
+                        .as_ref()
+                        .map(|p| p.cursor == 14)
+                        .unwrap_or(false);
+                    let pressure = self.last_point.as_ref().map(|p| p.pressure).unwrap_or(0);
+                    let tip_active = (self.tip_down || pressure > 0) && !is_eraser;
+
+                    let dot = |on: bool, eraser: bool| -> &'static str {
+                        if !on {
+                            "⚫"
+                        } else if eraser {
+                            "🟠"
+                        } else {
+                            "🟢"
+                        }
+                    };
+
+                    ui.horizontal(|ui| {
+                        ui.label(format!("{} Tip", dot(tip_active, false)));
+                        ui.label(format!("{} Era", dot(is_eraser, true)));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(format!("{} B1", dot(self.barrel1_down, false)));
+                        ui.label(format!("{} B2", dot(self.barrel2_down, false)));
+                        ui.label(format!("{} B3", dot(self.barrel3_down, false)));
+                    });
+                    ui.monospace(format!("0x{:08X}", self.last_raw_buttons));
                 });
                 ui.separator();
 
