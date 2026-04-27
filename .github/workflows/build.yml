@@ -64,6 +64,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/release/v')
         shell: bash
         run: |
+          set -x
+          echo "DIAG: staging script start"
           mkdir -p artifacts/PenSession.Native
           mkdir -p artifacts/PenSession.Managed
           mkdir -p artifacts/Scribble.Win32
