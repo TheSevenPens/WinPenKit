@@ -65,6 +65,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts/PenSession.Native
+          mkdir -p artifacts/PenSession.Managed
           mkdir -p artifacts/Scribble.Win32
           mkdir -p artifacts/Scribble.Rust
           mkdir -p artifacts/Scribble.WinUI
@@ -76,6 +77,26 @@ jobs:
           cp PenSession.Native/bin/Release/x64/PenSession.Native.dll artifacts/PenSession.Native/
           cp PenSession.Native/bin/Release/x64/PenSession.Native.lib artifacts/PenSession.Native/
           cp PenSession.Native/include/pen_session.h artifacts/PenSession.Native/
+
+          # Managed library DLLs — pre-NuGet stopgap for .NET consumers.
+          # Ships every PenSession.* assembly + PDBs + xmldoc (if generated).
+          # Consumers reference whichever subset they need via <Reference HintPath>.
+          # The .dll is required (fail loudly if missing); .pdb/.xml are
+          # optional — only copied if they exist.
+          stage_managed_dll() {
+            local src_dir="$1"
+            local name="$2"
+            cp "$src_dir/$name.dll" artifacts/PenSession.Managed/
+            for ext in pdb xml; do
+              [ -f "$src_dir/$name.$ext" ] && cp "$src_dir/$name.$ext" artifacts/PenSession.Managed/
+            done
+          }
+          for proj in PenSession PenSession.Wpf PenSession.WinForms PenSession.Avalonia; do
+            stage_managed_dll "$proj/bin/Release/net10.0-windows" "$proj"
+          done
+          # WinUI builds via msbuild -p:Platform=x64 → different output path.
+          winui_dir=$(echo PenSession.WinUI/bin/x64/Release/net10.0-windows*)
+          stage_managed_dll "$winui_dir" PenSession.WinUI
 
           # Scribble.Win32
           cp Scribble.Win32/bin/Release/x64/*.exe artifacts/Scribble.Win32/
