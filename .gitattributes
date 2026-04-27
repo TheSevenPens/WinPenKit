@@ -1,1 +1,8 @@
 * text=auto eol=crlf
+
+# YAML and shell-script-bearing files must keep LF endings —
+# bash on the Windows GitHub Actions runner chokes on CRLF in
+# inline `run: |` script blocks (silent 1-line failures).
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
