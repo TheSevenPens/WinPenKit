@@ -64,8 +64,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/release/v')
         shell: bash
         run: |
-          set -x
-          echo "DIAG: staging script start"
           mkdir -p artifacts/PenSession.Native
           mkdir -p artifacts/PenSession.Managed
           mkdir -p artifacts/Scribble.Win32
@@ -85,12 +83,16 @@ jobs:
           # Consumers reference whichever subset they need via <Reference HintPath>.
           # The .dll is required (fail loudly if missing); .pdb/.xml are
           # optional — only copied if they exist.
+          # Note: bash set -e + && short-circuit + functions interact badly,
+          # so use an explicit `if` for the optional pdb/xml files.
           stage_managed_dll() {
             local src_dir="$1"
             local name="$2"
             cp "$src_dir/$name.dll" artifacts/PenSession.Managed/
             for ext in pdb xml; do
-              [ -f "$src_dir/$name.$ext" ] && cp "$src_dir/$name.$ext" artifacts/PenSession.Managed/
+              if [ -f "$src_dir/$name.$ext" ]; then
+                cp "$src_dir/$name.$ext" artifacts/PenSession.Managed/
+              fi
             done
           }
           for proj in PenSession PenSession.Wpf PenSession.WinForms PenSession.Avalonia; do
