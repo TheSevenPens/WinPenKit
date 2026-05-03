@@ -1,4 +1,4 @@
-//! FFI bindings for the pen_session C API (PenSession.Native.dll).
+//! FFI bindings for the pen_session C API (WinPenKit.Native.dll).
 //!
 //! These match pen_session.h exactly. The DLL exports both the legacy
 //! wintab_session_* API and the unified pen_session_* API.
@@ -43,7 +43,7 @@ pub struct PenPoint {
 // Opaque handle.
 pub type PenSessionHandle = *mut c_void;
 
-#[link(name = "PenSession.Native")]
+#[link(name = "WinPenKit.Native")]
 unsafe extern "C" {
     pub fn pen_session_get_available_apis(buffer: *mut PenInputApi, max_count: i32) -> i32;
     pub fn pen_session_create(api: PenInputApi) -> PenSessionHandle;

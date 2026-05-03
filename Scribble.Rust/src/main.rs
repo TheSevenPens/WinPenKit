@@ -8,7 +8,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 700.0])
-            .with_title("Scribble Rust - PenSession"),
+            .with_title("Scribble Rust - WinPenKit"),
         ..Default::default()
     };
 

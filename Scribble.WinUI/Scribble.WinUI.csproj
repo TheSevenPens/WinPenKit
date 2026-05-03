@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\PenSession\PenSession.csproj" />
-    <ProjectReference Include="..\PenSession.WinUI\PenSession.WinUI.csproj" />
+    <ProjectReference Include="..\WinPenKit\WinPenKit.csproj" />
+    <ProjectReference Include="..\WinPenKit.WinUI\WinPenKit.WinUI.csproj" />
   </ItemGroup>
 </Project>

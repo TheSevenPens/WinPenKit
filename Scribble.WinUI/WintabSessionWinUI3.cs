@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
-using PenSession;
-using PenSession.WinUI;
+using WinPenKit;
+using WinPenKit.WinUI;
 
 namespace Scribble.WinUI;
 
@@ -44,7 +44,7 @@ public readonly record struct PenTelemetry(
 /// and produces <see cref="StrokeSegment"/> records for the brush engine.
 ///
 /// <para>All input API management, packet handling, coordinate mapping,
-/// and tilt conversion lives in the PenSession library. This class only handles:</para>
+/// and tilt conversion lives in the WinPenKit library. This class only handles:</para>
 /// <list type="bullet">
 ///   <item>Desktop → canvas DIP conversion (WinUI 3 specific: ClientToScreen + DPI)</item>
 ///   <item>Canvas bounds checking</item>

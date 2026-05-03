@@ -18,8 +18,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\PenSession\PenSession.csproj" />
-    <ProjectReference Include="..\PenSession.WinForms\PenSession.WinForms.csproj" />
+    <ProjectReference Include="..\WinPenKit\WinPenKit.csproj" />
+    <ProjectReference Include="..\WinPenKit.WinForms\WinPenKit.WinForms.csproj" />
   </ItemGroup>
 
 </Project>

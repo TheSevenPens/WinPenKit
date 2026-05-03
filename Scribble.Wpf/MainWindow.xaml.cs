@@ -4,8 +4,8 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Linq;
-using PenSession;
-using PenSession.Wpf;
+using WinPenKit;
+using WinPenKit.Wpf;
 using SkiaSharp;
 
 namespace Scribble.Wpf;
@@ -162,7 +162,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        Title = "Scribble WPF - PenSession";
+        Title = "Scribble WPF - WinPenKit";
         _renderActive = true;
     }
 

@@ -1,6 +1,6 @@
 # Scribble Apps
 
-Seven demo apps proving the PenSession SDK end-to-end. All feature bitmap-backed rendering, a ribbon toolbar with API dropdown, brush size slider, clear button, pressure-sensitive drawing, and four-coordinate position display (Raw → Screen → App → Canvas).
+Seven demo apps proving the WinPenKit SDK end-to-end. All feature bitmap-backed rendering, a ribbon toolbar with API dropdown, brush size slider, clear button, pressure-sensitive drawing, and four-coordinate position display (Raw → Screen → App → Canvas).
 
 ## Summary
 
@@ -12,11 +12,11 @@ Seven demo apps proving the PenSession SDK end-to-end. All feature bitmap-backed
 | Scribble.Wpf | WPF | SkiaSharp | C# | System, Digitizer, WPF Stylus |
 | Scribble.WinForms | WinForms | SkiaSharp | C# | System, Digitizer, WinForms Pointer |
 | Scribble.Avalonia | Avalonia | SkiaSharp | C# | System, Digitizer, Avalonia Pointer |
-| PenSession.TestConsole | Console | (headless) | C# | System, Digitizer |
+| WinPenKit.TestConsole | Console | (headless) | C# | System, Digitizer |
 
 ## Scribble.Win32
 
-Minimal C++ Win32/GDI scribble app. Zero framework dependencies — just the Windows API and `PenSession.Native.dll`.
+Minimal C++ Win32/GDI scribble app. Zero framework dependencies — just the Windows API and `WinPenKit.Native.dll`.
 
 - DPI-aware (`SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)`)
 - Double-buffered painting (`WM_ERASEBKGND` suppressed, offscreen bitmap)
@@ -30,12 +30,12 @@ Rust drawing app using the `pen_session` C API via FFI.
 
 - **egui** immediate-mode UI — ribbon with API dropdown, brush slider, clear button, pen telemetry
 - **tiny-skia** bitmap-backed rendering — `Pixmap` + `stroke_path` with round caps, uploaded as egui texture
-- Safe `PenSession` wrapper with RAII `Drop` cleanup
+- Safe `WinPenKit` wrapper with RAII `Drop` cleanup
 - DPI-aware coordinate conversion (physical desktop pixels → egui logical points via `pixels_per_point`)
 - HWND obtained via `GetActiveWindow()` on first frame for WM_Pointer support
 - Ribbon uses `exact_height(130.0)` to prevent layout jumping when telemetry values change width
 
-Depends on `PenSession.Native.dll` at runtime. Pure Rust otherwise — no C/C++ compilation needed. Total dependency footprint ~500 KB.
+Depends on `WinPenKit.Native.dll` at runtime. Pure Rust otherwise — no C/C++ compilation needed. Total dependency footprint ~500 KB.
 
 ## Scribble.WinUI
 
@@ -54,7 +54,7 @@ WinUI 3 drawing app with the most detailed ribbon UI.
 - Digitizer hi-res mode preserving full tablet-native precision (~5280 LPI)
 - Unpackaged app — requires DPI manifest in `app.manifest`
 
-Uses `PenSession` + `PenSession.WinUI` via `PenSessionWinUI3` wrapper for desktop → canvas DIP conversion.
+Uses `WinPenKit` + `WinPenKit.WinUI` via `PenSessionWinUI3` wrapper for desktop → canvas DIP conversion.
 
 ## Scribble.Wpf
 
@@ -64,7 +64,7 @@ WPF drawing app with SkiaSharp rendering.
 - `PointFromScreen` for automatic DPI-correct coordinate conversion
 - WPF Stylus backend uses `StylusMove`/`StylusDown` events
 
-Uses `PenSession` + `PenSession.Wpf`.
+Uses `WinPenKit` + `WinPenKit.Wpf`.
 
 ## Scribble.WinForms
 
@@ -75,7 +75,7 @@ WinForms drawing app with SkiaSharp rendering.
 - **DoubleBufferedPanel** subclass for flicker-free painting
 - WinForms Pointer backend uses `IMessageFilter` (not `NativeWindow.AssignHandle` which crashes on Form HWNDs)
 
-Uses `PenSession` + `PenSession.WinForms`.
+Uses `WinPenKit` + `WinPenKit.WinForms`.
 
 ## Scribble.Avalonia
 
@@ -84,9 +84,9 @@ Avalonia drawing app with SkiaSharp rendering.
 - **SkiaSharp bitmap-backed rendering** — `SKCanvas.DrawLine()` to `SKBitmap`, pixel-copied to Avalonia `WriteableBitmap`
 - Coordinate conversion via `TopLevel.PointToClient()` and `TranslatePoint()`
 
-Uses `PenSession` + `PenSession.Avalonia`.
+Uses `WinPenKit` + `WinPenKit.Avalonia`.
 
-## PenSession.TestConsole
+## WinPenKit.TestConsole
 
 Headless console app for verifying Wintab backends without a GUI. Useful for debugging session creation, packet delivery, and telemetry values.
 

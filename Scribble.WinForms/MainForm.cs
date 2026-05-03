@@ -1,5 +1,5 @@
-using PenSession;
-using PenSession.WinForms;
+using WinPenKit;
+using WinPenKit.WinForms;
 using SkiaSharp;
 
 namespace Scribble.WinForms;
@@ -55,7 +55,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Scribble WinForms - PenSession";
+        Text = "Scribble WinForms - WinPenKit";
         Size = new Size(1200, 700);
 
         // ── Ribbon ───────────────────────────────────────────────
@@ -313,7 +313,7 @@ public sealed class MainForm : Form
             }
 
             System.Diagnostics.Debug.WriteLine($"[Scribble.WinForms] Session started OK");
-            Text = "Scribble WinForms - PenSession";
+            Text = "Scribble WinForms - WinPenKit";
             _renderTimer.Start();
         }
         finally

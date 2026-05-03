@@ -6,8 +6,8 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using System.Linq;
-using PenSession;
-using PenSession.Avalonia;
+using WinPenKit;
+using WinPenKit.Avalonia;
 using SkiaSharp;
 
 namespace Scribble.Avalonia;
@@ -182,7 +182,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        Title = "Scribble Avalonia - PenSession";
+        Title = "Scribble Avalonia - WinPenKit";
         _renderTimer.Start();
     }
 

@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Scribble.Avalonia.MainWindow"
-        Title="Scribble Avalonia - PenSession" Width="1200" Height="700">
+        Title="Scribble Avalonia - WinPenKit" Width="1200" Height="700">
     <DockPanel>
         <!-- Ribbon -->
         <Border DockPanel.Dock="Top" Background="#F5F5F5"

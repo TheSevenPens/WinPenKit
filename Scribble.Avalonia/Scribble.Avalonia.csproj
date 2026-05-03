@@ -20,8 +20,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\PenSession\PenSession.csproj" />
-    <ProjectReference Include="..\PenSession.Avalonia\PenSession.Avalonia.csproj" />
+    <ProjectReference Include="..\WinPenKit\WinPenKit.csproj" />
+    <ProjectReference Include="..\WinPenKit.Avalonia\WinPenKit.Avalonia.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-# WinPenSession
+# WinPenKit
 
 This is a unified pen input SDK for modern Windows writen for someone devleoping a drawing application or something similar. It is SIMPLE and EASY.
 
@@ -14,12 +14,12 @@ This is a unified pen input SDK for modern Windows writen for someone devleoping
 
 | Package | Purpose | Works in |
 |---|---|---|
-| **PenSession** | Core library (Wintab + WM_POINTER) | Any .NET app |
-| **PenSession.Native** | C++ DLL with C ABI | Any native app (C++, Rust, Zig) |
-| **PenSession.WinUI** | WinUI 3 pointer events | WinUI 3 apps |
-| **PenSession.Wpf** | WPF stylus events | WPF apps |
-| **PenSession.WinForms** | WinForms IMessageFilter | WinForms apps |
-| **PenSession.Avalonia** | Avalonia pointer events | Avalonia apps |
+| **WinPenKit** | Core library (Wintab + WM_POINTER) | Any .NET app |
+| **WinPenKit.Native** | C++ DLL with C ABI | Any native app (C++, Rust, Zig) |
+| **WinPenKit.WinUI** | WinUI 3 pointer events | WinUI 3 apps |
+| **WinPenKit.Wpf** | WPF stylus events | WPF apps |
+| **WinPenKit.WinForms** | WinForms IMessageFilter | WinForms apps |
+| **WinPenKit.Avalonia** | Avalonia pointer events | Avalonia apps |
 
 ## Scribble Apps
 
@@ -33,12 +33,12 @@ These demo apps proving the SDK end-to-end, all with bitmap-backed rendering and
 | Scribble.Wpf | WPF | SkiaSharp | C# |
 | Scribble.WinForms | WinForms | SkiaSharp | C# |
 | Scribble.Avalonia | Avalonia | SkiaSharp | C# |
-| PenSession.TestConsole | Console | (headless) | C# |
+| WinPenKit.TestConsole | Console | (headless) | C# |
 
 ## Quick Start (C#)
 
 ```csharp
-using PenSession;
+using WinPenKit;
 
 // Discover available APIs.
 var apis = PenSessionFactory.GetAvailableApis();

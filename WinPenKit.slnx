@@ -1,0 +1,14 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="WinPenKit/WinPenKit.csproj" />
+  <Project Path="WinPenKit.TestConsole/WinPenKit.TestConsole.csproj" />
+  <Project Path="WinPenKit.Wpf/WinPenKit.Wpf.csproj" />
+  <Project Path="WinPenKit.WinForms/WinPenKit.WinForms.csproj" />
+  <Project Path="WinPenKit.Avalonia/WinPenKit.Avalonia.csproj" />
+  <Project Path="Scribble.Wpf/Scribble.Wpf.csproj" />
+  <Project Path="Scribble.WinForms/Scribble.WinForms.csproj" />
+  <Project Path="Scribble.Avalonia/Scribble.Avalonia.csproj" />
+</Solution>

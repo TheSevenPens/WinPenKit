@@ -9,14 +9,14 @@ GitHub Actions builds all projects on every push to main and on pull requests. T
 - **`release/v*` tags** — full build + upload artifacts + create GitHub Release
 
 ### Build order
-1. **C++ first** — `msbuild NativeCpp.sln` (produces PenSession.Native.dll/.lib)
-2. **.NET** — `dotnet build WinPenSession.slnx` (all managed projects except WinUI)
+1. **C++ first** — `msbuild WinPenKitNative.sln` (produces WinPenKit.Native.dll/.lib)
+2. **.NET** — `dotnet build WinPenKit.slnx` (all managed projects except WinUI)
 3. **WinUI** — `msbuild` on individual .csproj files (see CI notes)
-4. **Rust** — `cargo build --release` in Scribble.Rust (links against PenSession.Native.lib)
+4. **Rust** — `cargo build --release` in Scribble.Rust (links against WinPenKit.Native.lib)
 
 ### Release artifacts
 On tagged releases, the workflow uploads:
-- PenSession.Native (DLL + lib + header)
+- WinPenKit.Native (DLL + lib + header)
 - Scribble.Win32 (exe + DLL)
 - Scribble.Rust (exe + DLL)
 - Scribble.WinUI, Scribble.Wpf, Scribble.WinForms, Scribble.Avalonia (build output)
@@ -25,9 +25,9 @@ On tagged releases, the workflow uploads:
 
 | Solution | Contents | Built with |
 |---|---|---|
-| `WinPenSession.slnx` | All managed projects except WinUI | `dotnet build` |
-| `NativeCpp.sln` | PenSession.Native + Scribble.Win32 | `msbuild` |
-| WinUI projects | PenSession.WinUI + Scribble.WinUI | `msbuild` (individual .csproj) |
+| `WinPenKit.slnx` | All managed projects except WinUI | `dotnet build` |
+| `WinPenKitNative.sln` | WinPenKit.Native + Scribble.Win32 | `msbuild` |
+| WinUI projects | WinPenKit.WinUI + Scribble.WinUI | `msbuild` (individual .csproj) |
 
 ### CI notes
 - The runner has VS 2022 (v143 toolset). The C++ build overrides `PlatformToolset=v143` since the local projects use v145 (VS 2025).
