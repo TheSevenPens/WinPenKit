@@ -1,11 +1,11 @@
-# How to Use PenSession
+# How to Use WinPenKit
 
-A guide for developers building pen-enabled applications with the PenSession library.
+A guide for developers building pen-enabled applications with the WinPenKit library.
 
 ## Quick Start (C#)
 
 ```csharp
-using PenSession;
+using WinPenKit;
 
 // 1. Discover available APIs.
 var apis = PenSessionFactory.GetAvailableApis();
@@ -178,7 +178,7 @@ Always call `Dispose()` when done — this stops the session and closes the diag
 
 ## Diagnostics
 
-PenSession logs to `%TEMP%\PenSession.log`:
+WinPenKit logs to `%TEMP%\WinPenKit.log`:
 - Context configuration before/after open
 - Hi-res fallback events
 - Button/cursor transitions
@@ -186,7 +186,7 @@ PenSession logs to `%TEMP%\PenSession.log`:
 
 ## Native C++ / Rust Gotchas
 
-These apply when using `PenSession.Native.dll` (the C ABI) or implementing your own Wintab integration:
+These apply when using `WinPenKit.Native.dll` (the C ABI) or implementing your own Wintab integration:
 
 ### 1. Hidden window must not be HWND_MESSAGE
 
@@ -234,4 +234,4 @@ Using `uint` (4 bytes) for `pkContext` in the PACKET struct silently shifts all 
 
 ### 12. WinForms: NativeWindow.AssignHandle crashes on Form HWNDs
 
-Use `IMessageFilter` instead — it intercepts messages at the app message pump level without touching HWND ownership. This is how `PenSession.WinForms` works.
+Use `IMessageFilter` instead — it intercepts messages at the app message pump level without touching HWND ownership. This is how `WinPenKit.WinForms` works.

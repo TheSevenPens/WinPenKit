@@ -1,6 +1,6 @@
-// ScribbleCpp — Minimal Win32 scribble app using the unified PenSession C API.
+// ScribbleCpp — Minimal Win32 scribble app using the unified WinPenKit C API.
 //
-// Proves the native PenSession DLL works end-to-end.
+// Proves the native WinPenKit DLL works end-to-end.
 // Draws pressure-sensitive strokes with GDI.
 // Supports any available input API (Wintab System, Wintab Digitizer, etc.).
 // Ribbon-style toolbar with sectioned pen telemetry.
@@ -805,7 +805,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
     RegisterClassExW(&wc);
 
     HWND hwnd = CreateWindowExW(
-        0, wc.lpszClassName, L"Scribble C++ - PenSession Native",
+        0, wc.lpszClassName, L"Scribble C++ - WinPenKit Native",
         WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
         CW_USEDEFAULT, CW_USEDEFAULT, 1400, 800,
         nullptr, nullptr, hInst, nullptr);

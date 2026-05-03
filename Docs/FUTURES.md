@@ -9,7 +9,7 @@ The interaction between Wintab and WM_POINTER within a single process is driver-
 
 ## Planned Work
 
-- **NuGet Publishing** — Publish PenSession packages to nuget.org. See [Planning/FUTURES_NUGET.md](Planning/FUTURES_NUGET.md).
+- **NuGet Publishing** — Publish WinPenKit packages to nuget.org. See [Planning/FUTURES_NUGET.md](Planning/FUTURES_NUGET.md).
 
 ## Ideas
 
@@ -17,22 +17,22 @@ The interaction between Wintab and WM_POINTER within a single process is driver-
 COM-based pen input API. Lower latency than WM_POINTER (sync plugins run on the pen thread). Only worth implementing if a specific latency advantage is demonstrated.
 
 ### Stroke smoothing / interpolation
-PenPoint streams are raw samples. Drawing apps typically apply Catmull-Rom or cubic Bézier interpolation for smoother curves. This could be a shared utility in PenSession rather than per-app logic.
+PenPoint streams are raw samples. Drawing apps typically apply Catmull-Rom or cubic Bézier interpolation for smoother curves. This could be a shared utility in WinPenKit rather than per-app logic.
 
 ### Pressure curve mapping
-Map raw pressure to a response curve (linear, S-curve, logarithmic) before the brush engine sees it. Common in drawing apps, could be a PenSession utility.
+Map raw pressure to a response curve (linear, S-curve, logarithmic) before the brush engine sees it. Common in drawing apps, could be a WinPenKit utility.
 
 ### Multi-touch discrimination
-WM_POINTER supports both pen and touch. PenSession currently filters for `PT_PEN` only. Supporting touch alongside pen (palm rejection, gesture recognition) is a separate concern but uses the same API infrastructure.
+WM_POINTER supports both pen and touch. WinPenKit currently filters for `PT_PEN` only. Supporting touch alongside pen (palm rejection, gesture recognition) is a separate concern but uses the same API infrastructure.
 
 ### ARM64 support
-PenSession.Native currently builds for x64 only. ARM64 build configuration would support Surface Pro X and Snapdragon laptops. The code is architecture-neutral — just needs the build target added.
+WinPenKit.Native currently builds for x64 only. ARM64 build configuration would support Surface Pro X and Snapdragon laptops. The code is architecture-neutral — just needs the build target added.
 
 ### Remove WintabDN and ExtensionTestApp
-WintabDN is only needed for ExtensionTestApp (tablet extensions). If extension support is added to PenSession directly, both can be removed, eliminating the last legacy dependency.
+WintabDN is only needed for ExtensionTestApp (tablet extensions). If extension support is added to WinPenKit directly, both can be removed, eliminating the last legacy dependency.
 
 ### Cross-platform (via octotablet)
-PenSession is Windows-only. For cross-platform pen input, [octotablet](https://github.com/Fuzzyzilla/octotablet) (Rust) is the closest equivalent. A future `PenSession.Linux` or `PenSession.macOS` could wrap platform-native APIs, but this is a major scope expansion.
+WinPenKit is Windows-only. For cross-platform pen input, [octotablet](https://github.com/Fuzzyzilla/octotablet) (Rust) is the closest equivalent. A future `WinPenKit.Linux` or `WinPenKit.macOS` could wrap platform-native APIs, but this is a major scope expansion.
 
 ## Open Questions
 

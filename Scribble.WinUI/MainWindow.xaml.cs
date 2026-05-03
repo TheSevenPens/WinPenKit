@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
-using PenSession;
+using WinPenKit;
 using System.Linq;
 
 namespace Scribble.WinUI;

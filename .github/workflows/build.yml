@@ -30,21 +30,21 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # --- C++ (must build first — Rust links against PenSession.Native.lib) ---
+      # --- C++ (must build first — Rust links against WinPenKit.Native.lib) ---
 
-      - name: Build C++ (PenSession.Native + Scribble.Win32)
-        run: msbuild NativeCpp.sln -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -m
+      - name: Build C++ (WinPenKit.Native + Scribble.Win32)
+        run: msbuild WinPenKitNative.sln -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -m
 
       # --- .NET ---
       # WinUI requires msbuild due to a .NET 10 preview gap: the ExpandPriContent
       # PRI task DLL is missing from the dotnet CLI SDK.
 
       - name: Build .NET
-        run: dotnet build WinPenSession.slnx -c Release
+        run: dotnet build WinPenKit.slnx -c Release
 
       - name: Build WinUI (msbuild)
         run: |
-          msbuild PenSession.WinUI/PenSession.WinUI.csproj -p:Configuration=Release -p:Platform=x64 -restore
+          msbuild WinPenKit.WinUI/WinPenKit.WinUI.csproj -p:Configuration=Release -p:Platform=x64 -restore
           msbuild Scribble.WinUI/Scribble.WinUI.csproj -p:Configuration=Release -p:Platform=x64 -restore
 
       # --- Rust ---
@@ -52,11 +52,11 @@ jobs:
       - name: Build Rust
         working-directory: Scribble.Rust
         env:
-          RUSTFLAGS: -L native=${{ github.workspace }}/PenSession.Native/bin/Release/x64
+          RUSTFLAGS: -L native=${{ github.workspace }}/WinPenKit.Native/bin/Release/x64
         run: cargo build --release
 
-      - name: Copy PenSession.Native.dll to Rust output
-        run: copy PenSession.Native\bin\Release\x64\PenSession.Native.dll Scribble.Rust\target\release\
+      - name: Copy WinPenKit.Native.dll to Rust output
+        run: copy WinPenKit.Native\bin\Release\x64\WinPenKit.Native.dll Scribble.Rust\target\release\
 
       # --- Artifacts ---
 
@@ -64,8 +64,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/release/v')
         shell: bash
         run: |
-          mkdir -p artifacts/PenSession.Native
-          mkdir -p artifacts/PenSession.Managed
+          mkdir -p artifacts/WinPenKit.Native
+          mkdir -p artifacts/WinPenKit.Managed
           mkdir -p artifacts/Scribble.Win32
           mkdir -p artifacts/Scribble.Rust
           mkdir -p artifacts/Scribble.WinUI
@@ -74,12 +74,12 @@ jobs:
           mkdir -p artifacts/Scribble.Avalonia
 
           # Native DLL + headers
-          cp PenSession.Native/bin/Release/x64/PenSession.Native.dll artifacts/PenSession.Native/
-          cp PenSession.Native/bin/Release/x64/PenSession.Native.lib artifacts/PenSession.Native/
-          cp PenSession.Native/include/pen_session.h artifacts/PenSession.Native/
+          cp WinPenKit.Native/bin/Release/x64/WinPenKit.Native.dll artifacts/WinPenKit.Native/
+          cp WinPenKit.Native/bin/Release/x64/WinPenKit.Native.lib artifacts/WinPenKit.Native/
+          cp WinPenKit.Native/include/pen_session.h artifacts/WinPenKit.Native/
 
           # Managed library DLLs — pre-NuGet stopgap for .NET consumers.
-          # Ships every PenSession.* assembly + PDBs + xmldoc (if generated).
+          # Ships every WinPenKit.* assembly + PDBs + xmldoc (if generated).
           # Consumers reference whichever subset they need via <Reference HintPath>.
           # The .dll is required (fail loudly if missing); .pdb/.xml are
           # optional — only copied if they exist.
@@ -88,27 +88,27 @@ jobs:
           stage_managed_dll() {
             local src_dir="$1"
             local name="$2"
-            cp "$src_dir/$name.dll" artifacts/PenSession.Managed/
+            cp "$src_dir/$name.dll" artifacts/WinPenKit.Managed/
             for ext in pdb xml; do
               if [ -f "$src_dir/$name.$ext" ]; then
-                cp "$src_dir/$name.$ext" artifacts/PenSession.Managed/
+                cp "$src_dir/$name.$ext" artifacts/WinPenKit.Managed/
               fi
             done
           }
-          for proj in PenSession PenSession.Wpf PenSession.WinForms PenSession.Avalonia; do
+          for proj in WinPenKit WinPenKit.Wpf WinPenKit.WinForms WinPenKit.Avalonia; do
             stage_managed_dll "$proj/bin/Release/net10.0-windows" "$proj"
           done
           # WinUI builds via msbuild -p:Platform=x64 → different output path.
-          winui_dir=$(echo PenSession.WinUI/bin/x64/Release/net10.0-windows*)
-          stage_managed_dll "$winui_dir" PenSession.WinUI
+          winui_dir=$(echo WinPenKit.WinUI/bin/x64/Release/net10.0-windows*)
+          stage_managed_dll "$winui_dir" WinPenKit.WinUI
 
           # Scribble.Win32
           cp Scribble.Win32/bin/Release/x64/*.exe artifacts/Scribble.Win32/
-          cp PenSession.Native/bin/Release/x64/PenSession.Native.dll artifacts/Scribble.Win32/
+          cp WinPenKit.Native/bin/Release/x64/WinPenKit.Native.dll artifacts/Scribble.Win32/
 
           # Scribble.Rust
           cp Scribble.Rust/target/release/scribble-rust.exe artifacts/Scribble.Rust/
-          cp Scribble.Rust/target/release/PenSession.Native.dll artifacts/Scribble.Rust/
+          cp Scribble.Rust/target/release/WinPenKit.Native.dll artifacts/Scribble.Rust/
 
           # Managed scribble apps — publish self-contained output.
           # WinUI uses msbuild with -p:Platform=x64 so its output sits under
@@ -122,7 +122,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/release/v')
         uses: actions/upload-artifact@v4
         with:
-          name: WinPenSession-release
+          name: WinPenKit-release
           path: artifacts/
 
       # --- GitHub Release ---

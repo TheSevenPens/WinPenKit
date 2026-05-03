@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using System.Diagnostics;
 using Windows.Foundation;
-using PenSession;
+using WinPenKit;
 
 namespace Scribble.WinUI.Controls;
 
@@ -150,8 +150,8 @@ public sealed partial class ScribbleRibbon : UserControl
 
     private void LogLink_Click(object sender, RoutedEventArgs e)
     {
-        // PenSession logs to %TEMP%\PenSession.log
-        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PenSession.log");
+        // WinPenKit logs to %TEMP%\WinPenKit.log
+        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "WinPenKit.log");
         if (System.IO.File.Exists(path))
             Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
     }

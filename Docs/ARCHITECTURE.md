@@ -2,7 +2,7 @@
 
 ## Overview
 
-WinPenSession is a layered pen input SDK. The core abstraction (`IPenSession`) sits between platform-specific input APIs and consumer applications. Each layer has a single responsibility.
+WinPenKit is a layered pen input SDK. The core abstraction (`IPenSession`) sits between platform-specific input APIs and consumer applications. Each layer has a single responsibility.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -29,7 +29,7 @@ WinPenSession is a layered pen input SDK. The core abstraction (`IPenSession`) s
 
 ## Components
 
-### Core Library — `PenSession`
+### Core Library — `WinPenKit`
 
 **Role:** Framework-agnostic pen input abstraction for .NET apps.
 
@@ -47,7 +47,7 @@ WinPenSession is a layered pen input SDK. The core abstraction (`IPenSession`) s
 
 **Dependencies:** None. Has its own Wintab P/Invoke layer (`Wintab/WintabNative.cs`), message pump (`WintabMessagePump.cs`), and WM_POINTER P/Invoke (`Pointer/PointerNative.cs`).
 
-### Native Library — `PenSession.Native`
+### Native Library — `WinPenKit.Native`
 
 **Role:** C ABI DLL for native consumers (C++, Rust, Zig).
 
@@ -60,7 +60,7 @@ WinPenSession is a layered pen input SDK. The core abstraction (`IPenSession`) s
 - `scale_axis.h` — coordinate conversion with Y-axis sign-flip
 - `log.h` — thread-safe file logger
 
-**Output:** `PenSession.Native.dll` + `PenSession.Native.lib`
+**Output:** `WinPenKit.Native.dll` + `WinPenKit.Native.lib`
 
 **Dependencies:** None (dynamically loads `Wintab32.dll` and `user32.dll`).
 
@@ -70,12 +70,12 @@ Each extends `IPenSession` for a specific UI framework's native pointer events.
 
 | Package | Backend class | Input mechanism | Dependency |
 |---|---|---|---|
-| `PenSession.WinUI` | `WinUiPointerSession` | XAML `PointerMoved` events | Windows App SDK |
-| `PenSession.Wpf` | `WpfStylusSession` | WPF `StylusMove` events | WPF |
-| `PenSession.WinForms` | `WinFormsPointerSession` | `IMessageFilter` | WinForms |
-| `PenSession.Avalonia` | `AvaloniaPointerSession` | Avalonia `PointerMoved` events | Avalonia |
+| `WinPenKit.WinUI` | `WinUiPointerSession` | XAML `PointerMoved` events | Windows App SDK |
+| `WinPenKit.Wpf` | `WpfStylusSession` | WPF `StylusMove` events | WPF |
+| `WinPenKit.WinForms` | `WinFormsPointerSession` | `IMessageFilter` | WinForms |
+| `WinPenKit.Avalonia` | `AvaloniaPointerSession` | Avalonia `PointerMoved` events | Avalonia |
 
-Each references `PenSession` (for `IPenSession` and `PenPoint`) plus its framework.
+Each references `WinPenKit` (for `IPenSession` and `PenPoint`) plus its framework.
 
 ### Scribble Apps
 
@@ -93,31 +93,31 @@ Each app:
 
 | Project | Role |
 |---|---|
-| `PenSession.TestConsole` | Headless Wintab testing |
+| `WinPenKit.TestConsole` | Headless Wintab testing |
 | `ExtensionTestApp` | Tablet extension controls (ExpressKeys, Touch Rings) |
 | `WintabDN` | Low-level Wintab .NET wrapper — used only by ExtensionTestApp |
 
 ## Dependency Graph
 
 ```
-PenSession.WinUI ──┐
-PenSession.Wpf ────┤
-PenSession.WinForms┼──► PenSession (core)
-PenSession.Avalonia┘         │
+WinPenKit.WinUI ──┐
+WinPenKit.Wpf ────┤
+WinPenKit.WinForms┼──► WinPenKit (core)
+WinPenKit.Avalonia┘         │
                               │ (no dependency)
-PenSession.Native             │ (independent C++ implementation)
+WinPenKit.Native             │ (independent C++ implementation)
                               │
-Scribble.WinUI ───► PenSession + PenSession.WinUI
-Scribble.Wpf ─────► PenSession + PenSession.Wpf
-Scribble.WinForms ─► PenSession + PenSession.WinForms
-Scribble.Avalonia ─► PenSession + PenSession.Avalonia
-Scribble.Win32 ────► PenSession.Native (via C ABI)
-Scribble.Rust ─────► PenSession.Native (via FFI)
-PenSession.TestConsole ► PenSession
+Scribble.WinUI ───► WinPenKit + WinPenKit.WinUI
+Scribble.Wpf ─────► WinPenKit + WinPenKit.Wpf
+Scribble.WinForms ─► WinPenKit + WinPenKit.WinForms
+Scribble.Avalonia ─► WinPenKit + WinPenKit.Avalonia
+Scribble.Win32 ────► WinPenKit.Native (via C ABI)
+Scribble.Rust ─────► WinPenKit.Native (via FFI)
+WinPenKit.TestConsole ► WinPenKit
 ExtensionTestApp ──► WintabDN
 ```
 
-`PenSession` and `PenSession.Native` are **peers** — two independent implementations of the same concept. Neither depends on the other.
+`WinPenKit` and `WinPenKit.Native` are **peers** — two independent implementations of the same concept. Neither depends on the other.
 
 ## Key Design Decisions
 
@@ -129,10 +129,10 @@ ExtensionTestApp ──► WintabDN
 
 4. **Factory for framework-agnostic, constructors for framework-specific.** `PenSessionFactory.Create()` handles Wintab and WM_POINTER. Framework-specific sessions need UI elements and are created directly by the app.
 
-5. **No shared code between managed and native.** `PenSession` (C#) and `PenSession.Native` (C++) reimplement the same logic independently. The knowledge is shared via documentation, not code.
+5. **No shared code between managed and native.** `WinPenKit` (C#) and `WinPenKit.Native` (C++) reimplement the same logic independently. The knowledge is shared via documentation, not code.
 
 6. **WM_POINTER coalescing requires history recovery.** When the UI thread is busy, Windows coalesces multiple `WM_POINTERUPDATE` messages into one. `WmPointerSession` calls `GetPointerPenInfoHistory` to recover all intermediate points — but only when `count > 1`. The `count == 1` history path returns subtly different data that causes silent data loss. Framework-specific sessions (WinUI, WPF, Avalonia) are not affected because those frameworks decoalesce pointer events internally.
 
 7. **Wintab/WM_POINTER coexistence is driver-dependent.** Once a Wintab context has been opened, some drivers may suppress WM_POINTER for the process lifetime. In practice, runtime switching works cleanly when sessions are stopped/started sequentially, but this is not fully characterized across all driver versions.
 
-8. **Runtime API switching without restart.** Qt-based apps like Krita require a restart to switch between Wintab and WM_POINTER because Qt's platform plugin makes the input-path decision at process startup (`-platform windows:nowmpointer`). PenSession avoids this because it owns the input layer directly — sessions are independent objects, and switching is `session.Stop(); session = factory.Create(newApi); session.Start();`. This runtime-switching capability is one of the strongest arguments for building our own unified session rather than depending on a framework's built-in tablet support.
+8. **Runtime API switching without restart.** Qt-based apps like Krita require a restart to switch between Wintab and WM_POINTER because Qt's platform plugin makes the input-path decision at process startup (`-platform windows:nowmpointer`). WinPenKit avoids this because it owns the input layer directly — sessions are independent objects, and switching is `session.Stop(); session = factory.Create(newApi); session.Start();`. This runtime-switching capability is one of the strongest arguments for building our own unified session rather than depending on a framework's built-in tablet support.

@@ -1,45 +1,45 @@
 # NuGet Publishing Plan
 
-Design discussion for publishing PenSession as a shared library via NuGet.
+Design discussion for publishing WinPenKit as a shared library via NuGet.
 
 ## What to Publish
 
 There are three packaging options:
 
-### Option A: Managed NuGets (C# PenSession + framework adapters)
+### Option A: Managed NuGets (C# WinPenKit + framework adapters)
 
 Standard .NET NuGet packages. Consumers add a PackageReference and get the managed library. The managed side is actually multiple packages — the framework-agnostic core plus a per-framework adapter that the consumer's UI stack pulls in:
 
 ```
-PenSession.nupkg                 (core: IPenSession, PenPoint, factory, Wintab + WM_POINTER backends)
+WinPenKit.nupkg                 (core: IPenSession, PenPoint, factory, Wintab + WM_POINTER backends)
 ├── lib/net10.0-windows/
-│   └── PenSession.dll
+│   └── WinPenKit.dll
 
-PenSession.Wpf.nupkg             (depends on PenSession; adds WpfStylusSession)
-PenSession.WinForms.nupkg        (depends on PenSession; adds WinFormsPointerSession)
-PenSession.Avalonia.nupkg        (depends on PenSession; adds AvaloniaPointerSession)
-PenSession.WinUI.nupkg           (depends on PenSession; adds WinUiPointerSession; needs Windows App SDK)
+WinPenKit.Wpf.nupkg             (depends on WinPenKit; adds WpfStylusSession)
+WinPenKit.WinForms.nupkg        (depends on WinPenKit; adds WinFormsPointerSession)
+WinPenKit.Avalonia.nupkg        (depends on WinPenKit; adds AvaloniaPointerSession)
+WinPenKit.WinUI.nupkg           (depends on WinPenKit; adds WinUiPointerSession; needs Windows App SDK)
 ```
 
-`PenSession` has no third-party dependencies — it ships its own Wintab P/Invoke layer. (The legacy `WintabDN` library is used only by `ExtensionTestApp` for tablet ExpressKeys/Touch Rings and is out of scope here.)
+`WinPenKit` has no third-party dependencies — it ships its own Wintab P/Invoke layer. (The legacy `WintabDN` library is used only by `ExtensionTestApp` for tablet ExpressKeys/Touch Rings and is out of scope here.)
 
 **Pros:** Simplest to build, publish, and consume. Standard `dotnet add package` workflow. Consumers only pull in the framework adapter they actually use.
 **Cons:** .NET only. Five packages to publish in lockstep.
 
-### Option B: Native NuGet (C++ PenSession.Native.dll)
+### Option B: Native NuGet (C++ WinPenKit.Native.dll)
 
 Native NuGet with MSBuild glue to copy the DLL and set up include/lib paths.
 
 ```
-PenSession.Native.nupkg
+WinPenKit.Native.nupkg
 ├── build/native/
-│   └── PenSession.Native.targets
+│   └── WinPenKit.Native.targets
 ├── runtimes/win-x64/native/
-│   └── PenSession.Native.dll
+│   └── WinPenKit.Native.dll
 ├── include/
 │   └── pen_session.h
 ├── lib/native/x64/
-│   └── PenSession.Native.lib
+│   └── WinPenKit.Native.lib
 ```
 
 The `.targets` file tells MSBuild to copy the DLL, link the import library, and add include paths:
@@ -74,11 +74,11 @@ The `.targets` file tells MSBuild to copy the DLL, link the import library, and 
 Ship the native DLL inside a managed NuGet with a thin C# interop wrapper. This is how packages like SkiaSharp and SQLitePCLRaw work.
 
 ```
-PenSession.nupkg
+WinPenKit.nupkg
 ├── lib/net10.0-windows/
-│   └── PenSession.Interop.dll    (thin P/Invoke wrapper)
+│   └── WinPenKit.Interop.dll    (thin P/Invoke wrapper)
 ├── runtimes/win-x64/native/
-│   └── PenSession.Native.dll        (the C++ DLL)
+│   └── WinPenKit.Native.dll        (the C++ DLL)
 ```
 
 **Pros:** Single package, .NET consumers get managed API backed by native performance.
@@ -86,15 +86,15 @@ PenSession.nupkg
 
 ### Recommendation
 
-Start with **Option A** (managed only). It's the simplest, the C# PenSession already works, and most consumers will be .NET apps. Add the native package later if demand exists.
+Start with **Option A** (managed only). It's the simplest, the C# WinPenKit already works, and most consumers will be .NET apps. Add the native package later if demand exists.
 
 ## Project Configuration
 
-Add NuGet metadata to `PenSession.csproj`:
+Add NuGet metadata to `WinPenKit.csproj`:
 
 ```xml
 <PropertyGroup>
-  <PackageId>PenSession</PackageId>
+  <PackageId>WinPenKit</PackageId>
   <Version>1.0.0</Version>
   <Authors>YourName</Authors>
   <Description>Unified pen input SDK for Windows .NET apps (Wintab + WM_POINTER).</Description>
@@ -105,9 +105,9 @@ Add NuGet metadata to `PenSession.csproj`:
 
 ### Framework Adapter Packages
 
-Each framework adapter (`PenSession.Wpf`, `PenSession.WinForms`, `PenSession.Avalonia`, `PenSession.WinUI`) needs its own `.csproj` NuGet metadata declaring `PenSession` as a `PackageReference` (with version). Publish all five together on each tag — version-skew between core and adapters is the most likely cause of consumer breakage.
+Each framework adapter (`WinPenKit.Wpf`, `WinPenKit.WinForms`, `WinPenKit.Avalonia`, `WinPenKit.WinUI`) needs its own `.csproj` NuGet metadata declaring `WinPenKit` as a `PackageReference` (with version). Publish all five together on each tag — version-skew between core and adapters is the most likely cause of consumer breakage.
 
-`PenSession.WinUI` additionally depends on Windows App SDK and must target a Windows 10 SDK version; expect that package to be more brittle than the others.
+`WinPenKit.WinUI` additionally depends on Windows App SDK and must target a Windows 10 SDK version; expect that package to be more brittle than the others.
 
 ## Versioning
 
@@ -183,7 +183,7 @@ Add MSBuild to the workflow for the C++ build:
       - uses: microsoft/setup-msbuild@v2
 
       # Build native DLL first
-      - run: msbuild NativeCpp.sln -p:Configuration=Release -p:Platform=x64
+      - run: msbuild WinPenKitNative.sln -p:Configuration=Release -p:Platform=x64
 
       # Then build/pack managed
       - run: dotnet restore
@@ -248,7 +248,7 @@ dotnet pack -c Release -o ./local-feed
 dotnet nuget add source ./local-feed --name local
 
 # Test in a separate project
-dotnet add package PenSession --source local
+dotnet add package WinPenKit --source local
 ```
 
 ### Important: NuGet Packages Are Immutable
@@ -261,7 +261,7 @@ If CI/CD feels premature, you can publish manually:
 
 ```bash
 dotnet pack -c Release -o ./nupkgs
-dotnet nuget push ./nupkgs/PenSession.1.0.0.nupkg \
+dotnet nuget push ./nupkgs/WinPenKit.1.0.0.nupkg \
   --source https://api.nuget.org/v3/index.json \
   --api-key YOUR_KEY
 ```
