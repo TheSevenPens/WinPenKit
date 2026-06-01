@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 
 namespace WinPenKit.Avalonia;
@@ -35,18 +36,22 @@ public sealed class AvaloniaPointerSession : IPenSession
 
     public string? Start(IntPtr appWindowHandle = default)
     {
-        _element.PointerMoved += OnPointerEvent;
-        _element.PointerPressed += OnPointerEvent;
-        _element.PointerReleased += OnPointerEvent;
+        // Use Tunnel routing so events are received at this element before any
+        // child control can mark them Handled and suppress bubbling. This ensures
+        // AvaloniaPointerSession works correctly when attached to a root/container
+        // element that hosts interactive children (TextBox, Button, etc.).
+        _element.AddHandler(InputElement.PointerMovedEvent,    OnPointerEvent, RoutingStrategies.Tunnel);
+        _element.AddHandler(InputElement.PointerPressedEvent,  OnPointerEvent, RoutingStrategies.Tunnel);
+        _element.AddHandler(InputElement.PointerReleasedEvent, OnPointerEvent, RoutingStrategies.Tunnel);
         IsRunning = true;
         return null;
     }
 
     public void Stop()
     {
-        _element.PointerMoved -= OnPointerEvent;
-        _element.PointerPressed -= OnPointerEvent;
-        _element.PointerReleased -= OnPointerEvent;
+        _element.RemoveHandler(InputElement.PointerMovedEvent,    OnPointerEvent);
+        _element.RemoveHandler(InputElement.PointerPressedEvent,  OnPointerEvent);
+        _element.RemoveHandler(InputElement.PointerReleasedEvent, OnPointerEvent);
         IsRunning = false;
     }
 
