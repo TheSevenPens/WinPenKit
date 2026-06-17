@@ -54,6 +54,7 @@ public sealed class WinUiPointerSession : IPenSession
     public bool IsRunning { get; private set; }
     public bool HasNewData => _hasNewData;
     public string DebugInfo => $"[WinUI Pointer] Element={_element.GetType().Name}";
+    public IPenCaptureRegion? CaptureRegion { get; set; }
 
     /// <summary>
     /// Creates a WinUI pointer session targeting a specific XAML element.
@@ -119,6 +120,10 @@ public sealed class WinUiPointerSession : IPenSession
         // Convert element-relative DIPs to desktop screen pixels.
         var (desktopX, desktopY) = ElementDipsToDesktopPixels(
             point.Position.X, point.Position.Y);
+
+        // Spatial scope: drop points outside an explicit capture region.
+        if (CaptureRegion is { } region && !region.Contains(desktopX, desktopY))
+            return;
 
         // Pressure: PointerPoint gives 0.0–1.0, scale to 0–1024.
         uint pressure = (uint)(props.Pressure * 1024f);

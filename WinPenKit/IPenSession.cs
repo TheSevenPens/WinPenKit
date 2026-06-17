@@ -69,6 +69,29 @@ public interface IPenSession : IDisposable
     /// <summary>Diagnostic info about the session configuration.</summary>
     string DebugInfo { get; }
 
+    // ── Capture region ──────────────────────────────────────────
+
+    /// <summary>
+    /// Constrains which pen points are reported by their desktop (physical
+    /// screen-pixel) position. Points outside the region are dropped before
+    /// they are queued.
+    ///
+    /// <para><c>null</c> (the default) means <b>window-scoped</b>: the session
+    /// reports points only within the application window passed to
+    /// <see cref="Start"/>. (Framework pointer sessions are already scoped to
+    /// their control, so <c>null</c> leaves that natural scope unchanged.)</para>
+    ///
+    /// <para>Set <see cref="PenCaptureRegion.Unbounded"/> for desktop-wide
+    /// capture — honored only by backends advertising
+    /// <see cref="PenCapabilities.GlobalCapture"/>. Set a custom region (e.g.
+    /// a control's live bounds) to scope capture to part of the window, so that
+    /// every backend behaves identically.</para>
+    ///
+    /// <para>May be set before or after <see cref="Start"/>; it takes effect on
+    /// the next point.</para>
+    /// </summary>
+    IPenCaptureRegion? CaptureRegion { get; set; }
+
     // ── Mapping ─────────────────────────────────────────────────
 
     /// <summary>

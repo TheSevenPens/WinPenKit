@@ -19,6 +19,10 @@ internal abstract class WintabSessionBase : IPenSession
     private uint _lastCursor;
     private string _debugInfo = "";
 
+    // Default capture scope when CaptureRegion is not set: the app window the
+    // consumer passed to Start (Unbounded if no handle was supplied).
+    private IPenCaptureRegion _defaultRegion = PenCaptureRegion.Unbounded;
+
     // ── Public API ───────────────────────────────────────────────
 
     public bool IsRunning { get; private set; }
@@ -27,10 +31,19 @@ internal abstract class WintabSessionBase : IPenSession
     public abstract PenCapabilities Capabilities { get; }
     public string DebugInfo => _debugInfo;
     public int MaxPressure { get; private set; }
+    public IPenCaptureRegion? CaptureRegion { get; set; }
+
+    /// <summary>The region that points are currently filtered against.</summary>
+    private IPenCaptureRegion EffectiveRegion => CaptureRegion ?? _defaultRegion;
 
     public string? Start(IntPtr appWindowHandle = default)
     {
-        // Wintab sessions ignore the app window handle — they create their own pump window.
+        // Wintab creates its own hidden pump window for WT_PACKET delivery, but
+        // we keep the consumer's app window handle to scope capture to it by
+        // default — otherwise Wintab would report points across the whole
+        // desktop, unlike the window/control-scoped pointer backends.
+        _defaultRegion = PenCaptureRegion.Window(appWindowHandle);
+
         if (!WintabNative.IsAvailable())
             return "Wintab not found. Is the tablet driver installed?";
 
@@ -155,6 +168,11 @@ internal abstract class WintabSessionBase : IPenSession
             if (pkt.pkContext == IntPtr.Zero) return;
 
             var (desktopX, desktopY) = ConvertCoordinates(pkt.pkX, pkt.pkY);
+
+            // Spatial scope: drop points outside the capture region so Wintab
+            // matches the window/control-scoped pointer backends.
+            if (!EffectiveRegion.Contains(desktopX, desktopY))
+                return;
 
             // Log button/cursor transitions.
             if (pkt.pkButtons != _lastButtons || pkt.pkCursor != _lastCursor)

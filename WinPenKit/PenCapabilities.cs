@@ -30,4 +30,11 @@ public enum PenCapabilities
 
     /// <summary>Eraser detection (via cursor type or pen flags).</summary>
     Eraser = 1 << 6,
+
+    /// <summary>
+    /// Desktop-wide capture: the session can report points anywhere on screen,
+    /// not just over the application window. Set <see cref="IPenSession.CaptureRegion"/>
+    /// to <see cref="PenCaptureRegion.Unbounded"/> to use it. Wintab only.
+    /// </summary>
+    GlobalCapture = 1 << 7,
 }

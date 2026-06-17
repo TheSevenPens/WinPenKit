@@ -36,6 +36,7 @@ public sealed class WpfStylusSession : IPenSession
     public bool IsRunning { get; private set; }
     public bool HasNewData => _hasNewData;
     public string DebugInfo => $"[WPF Stylus] Element={_element.GetType().Name}";
+    public IPenCaptureRegion? CaptureRegion { get; set; }
 
     /// <summary>
     /// Creates a WPF stylus session targeting a specific element.
@@ -111,6 +112,10 @@ public sealed class WpfStylusSession : IPenSession
                 // PointToScreen can fail if the element is not connected to a visual tree.
                 continue;
             }
+
+            // Spatial scope: drop points outside an explicit capture region.
+            if (CaptureRegion is { } region && !region.Contains(screenPt.X, screenPt.Y))
+                continue;
 
             // Pressure: 0.0–1.0 → 0–1024.
             uint pressure = (uint)(sp.PressureFactor * 1024f);

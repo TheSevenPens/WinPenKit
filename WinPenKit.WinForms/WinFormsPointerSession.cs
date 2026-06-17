@@ -27,6 +27,7 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
     public bool IsRunning { get; private set; }
     public bool HasNewData => _hasNewData;
     public string DebugInfo => $"[WinForms Pointer] Control={_control.GetType().Name}";
+    public IPenCaptureRegion? CaptureRegion { get; set; }
 
     /// <summary>
     /// Creates a WinForms pointer session.
@@ -121,6 +122,10 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
     {
         double desktopX = penInfo.pointerInfo.ptPixelLocationRaw.X;
         double desktopY = penInfo.pointerInfo.ptPixelLocationRaw.Y;
+
+        // Spatial scope: drop points outside an explicit capture region.
+        if (CaptureRegion is { } region && !region.Contains(desktopX, desktopY))
+            return;
 
         uint pressure = (penInfo.penMask & PointerApi.PEN_MASK_PRESSURE) != 0
             ? penInfo.pressure : 0;

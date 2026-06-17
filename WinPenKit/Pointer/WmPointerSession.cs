@@ -18,6 +18,7 @@ internal sealed class WmPointerSession : IPenSession
     private readonly ConcurrentQueue<PenPoint> _points = new();
     private volatile bool _hasNewData;
     private string _debugInfo = "";
+    private IPenCaptureRegion _defaultRegion = PenCaptureRegion.Unbounded;
 
     // Must prevent GC of the delegate while the subclass is active.
     private PointerNative.SubclassProc? _subclassDelegate;
@@ -35,6 +36,7 @@ internal sealed class WmPointerSession : IPenSession
     public bool IsRunning { get; private set; }
     public bool HasNewData => _hasNewData;
     public string DebugInfo => _debugInfo;
+    public IPenCaptureRegion? CaptureRegion { get; set; }
 
     public string? Start(IntPtr appWindowHandle = default)
     {
@@ -45,6 +47,7 @@ internal sealed class WmPointerSession : IPenSession
             return "WM_POINTER requires an application window handle.";
 
         _appHwnd = appWindowHandle;
+        _defaultRegion = PenCaptureRegion.Window(appWindowHandle);
 
         // Pin the delegate to prevent GC while the subclass is active.
         _subclassDelegate = SubclassProc;
@@ -125,6 +128,10 @@ internal sealed class WmPointerSession : IPenSession
 
         double desktopX = penInfo.pointerInfo.ptPixelLocationRaw.X;
         double desktopY = penInfo.pointerInfo.ptPixelLocationRaw.Y;
+
+        // Spatial scope: drop points outside the capture region.
+        if (!(CaptureRegion ?? _defaultRegion).Contains(desktopX, desktopY))
+            return;
 
         // Pressure (0-1024).
         uint pressure = (penInfo.penMask & PointerNative.PEN_MASK_PRESSURE) != 0

@@ -28,6 +28,7 @@ public sealed class AvaloniaPointerSession : IPenSession
     public bool IsRunning { get; private set; }
     public bool HasNewData => _hasNewData;
     public string DebugInfo => $"[Avalonia Pointer] Element={_element.GetType().Name}";
+    public IPenCaptureRegion? CaptureRegion { get; set; }
 
     public AvaloniaPointerSession(Control element)
     {
@@ -106,6 +107,11 @@ public sealed class AvaloniaPointerSession : IPenSession
         {
             return;
         }
+
+        // Spatial scope: drop points outside an explicit capture region. (With
+        // no region this session is already scoped to its attached control.)
+        if (CaptureRegion is { } region && !region.Contains(desktopX, desktopY))
+            return;
 
         // Pressure: 0.0–1.0 → 0–1024.
         uint pressure = (uint)(props.Pressure * 1024f);
