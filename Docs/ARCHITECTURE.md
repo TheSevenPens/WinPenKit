@@ -38,7 +38,8 @@ WinPenKit is a layered pen input SDK. The core abstraction (`IPenSession`) sits 
 - `PenPoint` — the universal pen data record (desktop coords, pressure, tilt, buttons)
 - `PenSessionFactory` — discovers available APIs, creates sessions
 - `InputApi` enum — identifies each backend
-- `PenCapabilities` flags — advertises what a backend supports
+- `PenCapabilities` flags — advertises what a backend supports (incl. `GlobalCapture`)
+- `IPenCaptureRegion` + `PenCaptureRegion` — screen-space spatial scope (`Unbounded` / `Window` / `Rect`); see design decision 9
 
 **Backends (internal):**
 - `WintabSystemSession` — Wintab system context (screen pixels)
@@ -136,3 +137,5 @@ ExtensionTestApp ──► WintabDN
 7. **Wintab/WM_POINTER coexistence is driver-dependent.** Once a Wintab context has been opened, some drivers may suppress WM_POINTER for the process lifetime. In practice, runtime switching works cleanly when sessions are stopped/started sequentially, but this is not fully characterized across all driver versions.
 
 8. **Runtime API switching without restart.** Qt-based apps like Krita require a restart to switch between Wintab and WM_POINTER because Qt's platform plugin makes the input-path decision at process startup (`-platform windows:nowmpointer`). WinPenKit avoids this because it owns the input layer directly — sessions are independent objects, and switching is `session.Stop(); session = factory.Create(newApi); session.Start();`. This runtime-switching capability is one of the strongest arguments for building our own unified session rather than depending on a framework's built-in tablet support.
+
+9. **Consistent spatial scope via capture region.** The backends natively disagree on *where the pen must be* to produce data — Wintab is desktop-global, WM_POINTER is window-scoped, the framework pointer sessions are control-scoped. `IPenSession.CaptureRegion` (a screen-pixel `Contains` filter applied before points are queued) normalizes this: `null` defaults every backend to window scope (Wintab stores the `Start` hwnd and filters to it), a custom region scopes all backends identically, and `PenCaptureRegion.Unbounded` re-enables desktop-wide capture on backends that advertise `PenCapabilities.GlobalCapture` (Wintab only). The filter runs on the *producing* thread — the background pump thread for Wintab — so regions must be thread-safe and UI-free; `WinPenKit.Avalonia.ControlCaptureRegion` caches a control's screen rect on the UI thread for exactly this reason. v1 filters by rectangle only (no occlusion / z-order). See [STYLUS.md → Spatial Scope](STYLUS.md#spatial-scope-capture-region) and [HOW_TO_USE.md](HOW_TO_USE.md#capture-region-spatial-scope).

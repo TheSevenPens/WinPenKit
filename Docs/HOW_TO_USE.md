@@ -123,6 +123,55 @@ Wintab always reports physical screen pixels. Your app must be **Per-Monitor V2 
 
 See the [devnotes DPI article](https://github.com/TheSevenPens/devnotes) for the full deep-dive.
 
+## Capture Region (Spatial Scope)
+
+The input paths natively disagree on **where the pen has to be** for your app to get data: Wintab is desktop-global, WM_POINTER is window-scoped, and the framework pointer sessions are control-scoped. `IPenSession.CaptureRegion` normalizes this so one app behaves identically on every backend. (For *why* the backends differ, see [STYLUS.md → Spatial Scope](STYLUS.md#spatial-scope-capture-region).)
+
+```csharp
+// Default (CaptureRegion == null): window-scoped on every backend.
+// Wintab is filtered to the app window passed to Start(), matching the
+// pointer backends instead of capturing across the whole desktop.
+session.Start(appHwnd);
+
+// Scope to a fixed screen rectangle.
+session.CaptureRegion = PenCaptureRegion.Rect(x, y, width, height);
+
+// Scope to a window's live bounds (tracks moves/resizes).
+session.CaptureRegion = PenCaptureRegion.Window(appHwnd);
+
+// Opt back in to desktop-wide capture (Wintab only — see below).
+session.CaptureRegion = PenCaptureRegion.Unbounded;
+```
+
+`CaptureRegion` may be set before or after `Start()`; it takes effect on the next point.
+
+### Scope to a control (Avalonia)
+
+`WinPenKit.Avalonia` ships `ControlCaptureRegion`, which tracks an Avalonia control's live on-screen bounds — so Wintab (desktop-global by default) is constrained to the same canvas the pointer backends already see:
+
+```csharp
+var region = new ControlCaptureRegion(canvasControl);
+session.CaptureRegion = region;
+// ...
+session.Stop();
+region.Dispose();   // unsubscribes from layout / window-move events
+```
+
+It is DPI-correct (corners projected through `PointToScreen`) and thread-safe: the screen rectangle is cached on the UI thread and `Contains()` only reads the cache, so it is safe to evaluate from Wintab's background capture thread. Construct and dispose it on the UI thread.
+
+### Desktop-wide capture
+
+Only backends advertising `PenCapabilities.GlobalCapture` (Wintab System and Digitizer) can deliver points outside the app window. Probe before relying on it:
+
+```csharp
+if (session.Capabilities.HasFlag(PenCapabilities.GlobalCapture))
+    session.CaptureRegion = PenCaptureRegion.Unbounded;
+```
+
+On other backends `Unbounded` is harmless but inert — the OS still limits them to their window or control.
+
+> **v1 limitation:** the region is a screen rectangle with no occlusion test — a point passes if it falls within the bounds even when another window is on top.
+
 ## Buttons and Eraser
 
 ### Use `PenButtonTracker` (recommended)

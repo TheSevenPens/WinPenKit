@@ -8,6 +8,7 @@ This is a unified pen input SDK for modern Windows writen for someone devleoping
 - You don't need to know anything about the complications of WinTab drivers
 - Both managed and unmanaged libraries are provided so you can use the languages you want
 - Can switch APIs in your apps dynamically without even restarting the app
+- Consistent spatial scope across every API — Wintab, WM_POINTER, and framework pointer events all deliver pen data over the same region
 - Supports WinTab high-resolution 
 
 ## Packages

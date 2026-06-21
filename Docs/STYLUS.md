@@ -23,6 +23,7 @@ The Wintab API has been the standard for tablet input since 1991. It is provided
 - Provides all pen data: position, pressure, azimuth, altitude, twist, Z height, buttons, cursor type
 - Two modes: System (screen pixels) and Digitizer (tablet-native hi-res ~5080 LPI)
 - Works in every UI framework because it creates its own window
+- **Desktop-global by nature** — delivers packets anywhere on screen, even when the pen is over another window. WinPenKit scopes this to the app window by default (see [Spatial Scope](#spatial-scope-capture-region))
 
 ### Windows Pointer (WM_POINTER)
 
@@ -44,6 +45,7 @@ The modern Windows pen input path, introduced in Windows 8. Built into the OS �
 - No Z height, no barrel pressure, no azimuth/altitude (only planar tilt)
 - Events may be coalesced — use `GetPointerPenInfoHistory` to recover (see gotchas)
 - Fixed pressure range (0–1024) vs Wintab's device-specific range
+- **Window-scoped by nature** — only delivers points over the app window; the framework pointer sessions (WinUI, WPF, WinForms, Avalonia) are narrower still, scoped to the attached control (see [Spatial Scope](#spatial-scope-capture-region))
 
 ## How Switching Works
 
@@ -106,6 +108,40 @@ TiltY   =  tiltMag * cos(Azimuth * PI/180)
 ```
 
 These conversions are lossy at extreme angles but accurate enough for brush engines. Calligraphy brushes may prefer Azimuth, physics-based brushes may prefer TiltX/TiltY.
+
+## Spatial Scope (Capture Region)
+
+Beyond data *fields*, the two input paths disagree on something more basic: **where on screen the pen must be** for the app to receive anything at all. Left unnormalized, this makes the same app behave differently depending on the active API — the pen "works" over the whole desktop on Wintab but only over the window (or a single control) on the pointer backends.
+
+| Backend | Native spatial scope |
+|---|---|
+| Wintab System / Digitizer | **Entire desktop** — packets arrive even when the pen is over another window |
+| WM_POINTER | The **app window** only |
+| Framework pointer sessions (WinUI / WPF / WinForms / Avalonia) | The **attached control** only |
+
+WinPenKit normalizes this with `IPenSession.CaptureRegion` — a screen-pixel filter every backend applies before a point is queued:
+
+```csharp
+public interface IPenCaptureRegion
+{
+    bool Contains(double desktopX, double desktopY);   // physical screen pixels
+}
+
+public static class PenCaptureRegion
+{
+    IPenCaptureRegion Unbounded { get; }                 // accept every point
+    IPenCaptureRegion Window(IntPtr hwnd);               // a window's live GetWindowRect bounds
+    IPenCaptureRegion Rect(double x, y, w, h);           // a fixed screen rectangle
+}
+```
+
+- **`null` (the default) → window-scoped.** Wintab now records the app-window handle passed to `Start` and filters to it, so its default matches the pointer backends instead of spilling across the desktop. Pointer sessions are already control-scoped, so `null` leaves their natural scope unchanged.
+- **Set a region** to scope every backend identically — e.g. to one canvas control, so Wintab and the pointer backends deliver data over exactly the same area.
+- **`PenCaptureRegion.Unbounded`** opts back in to desktop-wide capture — honored only by backends advertising `PenCapabilities.GlobalCapture` (Wintab System + Digitizer). On the others it is harmless but inert: the OS still confines them to their window/control.
+
+**Threading.** `Contains` runs on whichever thread produces points — for Wintab that is the background message-pump thread, *not* the UI thread. Implementations must be thread-safe and must not touch UI objects directly: cache any UI-derived bounds on the UI thread and read the cached value here. When bounds aren't known yet, fail **open** (return `true`) rather than dropping all input. `WinPenKit.Avalonia.ControlCaptureRegion` is the canonical implementation — it recomputes a control's screen rectangle on the UI thread (on layout updates and window moves), projects both corners through `PointToScreen` for DPI-correctness, and `Contains` only reads the cached rectangle.
+
+> **v1 limitation:** filtering is by screen **rectangle** only — a point inside the region's bounds passes even if another window sits on top of it (no occlusion / z-order test).
 
 ## When to Use Which
 

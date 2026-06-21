@@ -7,6 +7,9 @@ Known issues, planned improvements, and ideas for the future.
 ### Wintab/WM_POINTER process-level interaction
 The interaction between Wintab and WM_POINTER within a single process is driver-dependent. In our testing, runtime switching works cleanly. But some driver versions may suppress one API once the other has been used. Not fully characterized across all drivers.
 
+### Capture region: rectangle-only filtering
+`IPenSession.CaptureRegion` scopes capture by a screen **rectangle**, so a point passes whenever it falls within the region's bounds — even if another window is stacked on top of that area. There is no occlusion / z-order test yet. For the common case (scoping Wintab's desktop-global capture down to the app's own canvas) this is sufficient; true hit-testing against the window stack is future work. See [STYLUS.md → Spatial Scope](STYLUS.md#spatial-scope-capture-region).
+
 ## Planned Work
 
 - **NuGet Publishing** — Publish WinPenKit packages to nuget.org. See [Planning/FUTURES_NUGET.md](Planning/FUTURES_NUGET.md).
