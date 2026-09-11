@@ -59,6 +59,7 @@ unsafe extern "C" {
     pub fn pen_session_get_capabilities(handle: PenSessionHandle) -> i32;
     pub fn pen_session_get_debug_info(handle: PenSessionHandle) -> *const c_char;
     pub fn pen_session_refresh_mapping(handle: PenSessionHandle);
+    pub fn pen_session_on_activated(handle: PenSessionHandle);
     pub fn pen_session_get_log_path() -> *const c_char;
 }
 
@@ -109,6 +110,16 @@ impl PenSession {
 
     pub fn api(&self) -> PenInputApi {
         unsafe { pen_session_get_api(self.handle) }
+    }
+
+    /// Tell the session the window has just been activated.
+    ///
+    /// Wintab delivers packets to whichever context is on top of the driver's
+    /// overlap order, and losing focus to another application drops ours down it
+    /// with nothing to put it back - so the first stroke after returning is
+    /// silently swallowed. A no-op for the pointer backends.
+    pub fn on_activated(&self) {
+        unsafe { pen_session_on_activated(self.handle) };
     }
 }
 

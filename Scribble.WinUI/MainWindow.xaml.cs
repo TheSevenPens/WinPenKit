@@ -40,6 +40,16 @@ public sealed partial class MainWindow : Window
 
         Toolbar.ClearClicked += (_, _) => Canvas.Clear();
 
+        // Wintab hands packets to whichever context is on top of the driver's overlap order, and
+        // losing focus to another application drops this one down it. Without telling the session
+        // we are back, the first stroke after returning is silently swallowed. Matches what Qt
+        // does on window activation, which is why Qt apps do not have the bug.
+        Activated += (_, e) =>
+        {
+            if (e.WindowActivationState != WindowActivationState.Deactivated)
+                _session?.OnActivated();
+        };
+
         Canvas.SizeChanged += (_, e) =>
         {
             _canvasInfo.Width = e.NewSize.Width;

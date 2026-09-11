@@ -143,6 +143,17 @@ public sealed class PenSessionWinUI3 : IDisposable
 
     public void RefreshMapping() => _session?.RefreshMapping();
 
+    /// <summary>
+    /// Pass a window activation through to the inner session.
+    /// </summary>
+    /// <remarks>
+    /// Forwarding is not optional. <see cref="IPenSession.OnActivated"/> is a default interface
+    /// method, so this class - which holds an <see cref="IPenSession"/> rather than being one -
+    /// would otherwise leave the Wintab session never hearing about focus at all, and the fix
+    /// would look wired up while doing nothing.
+    /// </remarks>
+    public void OnActivated() => _session?.OnActivated();
+
     public void Dispose()
     {
         _session?.Stop();
