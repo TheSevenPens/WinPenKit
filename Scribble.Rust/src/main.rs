@@ -43,6 +43,10 @@ struct ScribbleApp {
     barrel2_down: bool,
     barrel3_down: bool,
     last_raw_buttons: u32,
+
+    // Focus tracking. egui has no activation event, so the false -> true edge of
+    // the viewport's focus flag stands in for one.
+    was_focused: bool,
 }
 
 impl ScribbleApp {
@@ -68,6 +72,9 @@ impl ScribbleApp {
             barrel2_down: false,
             barrel3_down: false,
             last_raw_buttons: 0,
+            // Starts true so a window that opens focused does not report an edge on
+            // its first frame, before there is even a session to notify.
+            was_focused: true,
         }
     }
 
@@ -250,6 +257,18 @@ impl ScribbleApp {
 impl eframe::App for ScribbleApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
+
+        // Wintab drops our context down the driver's overlap order when another
+        // application takes focus, and nothing puts it back - the first stroke after
+        // returning is silently swallowed. The other samples hook a window activation
+        // event; egui exposes focus as state rather than an event, so watch its edge.
+        let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
+        if focused && !self.was_focused {
+            if let Some(session) = &self.session {
+                session.on_activated();
+            }
+        }
+        self.was_focused = focused;
 
         let ppp = ctx.pixels_per_point();
         let window_pos = ctx.input(|i| {

@@ -44,6 +44,7 @@ public:
     bool is_running() const { return running_; }
 
     void refresh_mapping() {} // no mapping needed for screen-pixel output
+    void on_activated() {}    // Windows routes pointer input by window - nothing to reclaim
     const char* debug_info() const { return debug_info_.c_str(); }
 
     static bool is_available();

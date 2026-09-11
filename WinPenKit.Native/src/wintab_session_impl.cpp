@@ -243,6 +243,32 @@ void WintabSessionImpl::refresh_mapping() {
     }
 }
 
+// ── Focus ───────────────────────────────────────────────────────
+
+// Reclaim the top of the driver's overlap order after the app window is activated.
+//
+// WTEnable makes sure the context is on; WTOverlap is the half that matters here,
+// putting it back on top. The pair and their order follow Qt's
+// QWindowsTabletSupport::notifyActivate, which is why Qt applications do not have
+// this bug - Krita is clean on Wintab where Clip Studio Paint is not.
+//
+// Best-effort. A failure leaves the pen behaving as it did before rather than
+// breaking anything, so it is logged rather than treated as fatal - and logged
+// rather than swallowed, because a silent no-op is the exact failure mode being
+// fixed here.
+void WintabSessionImpl::on_activated() {
+    HCTX ctx = context_.get();
+    if (!ctx) return;
+
+    BOOL enabled = loader_.wt_enable(ctx, TRUE);
+    BOOL on_top  = loader_.wt_overlap(ctx, TRUE);
+
+    if (!enabled || !on_top) {
+        Logger::log("OnActivated: WTEnable=%d WTOverlap=%d (ctx=%p)",
+            enabled, on_top, ctx);
+    }
+}
+
 // ── Output ──────────────────────────────────────────────────────
 
 int WintabSessionImpl::drain_points(PenPoint* buffer, int max_points) {

@@ -116,6 +116,41 @@ internal abstract class WintabSessionBase : IPenSession
     /// </summary>
     protected abstract (double desktopX, double desktopY) ConvertCoordinates(int pkX, int pkY);
 
+    // ── Focus ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reclaim the top of the driver's overlap order after the application window is activated.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Wintab delivers packets to whichever context is on top of the overlap order. Losing focus
+    /// to another application drops this context down that order, and nothing restores it
+    /// automatically — so the first stroke after coming back is silently swallowed, while the
+    /// second and every one after it draw. Reproduced across the Avalonia, WinForms and WPF
+    /// samples, which is what pinned it to this shared class rather than to any framework.
+    /// </para>
+    /// <para>
+    /// The pair of calls, and the order, follow Qt's <c>QWindowsTabletSupport::notifyActivate</c>,
+    /// which is why Qt applications do not have this bug — Krita is clean on Wintab where Clip
+    /// Studio Paint is not. <c>WTEnable</c> makes sure the context is on; <c>WTOverlap</c> puts it
+    /// back on top.
+    /// </para>
+    /// <para>
+    /// Best-effort by design. A failure here means the pen keeps behaving as it did before rather
+    /// than anything breaking, so it is logged rather than thrown — and logged rather than
+    /// swallowed, because a silent no-op is exactly the failure mode being fixed.
+    /// </para>
+    /// </remarks>
+    public void OnActivated()
+    {
+        if (_hCtx == IntPtr.Zero) return;
+
+        bool enabled = WintabNative.WTEnable(_hCtx, true);
+        bool onTop = WintabNative.WTOverlap(_hCtx, true);
+        if (!enabled || !onTop)
+            Log($"OnActivated: WTEnable={enabled} WTOverlap={onTop} (ctx=0x{_hCtx.ToInt64():X})");
+    }
+
     // ── Context helpers for subclasses ────────────────────────────
 
     protected void SetContext(IntPtr hCtx) => _hCtx = hCtx;

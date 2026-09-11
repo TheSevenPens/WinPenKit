@@ -201,6 +201,15 @@ void pen_session_refresh_mapping(PenSessionHandle handle) {
     if (s->pointer) s->pointer->refresh_mapping();
 }
 
+// ── Focus ───────────────────────────────────────────────────────
+
+void pen_session_on_activated(PenSessionHandle handle) {
+    if (!handle) return;
+    auto* s = reinterpret_cast<PenSessionOpaque*>(handle);
+    if (s->wintab) s->wintab->on_activated();
+    if (s->pointer) s->pointer->on_activated();
+}
+
 // ── Diagnostics ─────────────────────────────────────────────────
 
 const char* pen_session_get_log_path(void) {
