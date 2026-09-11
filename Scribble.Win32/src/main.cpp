@@ -667,6 +667,16 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         layout_controls();
         return 0;
 
+    case WM_ACTIVATE:
+        // Wintab drops our context down the driver's overlap order whenever another
+        // application takes focus, and the hidden pump window that owns the context
+        // never sees this message - so the app has to pass it along. Without this the
+        // first stroke after clicking back into the window is silently swallowed.
+        if (LOWORD(wp) != WA_INACTIVE && g_session) {
+            pen_session_on_activated(g_session);
+        }
+        break; // let DefWindowProc do its usual activation work too
+
     case WM_DPICHANGED: {
         g_dpi = HIWORD(wp);
         auto* rc = reinterpret_cast<const RECT*>(lp);

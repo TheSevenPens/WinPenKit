@@ -137,6 +137,23 @@ PEN_API const char* pen_session_get_debug_info(PenSessionHandle handle);
 
 PEN_API void pen_session_refresh_mapping(PenSessionHandle handle);
 
+// ── Focus ───────────────────────────────────────────────────────
+
+// Tells the session that the application window has just been activated.
+// Call from the real window's WM_ACTIVATE handler.
+//
+// Only Wintab needs this, and it needs it badly. Wintab contexts sit in an
+// overlap order and the driver delivers packets to whichever one is on top;
+// when another application takes focus yours drops down that order and nothing
+// puts it back. The symptom is that the first stroke after returning to the app
+// is silently swallowed while every stroke after it draws normally.
+//
+// The notification has to come from the application: a Wintab context is bound
+// to a hidden pump window that never sees WM_ACTIVATE itself.
+//
+// A no-op for WM_POINTER sessions, which have Windows routing input by window.
+PEN_API void pen_session_on_activated(PenSessionHandle handle);
+
 // ── Diagnostics ─────────────────────────────────────────────────
 
 PEN_API const char* pen_session_get_log_path(void);

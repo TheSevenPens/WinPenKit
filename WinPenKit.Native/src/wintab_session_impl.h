@@ -86,6 +86,7 @@ public:
     bool is_digitizer_mode() const { return use_digitizer_; }
 
     void refresh_mapping();
+    void on_activated();
     const char* debug_info() const { return debug_info_.c_str(); }
     bool is_wintab_loaded() const { return loader_.is_loaded(); }
 
