@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="Scribble.Wpf.app"/>
+
+  <!--
+    The supportedOS entry is not decoration: PerMonitorV2 below is ignored unless the app
+    declares Windows 10 compatibility here.
+  -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+
+  <!--
+    Without this the process is System DPI aware, and on any monitor whose DPI differs from the
+    system DPI Windows hands it virtualized coordinates - a fictional screen space scaled by
+    systemDpi/monitorDpi. Wintab reports true physical desktop pixels regardless, so
+    CanvasArea.PointFromScreen(DesktopX, DesktopY) was converting a real point through a
+    transform built for the fictional space, and strokes landed up and to the left of the pen.
+
+    The other five samples are all per-monitor aware already - WinForms through its csproj,
+    Win32 through SetProcessDpiAwarenessContext, WinUI through its own manifest, Avalonia and
+    eframe through their frameworks - which is why this only showed up here.
+  -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+    </windowsSettings>
+  </application>
+</assembly>
