@@ -99,4 +99,30 @@ public interface IPenSession : IDisposable
     /// configuration changes (monitor hot-plug, DPI change, tablet remap).
     /// </summary>
     void RefreshMapping();
+
+    // ── Focus ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Tell the session its application window has just been activated.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only Wintab needs this, and it needs it badly. Wintab contexts sit in an overlap order and
+    /// the driver delivers packets to whichever is on top; when another application takes focus,
+    /// yours drops down that order and nothing puts it back on its own. The visible symptom is
+    /// that the first stroke after returning to the app is silently lost, while every stroke after
+    /// it draws normally.
+    /// </para>
+    /// <para>
+    /// The pointer-based sessions need no equivalent — Windows routes their input by window — so
+    /// this is a default no-op rather than something every implementation has to answer.
+    /// </para>
+    /// <para>
+    /// Call it from the real window's activation event. A Wintab context is bound to a hidden
+    /// message window that never sees <c>WM_ACTIVATE</c> itself, so the notification has to come
+    /// from the application. Qt does the same thing: its context is on a dummy window, and its
+    /// <c>QtWindows::ActivateWindowEvent</c> handler forwards to the tablet support object.
+    /// </para>
+    /// </remarks>
+    void OnActivated() { }
 }
