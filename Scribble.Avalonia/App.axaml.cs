@@ -17,14 +17,16 @@ public partial class App : Application
             var window = new MainWindow();
             desktop.MainWindow = window;
 
-            if (SelfTest.Requested(desktop.Args ?? []))
+            var args = desktop.Args ?? [];
+            bool replay = StrokeReplay.Requested(args, out string? replayPath);
+            if (SelfTest.Requested(args) || replay)
             {
                 // Opened fires before the first layout pass has produced a surface, so the
                 // checks are posted behind it at Loaded priority rather than run inline.
                 window.Opened += (_, _) => Dispatcher.UIThread.Post(
                     () =>
                     {
-                        desktop.Shutdown(window.RunSelfTest().Emit());
+                        desktop.Shutdown(window.RunSelfTest(replay ? replayPath : null).Emit());
                     },
                     DispatcherPriority.Loaded);
             }

@@ -18,8 +18,10 @@ public partial class App : Application
         _window = window;
 
         // Unpackaged WinUI does not hand the command line to OnLaunched, so read it directly.
-        if (SelfTest.Requested(Environment.GetCommandLineArgs()))
-            window.ArmSelfTest();
+        var cli = Environment.GetCommandLineArgs();
+        bool replay = StrokeReplay.Requested(cli, out string? replayPath);
+        if (SelfTest.Requested(cli) || replay)
+            window.ArmSelfTest(replay ? replayPath : null);
 
         window.Activate();
     }

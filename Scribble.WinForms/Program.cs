@@ -11,7 +11,8 @@ static class Program
 
         var form = new MainForm();
 
-        if (!SelfTest.Requested(args))
+        bool replay = StrokeReplay.Requested(args, out string? replayPath);
+        if (!SelfTest.Requested(args) && !replay)
         {
             Application.Run(form);
             return 0;
@@ -22,7 +23,7 @@ static class Program
         int code = 0;
         form.Shown += (_, _) =>
         {
-            code = form.RunSelfTest().Emit();
+            code = form.RunSelfTest(replay ? replayPath : null).Emit();
             form.Close();
         };
         Application.Run(form);

@@ -857,7 +857,8 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
 
     // The window has to be shown: every level 1 check is about the drawing surface, and the
     // surface does not exist until the first WM_SIZE has run.
-    if (selftest::requested()) {
+    std::string probe_path;
+    if (selftest::requested() || selftest::replay_requested(probe_path)) {
         selftest::Report r("Scribble.Win32");
 
         RECT client{};
@@ -882,6 +883,29 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
 
         // BitBlt with no stretch, so the surface reaches the screen at its own pixel size.
         r.check_presentation_1to1(g_width, g_height, g_width, g_height);
+
+        std::string replay_path;
+        if (selftest::replay_requested(replay_path)) {
+            auto input = selftest::load_recording(replay_path);
+            if (input.empty()) {
+                r.skip("L2.recording-subpixel",
+                       replay_path.empty() ? "reference recording not found"
+                                           : "recording empty or unreadable");
+            } else {
+                selftest::center_on(input, origin.x, origin.y, g_width, g_height);
+
+                // Through the same arithmetic the pen goes through. A replay with its own
+                // conversion would be testing itself.
+                std::vector<std::pair<double, double>> out;
+                out.reserve(input.size());
+                for (const auto& pt : input)
+                    out.emplace_back(pt.first - origin.x, pt.second - origin.y);
+
+                r.check_recording_subpixel(input);
+                r.check_conversion_snap(out, 1.0);
+                r.check_conversion_lossless(input, out);
+            }
+        }
 
         int code = r.emit();
         if (g_gdiplus_token) Gdiplus::GdiplusShutdown(g_gdiplus_token);

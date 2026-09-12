@@ -21,7 +21,8 @@ public partial class App : Application
 
         var window = new MainWindow();
 
-        if (!SelfTest.Requested(e.Args))
+        bool replay = StrokeReplay.Requested(e.Args, out string? replayPath);
+        if (!SelfTest.Requested(e.Args) && !replay)
         {
             window.Show();
             return;
@@ -29,7 +30,7 @@ public partial class App : Application
 
         window.ContentRendered += (_, _) =>
         {
-            int code = window.RunSelfTest().Emit();
+            int code = window.RunSelfTest(replay ? replayPath : null).Emit();
             Shutdown(code);
         };
         window.Show();

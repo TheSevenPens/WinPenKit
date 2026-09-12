@@ -17,7 +17,8 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    let run_selftest = selftest::requested();
+    let replay = selftest::replay_requested();
+    let run_selftest = selftest::requested() || replay.is_some();
 
     eframe::run_native(
         "Scribble.Rust",
@@ -25,6 +26,8 @@ fn main() -> eframe::Result {
         Box::new(move |_cc| {
             let mut app = ScribbleApp::new();
             app.selftest_pending = run_selftest;
+            app.replay_path = replay.clone().flatten();
+            app.replay_requested = replay.is_some();
             Ok(Box::new(app))
         }),
     )
@@ -45,6 +48,8 @@ struct ScribbleApp {
     /// earliest that exists is inside the first update() that sizes the pixmap.
     selftest_pending: bool,
     selftest_frames: u32,
+    replay_requested: bool,
+    replay_path: Option<String>,
     last_canvas_point: Option<(f32, f32)>,
     brush_size: f32,
     needs_texture_update: bool,
@@ -79,6 +84,8 @@ impl ScribbleApp {
             canvas_size: [0, 0],
             selftest_pending: false,
             selftest_frames: 0,
+            replay_requested: false,
+            replay_path: None,
             last_canvas_point: None,
             brush_size: 6.0,
             needs_texture_update: false,
@@ -552,6 +559,36 @@ impl eframe::App for ScribbleApp {
                 r.check_presentation_1to1(
                     self.canvas_size[0] as u32, self.canvas_size[1] as u32,
                     self.canvas_size[0] as f32, self.canvas_size[1] as f32);
+
+                if self.replay_requested {
+                    match &self.replay_path {
+                        None => r.check("L2.recording-subpixel", false,
+                                        "could not run: reference recording not found".into()),
+                        Some(path) => {
+                            let mut input = selftest::load_recording(path);
+                            if input.is_empty() {
+                                r.check("L2.recording-subpixel", false,
+                                        "could not run: recording empty or unreadable".into());
+                            } else {
+                                let ox = canvas_screen_min.x as f64 * ppp as f64;
+                                let oy = canvas_screen_min.y as f64 * ppp as f64;
+                                selftest::center_on(&mut input, ox, oy,
+                                                    self.canvas_size[0] as f64,
+                                                    self.canvas_size[1] as f64);
+
+                                // Through the same arithmetic the pen goes through. A replay
+                                // with its own conversion would be testing itself.
+                                let out: Vec<(f64, f64)> = input.iter()
+                                    .map(|&(x, y)| (x - ox, y - oy))
+                                    .collect();
+
+                                r.check_recording_subpixel(&input);
+                                r.check_conversion_snap(&out, 1.0);
+                                r.check_conversion_lossless(&input, &out);
+                            }
+                        }
+                    }
+                }
 
                 std::process::exit(r.emit());
             }

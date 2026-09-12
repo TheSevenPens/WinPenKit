@@ -194,6 +194,137 @@ impl Report {
             "bitmap {bitmap_w}x{bitmap_h} presented at {presented_w:.1}x{presented_h:.1} device px{}",
             if ok { "" } else { "  <- magnified or shrunk on the way to the screen" }));
     }
+    // Levels 2 and 3: the replayed stroke
+    //
+    // A recording holds what the session produced, so replaying it exercises everything
+    // downstream of the session and nothing inside it. An app that converts perfectly can
+    // still be fed pre-quantized coordinates by its own session, and no replay will show
+    // that; the recording-subpixel check exists so the boundary stays visible.
+
+    /// Whether the data being replayed is sub-pixel at all. Without it, a clean result below
+    /// could mean either a lossless conversion or one that had nothing left to lose.
+    pub fn check_recording_subpixel(&mut self, input: &[(f64, f64)]) {
+        if input.len() < 3 {
+            self.check("L2.recording-subpixel", false, "could not run: recording too short".into());
+            return;
+        }
+        let integral = input.iter()
+            .filter(|(x, y)| (x - x.round()).abs() < 1e-9 && (y - y.round()).abs() < 1e-9)
+            .count();
+        let pct = 100.0 * integral as f64 / input.len() as f64;
+        self.check("L2.recording-subpixel", pct < 5.0, format!(
+            "{pct:.1}% of {} recorded points are on whole pixels{}", input.len(),
+            if pct < 5.0 { "" } else { "  <- the recording is already quantized; nothing below can fail" }));
+    }
+
+    /// A legitimate pen stream essentially never lands on whole device pixels, so a high
+    /// percentage here means an integer-typed API somewhere in the conversion.
+    pub fn check_conversion_snap(&mut self, out: &[(f64, f64)], scale: f64) {
+        if out.is_empty() {
+            self.check("L3.conversion-snap", false, "could not run: no converted points".into());
+            return;
+        }
+        let snapped = out.iter()
+            .filter(|(x, y)| ((x * scale) - (x * scale).round()).abs() < 1e-6
+                          && ((y * scale) - (y * scale).round()).abs() < 1e-6)
+            .count();
+        let pct = 100.0 * snapped as f64 / out.len() as f64;
+        self.check("L3.conversion-snap", pct < 5.0, format!(
+            "{pct:.1}% of converted points land on whole device pixels{}",
+            if pct < 5.0 { "" } else { "  <- an integer-typed API is truncating the position" }));
+    }
+
+    /// The strongest of the three, and the only one needing no threshold. The conversion is a
+    /// translation and a uniform scale, both of which preserve angles exactly, so a lossless
+    /// implementation reproduces the input turn angle to the decimal. A fixed number would
+    /// have to be calibrated against how the stroke was drawn; this calibrates itself.
+    pub fn check_conversion_lossless(&mut self, input: &[(f64, f64)], out: &[(f64, f64)]) {
+        let a = mean_turn_angle(input);
+        let b = mean_turn_angle(out);
+        let delta = (b - a).abs();
+        let ok = delta < 0.05;
+        self.check("L3.conversion-lossless", ok, format!(
+            "mean turn angle in {a:.2} deg, out {b:.2} deg (delta {delta:.2}){}",
+            if ok { "" } else { "  <- the conversion changed the shape of the path" }));
+    }
+}
+
+/// Mean angle between consecutive segments, in degrees. Quantizing a path to a pixel grid
+/// leaves only a handful of directions a short segment can point in, so it stops following the
+/// pen and starts zigzagging - which shows up here and is invisible to almost everything else.
+pub fn mean_turn_angle(pts: &[(f64, f64)]) -> f64 {
+    let mut sum = 0.0;
+    let mut n = 0;
+    for i in 1..pts.len().saturating_sub(1) {
+        let (ax, ay) = (pts[i].0 - pts[i - 1].0, pts[i].1 - pts[i - 1].1);
+        let (bx, by) = (pts[i + 1].0 - pts[i].0, pts[i + 1].1 - pts[i].1);
+        let (na, nb) = ((ax * ax + ay * ay).sqrt(), (bx * bx + by * by).sqrt());
+        if na < 1e-9 || nb < 1e-9 { continue; }
+        let c = ((ax * bx + ay * by) / (na * nb)).clamp(-1.0, 1.0);
+        sum += c.acos().to_degrees();
+        n += 1;
+    }
+    if n > 0 { sum / n as f64 } else { 0.0 }
+}
+
+/// Loads a recording: desktopX,desktopY,pressure, with `#` comments and a header line.
+pub fn load_recording(path: &str) -> Vec<(f64, f64)> {
+    let mut pts = Vec::new();
+    let Ok(text) = std::fs::read_to_string(path) else { return pts };
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') { continue; }
+        let mut f = line.split(',');
+        let (Some(a), Some(b)) = (f.next(), f.next()) else { continue };
+        if let (Ok(x), Ok(y)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
+            pts.push((x, y));
+        }
+    }
+    pts
+}
+
+/// Shifts a recording so it sits inside a canvas. The shift is a whole number of pixels
+/// deliberately: a fractional one would change every coordinate fractional part and so change
+/// the very thing being measured.
+pub fn center_on(pts: &mut [(f64, f64)], origin_x: f64, origin_y: f64, w: f64, h: f64) {
+    if pts.is_empty() { return; }
+    let (mut min_x, mut max_x) = (pts[0].0, pts[0].0);
+    let (mut min_y, mut max_y) = (pts[0].1, pts[0].1);
+    for &(x, y) in pts.iter() {
+        min_x = min_x.min(x); max_x = max_x.max(x);
+        min_y = min_y.min(y); max_y = max_y.max(y);
+    }
+    let dx = (origin_x + (w - (max_x - min_x)) / 2.0 - min_x).round();
+    let dy = (origin_y + (h - (max_y - min_y)) / 2.0 - min_y).round();
+    for p in pts.iter_mut() { p.0 += dx; p.1 += dy; }
+}
+
+/// Walks up from the executable looking for the bundled reference recording.
+pub fn find_default_recording() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let mut dir = exe.parent()?;
+    for _ in 0..8 {
+        let candidate = dir.join("testdata").join("reference-stroke.csv");
+        if candidate.is_file() {
+            return Some(candidate.to_string_lossy().into_owned());
+        }
+        dir = dir.parent()?;
+    }
+    None
+}
+
+/// `--replay` alone uses the bundled reference stroke; `--replay <path>` uses your own, which
+/// is how a stream captured from real hardware gets checked against the same assertions.
+pub fn replay_requested() -> Option<Option<String>> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    for (i, a) in args.iter().enumerate() {
+        if !a.eq_ignore_ascii_case("--replay") { continue; }
+        let explicit = args.get(i + 1)
+            .filter(|n| !n.starts_with("--"))
+            .cloned();
+        return Some(explicit.or_else(find_default_recording));
+    }
+    None
 }
 
 /// Whether the command line asks for a self test.

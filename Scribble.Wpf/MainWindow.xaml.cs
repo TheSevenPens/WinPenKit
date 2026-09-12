@@ -52,10 +52,20 @@ public partial class MainWindow : Window
 
 
     /// <summary>
+    /// The application's own desktop-to-canvas conversion, exposed so a replay can be pushed
+    /// through the same code the pen goes through. A replay that used its own arithmetic
+    /// would be testing itself.
+    /// </summary>
+    private (double X, double Y) DesktopToCanvas(double x, double y) =>
+        ((x - _canvasOriginX) / _renderScale, (y - _canvasOriginY) / _renderScale);
+
+    /// <summary>
     /// Runs the launch-time acceptance checks against this window and returns the report.
     /// Called after the first layout pass, since the surface does not exist before then.
     /// </summary>
-    internal SelfTest RunSelfTest()
+    /// <param name="replayPath">Recording to push through the coordinate conversion, adding
+    /// the level 2 and 3 checks. Null runs levels 0 and 1 only.</param>
+    internal SelfTest RunSelfTest(string? replayPath = null)
     {
         var t = new SelfTest { AppName = "Scribble.Wpf" };
 
@@ -74,6 +84,13 @@ public partial class MainWindow : Window
         double presentedPxW = DrawImage.ActualWidth * _renderScale;
         double presentedPxH = DrawImage.ActualHeight * _renderScale;
         t.CheckPresentation1To1(_bitmapWidth, _bitmapHeight, presentedPxW, presentedPxH);
+
+        if (replayPath != null)
+        {
+            var stroke = StrokeReplay.Load(replayPath)
+                .CenteredOn(_canvasOriginX, _canvasOriginY, _bitmapWidth, _bitmapHeight);
+            t.CheckReplay(stroke, DesktopToCanvas, _renderScale);
+        }
 
         return t;
     }

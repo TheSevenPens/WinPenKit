@@ -100,8 +100,22 @@ public partial class MainWindow : Window
         };
     }
 
+    /// <summary>
+    /// The window's own desktop-to-canvas conversion, exposed so a replay goes through the
+    /// same code the pen does.
+    /// </summary>
+    private (double X, double Y) DesktopToCanvas(double x, double y)
+    {
+        double scale = RenderScaling;
+        var windowOrigin = this.PointToScreen(new global::Avalonia.Point(0, 0));
+        var canvasOrigin = CanvasArea.TranslatePoint(new global::Avalonia.Point(0, 0), this)
+                           ?? new global::Avalonia.Point(0, 0);
+        return ((x - windowOrigin.X) - canvasOrigin.X * scale,
+                (y - windowOrigin.Y) - canvasOrigin.Y * scale);
+    }
+
     /// <summary>Runs the launch-time acceptance checks against this window.</summary>
-    internal SelfTest RunSelfTest()
+    internal SelfTest RunSelfTest(string? replayPath = null)
     {
         var t = new SelfTest { AppName = "Scribble.Avalonia" };
 
@@ -126,6 +140,17 @@ public partial class MainWindow : Window
         t.CheckPresentation1To1(_bitmapWidth, _bitmapHeight,
                                 DrawImage.Bounds.Width * scale,
                                 DrawImage.Bounds.Height * scale);
+
+        if (replayPath != null)
+        {
+            // The canvas draws in physical pixels, so the snap scale is 1.0 - the coordinates
+            // this conversion produces are already device pixels.
+            var stroke = StrokeReplay.Load(replayPath)
+                .CenteredOn(windowOrigin.X + dipOffset.X * scale,
+                            windowOrigin.Y + dipOffset.Y * scale,
+                            _bitmapWidth, _bitmapHeight);
+            t.CheckReplay(stroke, DesktopToCanvas, 1.0);
+        }
 
         return t;
     }

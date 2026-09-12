@@ -18,9 +18,11 @@
 
 #include <windows.h>
 #include <shellapi.h>   // CommandLineToArgvW
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace selftest {
 
@@ -196,6 +198,86 @@ public:
         check("L1.surface-alignment", ok, buf);
     }
 
+    // -- Levels 2 and 3: the replayed stroke ---------------------
+    //
+    // A recording holds what the session produced, so replaying it exercises everything
+    // downstream of the session and nothing inside it. An app that converts perfectly can
+    // still be fed pre-quantized coordinates by its own session, and no replay will show
+    // that; the recording-subpixel check exists so the boundary stays visible.
+
+    // Mean angle between consecutive segments. Quantizing a path to a pixel grid leaves only a
+    // handful of directions a short segment can point in, so it stops following the pen and
+    // starts zigzagging - which shows up here and is invisible to almost everything else.
+    static double mean_turn_angle(const std::vector<std::pair<double, double>>& pts) {
+        double sum = 0;
+        int n = 0;
+        for (size_t i = 1; i + 1 < pts.size(); i++) {
+            double ax = pts[i].first - pts[i - 1].first;
+            double ay = pts[i].second - pts[i - 1].second;
+            double bx = pts[i + 1].first - pts[i].first;
+            double by = pts[i + 1].second - pts[i].second;
+            double na = sqrt(ax * ax + ay * ay), nb = sqrt(bx * bx + by * by);
+            if (na < 1e-9 || nb < 1e-9) continue;
+            double c = (ax * bx + ay * by) / (na * nb);
+            if (c > 1) c = 1;
+            if (c < -1) c = -1;
+            sum += acos(c) * 180.0 / 3.14159265358979323846;
+            n++;
+        }
+        return n > 0 ? sum / n : 0.0;
+    }
+
+    // Whether the data being replayed is sub-pixel at all. Without it, a clean result below
+    // could mean either a lossless conversion or one that had nothing left to lose.
+    void check_recording_subpixel(const std::vector<std::pair<double, double>>& input) {
+        if (input.size() < 3) { skip("L2.recording-subpixel", "recording too short"); return; }
+        size_t integral = 0;
+        for (const auto& pt : input)
+            if (fabs(pt.first - floor(pt.first + 0.5)) < 1e-9 &&
+                fabs(pt.second - floor(pt.second + 0.5)) < 1e-9) integral++;
+
+        double pct = 100.0 * integral / input.size();
+        char buf[256];
+        _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+            "%.1f%% of %zu recorded points are on whole pixels%s", pct, input.size(),
+            pct < 5.0 ? "" : "  <- the recording is already quantized; nothing below can fail");
+        check("L2.recording-subpixel", pct < 5.0, buf);
+    }
+
+    // A legitimate pen stream essentially never lands on whole device pixels, so a high
+    // percentage here means an integer-typed API somewhere in the conversion.
+    void check_conversion_snap(const std::vector<std::pair<double, double>>& out, double scale) {
+        if (out.empty()) { skip("L3.conversion-snap", "no converted points"); return; }
+        size_t snapped = 0;
+        for (const auto& pt : out)
+            if (fabs(pt.first * scale - floor(pt.first * scale + 0.5)) < 1e-6 &&
+                fabs(pt.second * scale - floor(pt.second * scale + 0.5)) < 1e-6) snapped++;
+
+        double pct = 100.0 * snapped / out.size();
+        char buf[256];
+        _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+            "%.1f%% of converted points land on whole device pixels%s", pct,
+            pct < 5.0 ? "" : "  <- an integer-typed API is truncating the position");
+        check("L3.conversion-snap", pct < 5.0, buf);
+    }
+
+    // The strongest of the three, and the only one needing no threshold. The conversion is a
+    // translation and a uniform scale, both of which preserve angles exactly, so a lossless
+    // implementation reproduces the input's turn angle to the decimal. A fixed number would
+    // have to be calibrated against how the stroke was drawn; this calibrates itself.
+    void check_conversion_lossless(const std::vector<std::pair<double, double>>& in,
+                                   const std::vector<std::pair<double, double>>& out) {
+        double a = mean_turn_angle(in), b = mean_turn_angle(out);
+        double delta = fabs(b - a);
+        bool ok = delta < 0.05;
+
+        char buf[256];
+        _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+            "mean turn angle in %.2f deg, out %.2f deg (delta %.2f)%s", a, b, delta,
+            ok ? "" : "  <- the conversion changed the shape of the path");
+        check("L3.conversion-lossless", ok, buf);
+    }
+
     // Presenting a correctly sized surface into a differently sized rect scales it back off
     // the pixel grid, which undoes the point of sizing it physically.
     void check_presentation_1to1(int bitmap_w, int bitmap_h,
@@ -227,6 +309,87 @@ inline bool requested() {
     for (int i = 1; i < argc; i++)
         if (_wcsicmp(argv[i], L"--selftest") == 0) { found = true; break; }
     LocalFree(argv);
+    return found;
+}
+
+// -- Replay -------------------------------------------------------
+
+// Loads a recording: desktopX,desktopY,pressure, with # comments and a header line.
+inline std::vector<std::pair<double, double>> load_recording(const std::string& path) {
+    std::vector<std::pair<double, double>> pts;
+    FILE* f = nullptr;
+    if (path.empty() || fopen_s(&f, path.c_str(), "r") != 0 || !f) return pts;
+
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        if (line[0] == 35 || line[0] == 10 || line[0] == 13) continue;   // '#', LF, CR
+        double x = 0, y = 0;
+        if (sscanf_s(line, "%lf,%lf", &x, &y) == 2) pts.emplace_back(x, y);
+    }
+    fclose(f);
+    return pts;
+}
+
+// Shifts a recording so it sits inside a canvas. The shift is a whole number of pixels
+// deliberately: a fractional one would change every coordinate's fractional part and so change
+// the very thing being measured.
+inline void center_on(std::vector<std::pair<double, double>>& pts,
+                      double origin_x, double origin_y, double w, double h) {
+    if (pts.empty()) return;
+    double min_x = pts[0].first, max_x = min_x, min_y = pts[0].second, max_y = min_y;
+    for (const auto& pt : pts) {
+        if (pt.first < min_x) min_x = pt.first;
+        if (pt.first > max_x) max_x = pt.first;
+        if (pt.second < min_y) min_y = pt.second;
+        if (pt.second > max_y) max_y = pt.second;
+    }
+    double dx = floor(origin_x + (w - (max_x - min_x)) / 2 - min_x + 0.5);
+    double dy = floor(origin_y + (h - (max_y - min_y)) / 2 - min_y + 0.5);
+    for (auto& pt : pts) { pt.first += dx; pt.second += dy; }
+}
+
+// Walks up from the executable looking for the bundled reference recording.
+inline std::string find_default_recording() {
+    wchar_t exe[MAX_PATH];
+    if (!GetModuleFileNameW(nullptr, exe, MAX_PATH)) return std::string();
+
+    std::wstring dir(exe);
+    for (int i = 0; i < 8; i++) {
+        size_t slash = dir.find_last_of(L"\\/");
+        if (slash == std::wstring::npos) break;
+        dir = dir.substr(0, slash);
+        std::wstring candidate = dir + L"\\testdata\\reference-stroke.csv";
+        if (GetFileAttributesW(candidate.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            char narrow[MAX_PATH * 2];
+            size_t converted = 0;
+            wcstombs_s(&converted, narrow, candidate.c_str(), sizeof(narrow) - 1);
+            return std::string(narrow);
+        }
+    }
+    return std::string();
+}
+
+// --replay alone uses the bundled reference stroke; --replay <path> uses your own, which is how
+// a stream captured from real hardware gets checked against the same assertions.
+inline bool replay_requested(std::string& path) {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv) return false;
+
+    bool found = false;
+    for (int i = 1; i < argc; i++) {
+        if (_wcsicmp(argv[i], L"--replay") != 0) continue;
+        found = true;
+        if (i + 1 < argc && wcsncmp(argv[i + 1], L"--", 2) != 0) {
+            char narrow[MAX_PATH * 2];
+            size_t converted = 0;
+            wcstombs_s(&converted, narrow, argv[i + 1], sizeof(narrow) - 1);
+            path = narrow;
+        }
+        break;
+    }
+    LocalFree(argv);
+    if (found && path.empty()) path = find_default_recording();
     return found;
 }
 
