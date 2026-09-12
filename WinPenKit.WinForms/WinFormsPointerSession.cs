@@ -17,6 +17,14 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
     private readonly ConcurrentQueue<PenPoint> _points = new();
     private volatile bool _hasNewData;
 
+    // The message filter is application-wide, so without a default this session reported the
+    // pen over every window in the process while every other pointer backend stayed scoped to
+    // the element or window it was attached to. Unbounded until Start, which is when a window
+    // handle exists to scope to.
+    private IPenCaptureRegion _defaultRegion = PenCaptureRegion.Unbounded;
+
+    private IPenCaptureRegion EffectiveRegion => CaptureRegion ?? _defaultRegion;
+
     public InputApi Api => InputApi.WinFormsPointer;
 
     public PenCapabilities Capabilities =>
@@ -78,6 +86,19 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
     {
         if (!PointerApi.IsAvailable())
             return "WM_POINTER API not available on this system.";
+
+        // The window passed in, or failing that the control this session was constructed
+        // with. WmPointerSession scopes to appWindowHandle the same way; the fallback exists
+        // because this session is handed a control and can scope to it, which is closer to
+        // the WPF, WinUI and Avalonia sessions than filtering nothing at all.
+        //
+        // A zero handle leaves PenCaptureRegion.Window failing open, so a caller that passes
+        // no window and hands over a control with no handle yet keeps the old behaviour.
+        IntPtr scope = appWindowHandle != IntPtr.Zero
+            ? appWindowHandle
+            : _control.IsHandleCreated ? _control.Handle : IntPtr.Zero;
+
+        _defaultRegion = PenCaptureRegion.Window(scope);
 
         Application.AddMessageFilter(this);
         IsRunning = true;
@@ -169,7 +190,7 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
         var (desktopX, desktopY) = ResolvePosition(penInfo.pointerInfo);
 
         // Spatial scope: drop points outside an explicit capture region.
-        if (CaptureRegion is { } region && !region.Contains(desktopX, desktopY))
+        if (!EffectiveRegion.Contains(desktopX, desktopY))
             return;
 
         uint pressure = (penInfo.penMask & PointerApi.PEN_MASK_PRESSURE) != 0
