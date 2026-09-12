@@ -8,13 +8,13 @@
             BorderThickness="0,0,0,1" Padding="8,6,8,8">
         <StackPanel Orientation="Horizontal" Spacing="0">
 
-            <!-- ═══ APP ═══ -->
+            <!-- ═══ PEN API ═══ -->
             <StackPanel Margin="0,0,16,0">
-                <TextBlock Text="APP" FontWeight="Bold" FontSize="10"
+                <TextBlock Text="PEN API" FontWeight="Bold" FontSize="10"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Margin="0,0,0,4" />
                 <ComboBox x:Name="ContextModeCombo" SelectedIndex="0"
-                          Padding="8,0" MinHeight="0" Height="24" Width="110"
+                          Padding="8,0" MinHeight="0" Height="24" Width="150"
                           SelectionChanged="ContextModeCombo_SelectionChanged" />
                 <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
                     <Button Content="Clear" Padding="8,2" MinHeight="0" Height="24"
@@ -184,6 +184,35 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <TextBlock x:Name="TwistValue" Style="{StaticResource CaptionTextBlockStyle}"
                                Text="--" MinWidth="36" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- ═══ DIAGNOSTICS ═══
+                 For a stroke that silently fails to appear. The three counters separate causes
+                 that look identical on screen: no points means input never arrived, points but
+                 all off-canvas means the coordinate mapping is wrong, points and segments but
+                 no ink means the fault is in rendering. -->
+            <StackPanel Margin="0,0,16,0">
+                <TextBlock Text="DIAGNOSTICS" FontWeight="Bold" FontSize="10"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,4" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Pts:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="PointsValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="0" MinWidth="52" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1,0,0">
+                    <TextBlock Text="Off:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="OffCanvasValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="0" MinWidth="52" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1,0,0">
+                    <TextBlock Text="Seg:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="SegmentsValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="0" MinWidth="52" />
                 </StackPanel>
             </StackPanel>
 

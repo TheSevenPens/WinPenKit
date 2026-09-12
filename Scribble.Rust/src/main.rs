@@ -181,11 +181,12 @@ impl ScribbleApp {
                 self.last_raw_buttons = pt.buttons;
             }
 
-            // Wintab gives physical desktop pixels. egui positions are in
-            // logical points. Convert physical → logical, then subtract
-            // the canvas's logical screen position.
-            let canvas_x = pt.desktop_x as f32 / pixels_per_point - canvas_screen_min.x;
-            let canvas_y = pt.desktop_y as f32 / pixels_per_point - canvas_screen_min.y;
+            // Wintab gives physical desktop pixels, and the pixmap is in physical pixels too.
+            // Both terms in physical pixels: the pen position already is, and the canvas
+            // origin is in points so it multiplies up. Dividing the pen position down instead
+            // would throw away the sub-pixel precision the digitizer context exists to provide.
+            let canvas_x = pt.desktop_x as f32 - canvas_screen_min.x * pixels_per_point;
+            let canvas_y = pt.desktop_y as f32 - canvas_screen_min.y * pixels_per_point;
 
             if canvas_x < 0.0
                 || canvas_y < 0.0
@@ -198,7 +199,10 @@ impl ScribbleApp {
 
             if let Some((from_x, from_y)) = self.last_canvas_point {
                 if pt.pressure > 0 && max_p > 0.0 {
-                    let width = (pt.pressure as f32 / max_p) * self.brush_size + 0.5;
+                    // Brush size is a point size, so it scales up with everything else now
+                    // that the pixmap is in physical pixels.
+                    let width =
+                        ((pt.pressure as f32 / max_p) * self.brush_size + 0.5) * pixels_per_point;
 
                     let mut paint = Paint::default();
                     paint.set_color_rgba8(0, 0, 0, 255);
@@ -299,7 +303,7 @@ impl eframe::App for ScribbleApp {
             ui.horizontal(|ui| {
 
                 ui.vertical(|ui| {
-                    ui.strong("APP");
+                    ui.strong("PEN API");
                     let api_names: Vec<&str> = self
                         .available_apis
                         .iter()
@@ -430,18 +434,41 @@ impl eframe::App for ScribbleApp {
                         ui.monospace(format!("Twist: {:.1}", pt.twist));
                     }
                 });
+                ui.separator();
+
+                // The canvas is only as good as the pixmap behind it: if this is not the
+                // window's physical pixel size, the texture is being magnified and no amount
+                // of coordinate precision will make the strokes look right.
+                ui.vertical(|ui| {
+                    ui.strong("SURFACE");
+                    ui.monospace(format!(
+                        "Pixmap: {}x{}",
+                        self.canvas_size[0], self.canvas_size[1]
+                    ));
+                    ui.monospace(format!("Scale: {ppp:.2}x"));
+                });
             });
         });
 
         // ── Canvas ───────────────────────────────────────────────
         egui::CentralPanel::default().show(ctx, |ui| {
             let available = ui.available_size();
-            self.ensure_pixmap(available.x as usize, available.y as usize);
 
-            // egui positions are in logical points (DPI-scaled).
-            // Wintab gives physical desktop pixels.
-            // Convert: physical → logical by dividing by pixels_per_point,
-            // then subtract the canvas's logical screen position.
+            // The pixmap is sized in PHYSICAL PIXELS, not egui points. available_size() is in
+            // points, and the texture is displayed at that same point size - so a point-sized
+            // pixmap is one texel per point, which on a 1.75x display egui magnifies by 1.75
+            // with TextureOptions::NEAREST, i.e. no filtering at all. That is a canvas drawn at
+            // 57% of the screen's resolution and then blown up with hard edges, and no amount
+            // of coordinate precision survives it.
+            self.ensure_pixmap(
+                (available.x * ppp) as usize,
+                (available.y * ppp) as usize,
+            );
+
+            // Drawing therefore happens in physical pixels too. egui positions are in points,
+            // and Wintab gives physical desktop pixels, so the canvas origin is the thing that
+            // gets converted - by multiplying up - rather than the pen position being divided
+            // down.
             let canvas_rect = ui.min_rect();
             let canvas_screen_min = egui::pos2(
                 window_pos.x + canvas_rect.min.x,

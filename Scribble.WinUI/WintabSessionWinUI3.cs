@@ -116,6 +116,35 @@ public sealed class PenSessionWinUI3 : IDisposable
     /// any pen points (including hover with pressure=0).</summary>
     public bool HasNewTelemetry { get; private set; }
 
+    // ── Diagnostic counters ──────────────────────────────────────
+    //
+    // For a fault where a stroke silently fails to appear. "No ink" has three quite different
+    // causes and they need different fixes, so the counters are chosen to tell them apart:
+    //
+    //   Pts 0                  input never arrived - a window activation or event wiring problem
+    //   Pts >0, Off >0, Seg 0  points arrive but convert to positions outside the canvas, so the
+    //                          coordinate mapping is wrong
+    //   Pts >0, Seg >0         points arrive and segments are produced, so the fault is in
+    //                          rendering rather than input
+    //
+    // Cumulative since the session started; Clear resets them.
+
+    /// <summary>Pen points drained from the session.</summary>
+    public long PointsSeen { get; private set; }
+
+    /// <summary>Points whose canvas position fell outside the canvas bounds.</summary>
+    public long PointsOffCanvas { get; private set; }
+
+    /// <summary>Segments handed to the canvas to draw.</summary>
+    public long SegmentsDrawn { get; private set; }
+
+    public void ResetCounters()
+    {
+        PointsSeen = 0;
+        PointsOffCanvas = 0;
+        SegmentsDrawn = 0;
+    }
+
     // ── Lifecycle ───────────────────────────────────────────────────
 
     public string? Start(InputApi api)
@@ -183,6 +212,8 @@ public sealed class PenSessionWinUI3 : IDisposable
         int maxP = _session.MaxPressure;
         var segments = new List<StrokeSegment>();
 
+        PointsSeen += points.Length;
+
         foreach (var pt in points)
         {
             var canvasPoint = DesktopToCanvasDips(pt.DesktopX, pt.DesktopY);
@@ -192,6 +223,7 @@ public sealed class PenSessionWinUI3 : IDisposable
             if (canvasPoint.X < 0 || canvasPoint.X > cw ||
                 canvasPoint.Y < 0 || canvasPoint.Y > ch)
             {
+                PointsOffCanvas++;
                 _lastPoint = null;
                 continue;
             }
@@ -200,6 +232,7 @@ public sealed class PenSessionWinUI3 : IDisposable
             {
                 float width = (float)pt.Pressure / maxP * (float)BrushSize + 0.5f;
                 segments.Add(new StrokeSegment(from, canvasPoint, width));
+                SegmentsDrawn++;
             }
 
             _lastPoint = canvasPoint;

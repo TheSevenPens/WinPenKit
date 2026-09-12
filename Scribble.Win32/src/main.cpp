@@ -15,6 +15,12 @@
 #include <cmath>
 #include <algorithm>
 
+// objidl.h before gdiplus.h, and not for tidiness: GdiplusImaging.h declares COM interfaces, and
+// WIN32_LEAN_AND_MEAN above strips the declarations it needs out of windows.h. Without this the
+// errors land inside the Windows SDK headers rather than anywhere that suggests the cause.
+#include <objidl.h>
+#include <gdiplus.h>
+
 #pragma comment(lib, "comctl32.lib")
 
 #include "pen_session.h"
@@ -46,7 +52,14 @@ static int         g_api_count = 0;
 
 // Previous point for line drawing
 static bool    g_has_last = false;
-static POINT   g_last_pt = {};
+
+// Sub-pixel, not POINT. The pen reports fractional positions and GDI+ draws in floats; an
+// integer here would quantize the path to the pixel grid between the two, which is the whole
+// thing the digitizer context and the HIMETRIC mapping exist to avoid.
+struct CanvasPt { double x, y; };
+static CanvasPt g_last_pt = {};
+
+static ULONG_PTR g_gdiplus_token = 0;
 
 // Latest pen data for ribbon display
 static bool    g_has_pen_data = false;
@@ -113,15 +126,22 @@ static void resize_bitmap(HWND hwnd, int new_w, int new_h) {
     g_height = new_h;
 }
 
-static void draw_stroke(POINT from, POINT to, int width) {
-    HPEN pen = CreatePen(PS_SOLID, width, RGB(0, 0, 0));
-    HPEN old_pen = (HPEN)SelectObject(g_bitmap_dc, pen);
+// GDI+ rather than GDI. MoveToEx/LineTo take integers and do not antialias, so this sample
+// could not draw what the library delivers: with GDI every input API looked identical, because
+// the renderer quantized the path to whole pixels and hard-edged it regardless of what arrived.
+static void draw_stroke(CanvasPt from, CanvasPt to, float width) {
+    Gdiplus::Graphics g(g_bitmap_dc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
 
-    MoveToEx(g_bitmap_dc, from.x, from.y, nullptr);
-    LineTo(g_bitmap_dc, to.x, to.y);
+    Gdiplus::Pen pen(Gdiplus::Color(255, 0, 0, 0), width);
+    pen.SetStartCap(Gdiplus::LineCapRound);
+    pen.SetEndCap(Gdiplus::LineCapRound);
+    pen.SetLineJoin(Gdiplus::LineJoinRound);
 
-    SelectObject(g_bitmap_dc, old_pen);
-    DeleteObject(pen);
+    g.DrawLine(&pen,
+        Gdiplus::PointF(static_cast<Gdiplus::REAL>(from.x), static_cast<Gdiplus::REAL>(from.y)),
+        Gdiplus::PointF(static_cast<Gdiplus::REAL>(to.x), static_cast<Gdiplus::REAL>(to.y)));
 }
 
 // ── Session management ──────────────────────────────────────────
@@ -206,11 +226,15 @@ static void process_points(HWND hwnd) {
         }
         if (pt.buttons != 0) g_last_raw_buttons = pt.buttons;
 
-        POINT client_pt;
-        client_pt.x = static_cast<LONG>(pt.desktop_x);
-        client_pt.y = static_cast<LONG>(pt.desktop_y);
-        ScreenToClient(hwnd, &client_pt);
-        client_pt.y -= rbh;
+        // Converted by hand rather than through ScreenToClient, which takes a POINT and so
+        // forces the position onto the whole-pixel grid on the way in. The client origin is
+        // genuinely on a pixel boundary, so taking that as an integer costs nothing; only the
+        // pen's own position needs its precision kept.
+        POINT client_origin = {0, 0};
+        ClientToScreen(hwnd, &client_origin);
+        CanvasPt client_pt{
+            pt.desktop_x - client_origin.x,
+            pt.desktop_y - client_origin.y - rbh };
 
         if (client_pt.x < 0 || client_pt.x >= g_width ||
             client_pt.y < 0 || client_pt.y >= g_height) {
@@ -220,8 +244,10 @@ static void process_points(HWND hwnd) {
 
         if (g_has_last && pt.pressure > 0 && g_max_pressure > 0) {
             float norm = static_cast<float>(pt.pressure) / g_max_pressure;
-            int width = static_cast<int>(norm * g_brush_size + 0.5f);
-            if (width < 1) width = 1;
+            // Fractional width too: GDI+ can draw a sub-pixel line, where the old integer pen
+            // snapped every stroke to a whole number of pixels wide.
+            float width = norm * g_brush_size;
+            if (width < 0.25f) width = 0.25f;
             draw_stroke(g_last_pt, client_pt, width);
             dirty = true;
         }
@@ -424,7 +450,7 @@ static void paint_ribbon(HDC hdc) {
     // ── APP section ──────────────────────────────────────────
     // Combo box and Clear button are child controls positioned by layout_controls().
     int app_x = col;
-    rp.draw_header(app_x, "APP");
+    rp.draw_header(app_x, "PEN API");
 
     col += dpi_scale(110);
     rp.draw_separator(col);
@@ -802,6 +828,10 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int nShow) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
+    // GDI+ for the canvas. Started before the window so the first WM_PAINT has it.
+    Gdiplus::GdiplusStartupInput gdiplus_input;
+    Gdiplus::GdiplusStartup(&g_gdiplus_token, &gdiplus_input, nullptr);
+
     INITCOMMONCONTROLSEX icc = {sizeof(icc), ICC_BAR_CLASSES};
     InitCommonControlsEx(&icc);
 
@@ -829,6 +859,8 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+
+    if (g_gdiplus_token) Gdiplus::GdiplusShutdown(g_gdiplus_token);
 
     return static_cast<int>(msg.wParam);
 }

@@ -29,8 +29,26 @@ public partial class MainWindow : Window
     private SKBitmap? _skBitmap;
     private SKCanvas? _skCanvas;
     private WriteableBitmap? _wpfBitmap;
+
+    // Physical pixels, not DIPs. The canvas used to be sized from ActualWidth - which is DIPs -
+    // and handed to a WriteableBitmap declared at 96 dpi, so on a scaled display WPF magnified
+    // the result to fit. At 1.75x that is a canvas drawn at 57% of the screen's resolution and
+    // then blown up, which looks bumpy no matter how precise the pen positions are. It is why
+    // every input API looked equally bad here.
     private int _bitmapWidth;
     private int _bitmapHeight;
+
+    // DIPs, for bounds-checking pen positions, which arrive in DIPs.
+    private double _canvasDipWidth;
+    private double _canvasDipHeight;
+
+    // Display scaling, so drawing can stay in DIPs while the bitmap is in pixels.
+    private double _renderScale = 1.0;
+
+    // Canvas origin in desktop device pixels, refreshed whenever the surface is rebuilt.
+    private double _canvasOriginX;
+    private double _canvasOriginY;
+
 
     public MainWindow()
     {
@@ -84,9 +102,15 @@ public partial class MainWindow : Window
 
     private void EnsureBitmap()
     {
-        int w = (int)CanvasArea.ActualWidth;
-        int h = (int)CanvasArea.ActualHeight;
-        if (w <= 0 || h <= 0) return;
+        double dipW = CanvasArea.ActualWidth;
+        double dipH = CanvasArea.ActualHeight;
+        if (dipW <= 0 || dipH <= 0) return;
+
+        double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        if (scale <= 0) scale = 1.0;
+
+        int w = (int)Math.Ceiling(dipW * scale);
+        int h = (int)Math.Ceiling(dipH * scale);
         if (_skBitmap != null && _bitmapWidth == w && _bitmapHeight == h) return;
 
         var oldBitmap = _skBitmap;
@@ -94,8 +118,47 @@ public partial class MainWindow : Window
 
         _skBitmap = new SKBitmap(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
         _skCanvas = new SKCanvas(_skBitmap);
+
+        // Drawing code keeps working in DIPs; the canvas transform is the only thing that knows
+        // about display scaling.
+        _skCanvas.Scale((float)scale);
+
         _bitmapWidth = w;
         _bitmapHeight = h;
+        _canvasDipWidth = dipW;
+        _canvasDipHeight = dipH;
+        _renderScale = scale;
+
+        if (WinPenKit.Wpf.WpfCoordinates.GetTransform(CanvasArea) is { } xf)
+        {
+            _canvasOriginX = xf.OriginX;
+            _canvasOriginY = xf.OriginY;
+        }
+
+        // Physical pixels of canvas against pixels of bitmap. These must match, or the bitmap is
+        // being scaled on its way to the screen.
+        SurfaceLabel.Text =
+            $"Surface: {w}x{h}px  scale {scale:F2}  canvas {dipW:F0}x{dipH:F0}dip";
+
+        // Where the image actually lands, in device pixels. A fractional offset here means WPF
+        // is resampling the whole canvas to draw it between pixels, which softens every edge at
+        // once - indistinguishable from a bad brush engine, and invisible to any check of the
+        // coordinates or the resolution.
+        try
+        {
+            var originDip = DrawImage.TransformToAncestor(this).Transform(new Point(0, 0));
+            double px = originDip.X * scale, py = originDip.Y * scale;
+            double fx = Math.Abs(px - Math.Round(px)), fy = Math.Abs(py - Math.Round(py));
+            bool aligned = fx < 0.01 && fy < 0.01;
+            OffsetLabel.Text = $"Offset: {px:F2},{py:F2}px {(aligned ? "aligned" : "FRACTIONAL")}";
+            OffsetLabel.Foreground = aligned
+                ? new SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77))
+                : new SolidColorBrush(Color.FromRgb(0xCC, 0x00, 0x00));
+        }
+        catch (InvalidOperationException)
+        {
+            // Not arranged yet; the next SizeChanged will report it.
+        }
 
         // Clear to background.
         _skCanvas.Clear(new SKColor(0xF0, 0xF0, 0xF0));
@@ -103,13 +166,19 @@ public partial class MainWindow : Window
         // Copy old content if resizing.
         if (oldBitmap != null)
         {
+            // Old pixels are already physical, so the DIP transform has to come off for the
+            // blit or the preserved content would be magnified by the scale factor each resize.
+            _skCanvas.Save();
+            _skCanvas.ResetMatrix();
             _skCanvas.DrawBitmap(oldBitmap, 0, 0);
+            _skCanvas.Restore();
             oldCanvas?.Dispose();
             oldBitmap.Dispose();
         }
 
-        // Create WPF bitmap for display.
-        _wpfBitmap = new WriteableBitmap(w, h, 96, 96, PixelFormats.Bgra32, null);
+        // Declared at the display's dpi, so WPF lays the image out at its DIP size and presents
+        // the pixels 1:1 instead of scaling them.
+        _wpfBitmap = new WriteableBitmap(w, h, 96 * scale, 96 * scale, PixelFormats.Bgra32, null);
         CopyToWpfBitmap();
         DrawImage.Source = _wpfBitmap;
     }
@@ -196,19 +265,16 @@ public partial class MainWindow : Window
         {
             _buttons.Update(pt);
 
-            Point canvasPt;
-            try
-            {
-                canvasPt = CanvasArea.PointFromScreen(new Point(pt.DesktopX, pt.DesktopY));
-            }
-            catch
-            {
-                _lastCanvasPoint = null;
-                continue;
-            }
+            // Deliberately not CanvasArea.PointFromScreen: it truncates through an integer
+            // Win32 POINT, which quantizes every pen position to a whole device pixel and
+            // facets the stroke. Measured here at 100% of 3014 points before this changed.
+            Point canvasPt = new(
+                (pt.DesktopX - _canvasOriginX) / _renderScale,
+                (pt.DesktopY - _canvasOriginY) / _renderScale);
 
-            if (canvasPt.X < 0 || canvasPt.X > _bitmapWidth ||
-                canvasPt.Y < 0 || canvasPt.Y > _bitmapHeight)
+            // Bounds in DIPs: canvasPt is in DIPs, the bitmap is in pixels.
+            if (canvasPt.X < 0 || canvasPt.X > _canvasDipWidth ||
+                canvasPt.Y < 0 || canvasPt.Y > _canvasDipHeight)
             {
                 _lastCanvasPoint = null;
                 continue;
@@ -249,7 +315,10 @@ public partial class MainWindow : Window
         CursorLabel.Text = $"Cursor: {last.Cursor}";
 
         RawPosLabel.Text = $"Raw: {last.RawX},{last.RawY}";
-        ScreenPosLabel.Text = $"Screen: {last.DesktopX:F0},{last.DesktopY:F0}";
+        // F2, not F0: at 1.75x, PointFromScreen turns an integer desktop coordinate into a
+        // fractional DIP anyway, so a decimal Canvas readout proves nothing about the input.
+        // The fractional part has to be visible here or quantization is undetectable.
+        ScreenPosLabel.Text = $"Screen: {last.DesktopX:F2},{last.DesktopY:F2}";
 
         // App = position relative to the window client area
         Point appPt;
@@ -259,9 +328,10 @@ public partial class MainWindow : Window
 
         // Canvas = position relative to the drawing surface
         Point lastCanvas;
-        try { lastCanvas = CanvasArea.PointFromScreen(new Point(last.DesktopX, last.DesktopY)); }
-        catch { lastCanvas = new Point(); }
-        CanvasPosLabel.Text = $"Canvas: {lastCanvas.X:F1},{lastCanvas.Y:F1}";
+        lastCanvas = new Point(
+            (last.DesktopX - _canvasOriginX) / _renderScale,
+            (last.DesktopY - _canvasOriginY) / _renderScale);
+        CanvasPosLabel.Text = $"Canvas: {lastCanvas.X:F2},{lastCanvas.Y:F2}";
 
         float pct = maxP > 0 ? (float)last.Pressure / maxP * 100f : 0f;
         RawPressureLabel.Text = $"Raw: {last.Pressure}";

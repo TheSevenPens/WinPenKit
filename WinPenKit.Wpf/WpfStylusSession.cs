@@ -98,20 +98,20 @@ public sealed class WpfStylusSession : IPenSession
         var stylusPoints = e.GetStylusPoints(_element);
         bool isEraser = e.Inverted;
 
+        // Once per event, not once per point: the element has not moved between them.
+        // Deliberately not Visual.PointToScreen - see WpfCoordinates. GetStylusPoints hands
+        // over good sub-pixel DIPs and PointToScreen truncates every one of them to a whole
+        // device pixel, which is the entire difference between a smooth stroke and a faceted
+        // one.
+        if (WpfCoordinates.GetTransform(_element) is not { } xf)
+            return;
+
         foreach (var sp in stylusPoints)
         {
             // Convert element-relative DIPs to desktop screen pixels.
-            var elementPt = new Point(sp.X, sp.Y);
-            Point screenPt;
-            try
-            {
-                screenPt = _element.PointToScreen(elementPt);
-            }
-            catch
-            {
-                // PointToScreen can fail if the element is not connected to a visual tree.
-                continue;
-            }
+            var screenPt = new Point(
+                xf.OriginX + sp.X * xf.ScaleX,
+                xf.OriginY + sp.Y * xf.ScaleY);
 
             // Spatial scope: drop points outside an explicit capture region.
             if (CaptureRegion is { } region && !region.Contains(screenPt.X, screenPt.Y))
