@@ -2,6 +2,10 @@
 
 Seven demo apps proving the WinPenKit SDK end-to-end. All feature bitmap-backed rendering, a ribbon toolbar with API dropdown, brush size slider, clear button, pressure-sensitive drawing, and four-coordinate position display (Raw → Screen → App → Canvas).
 
+> Every app here accepts `--selftest` and `--replay`, which verify the environment, the drawing
+> surface and the coordinate conversion with no tablet and no person. See
+> [SELF-TEST.md](SELF-TEST.md).
+
 ## Summary
 
 | App | Framework | Renderer | Language | Backends |
@@ -82,7 +86,7 @@ Uses `WinPenKit` + `WinPenKit.WinForms`.
 Avalonia drawing app with SkiaSharp rendering.
 
 - **SkiaSharp bitmap-backed rendering** — `SKCanvas.DrawLine()` to `SKBitmap`, pixel-copied to Avalonia `WriteableBitmap`
-- Coordinate conversion via `TopLevel.PointToClient()` and `TranslatePoint()`
+- Coordinate conversion by hand, **not** via `TopLevel.PointToClient()` — that takes a `PixelPoint`, whose members are integers, and so forces the pen position onto the whole-pixel grid. Only the window origin goes through it, since that is genuinely on a pixel boundary
 
 Uses `WinPenKit` + `WinPenKit.Avalonia`.
 

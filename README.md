@@ -36,6 +36,32 @@ These demo apps proving the SDK end-to-end, all with bitmap-backed rendering and
 | Scribble.Avalonia | Avalonia | SkiaSharp | C# |
 | WinPenKit.TestConsole | Console | (headless) | C# |
 
+### Verifying a build
+
+Every Scribble app self-checks with no tablet, no pen input and no person looking at the screen:
+
+```bash
+Scribble.Wpf.exe --selftest     # environment and drawing surface
+Scribble.Wpf.exe --replay       # the above, plus the coordinate conversion
+```
+
+Both print a line-oriented report and **exit 0 only if every check passes**, so CI or an agent can branch on the exit code.
+
+```
+[PASS] L1.surface-physical     bitmap 2672x1230, expected 2672x1230 (= ceil(1188x547 logical x 2.25))
+[PASS] L3.conversion-lossless  mean turn angle in 0.74 deg, out 0.74 deg (delta 0.00)
+RESULT 9/9 passed
+```
+
+These catch the two bug classes that make strokes look wrong while every obvious check still
+passes: a canvas quietly rendering at a fraction of the display's resolution, and a coordinate
+conversion quantizing the pen position to whole pixels. Both are invisible on screen until you
+know to look.
+
+They are not a substitute for drawing with a real pen — Wintab needs a tablet, and whether a
+stroke *looks* right is not machine-checkable. See **[Docs/SELF-TEST.md](Docs/SELF-TEST.md)**
+for what each check catches and what is deliberately left uncovered.
+
 ## Quick Start (C#)
 
 ```csharp
@@ -81,6 +107,7 @@ See the [Docs/](Docs/) folder for:
 - [GETTING-STARTED.md](Docs/GETTING-STARTED.md) — Project overview and setup
 - [HOW_TO_USE.md](Docs/HOW_TO_USE.md) — Usage guide with gotchas and best practices
 - [SCRIBBLE-APPS.md](Docs/SCRIBBLE-APPS.md) — Details on each scribble demo app
+- [SELF-TEST.md](Docs/SELF-TEST.md) — `--selftest` and `--replay`: what they check, and what they do not
 - [BUILD.md](Docs/BUILD.md) — Build instructions
 - [CI.md](Docs/CI.md) — CI/Release workflow, versioning, and releasing
 - [Planning/](Docs/Planning/) — NuGet publishing plan
