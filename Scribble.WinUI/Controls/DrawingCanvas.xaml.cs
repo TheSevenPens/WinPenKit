@@ -87,12 +87,19 @@ public sealed partial class DrawingCanvas : UserControl
 
         if (segments.Length == 0 || _skCanvas == null) return;
 
+        // Widths arrive as a count of physical pixels, matching the other samples. The canvas
+        // carries Scale(scale) so that stroke coordinates can stay in effective pixels, which
+        // would multiply the width too - divide it back out here, the one place the scale is
+        // known.
+        double scale = XamlRoot?.RasterizationScale ?? 1.0;
+        if (scale <= 0) scale = 1.0;
+
         foreach (var seg in segments)
         {
             using var paint = new SKPaint
             {
                 Color = SKColors.Black,
-                StrokeWidth = seg.Width,
+                StrokeWidth = (float)(seg.Width / scale),
                 StrokeCap = SKStrokeCap.Round,
                 IsAntialias = true,
                 Style = SKPaintStyle.Stroke
