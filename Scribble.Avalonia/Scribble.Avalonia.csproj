@@ -19,8 +19,12 @@
     <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Avalonia.Win32" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Avalonia.Skia" Version="$(AvaloniaVersion)" />
+    <!-- Avalonia 12 split text shaping out of Skia. UsePlatformDetect registers HarfBuzz;
+         naming backends does not, and the app throws "No text shaping system configured"
+         on startup without it. -->
+    <PackageReference Include="Avalonia.HarfBuzz" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
-    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="SkiaSharp" Version="$(SkiaSharpVersion)" />
   </ItemGroup>
 
   <ItemGroup>

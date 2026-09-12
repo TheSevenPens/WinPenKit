@@ -10,10 +10,18 @@
 
     Bumping Avalonia without bumping a backend is the failure this prevents. The nuspec
     constraints are minimums, so a mixed set resolves quietly: core 11.4 against an 11.3
-    backend satisfies ">= 11.3.22" and nothing warns.
+    backend satisfies ">= 12.1.2" and nothing warns.
   -->
   <PropertyGroup>
-    <AvaloniaVersion>11.3.22</AvaloniaVersion>
+    <AvaloniaVersion>12.1.2</AvaloniaVersion>
+
+    <!--
+      One SkiaSharp version too. Avalonia.Skia 12.1.2 requires >= 3.119.4, and all four
+      managed samples draw with SkiaSharp - they have to agree, or a brush width compared
+      across them is comparing renderers as well as code. 3.119.4 is the last 3.x; 4.x is a
+      separate major and a separate decision.
+    -->
+    <SkiaSharpVersion>3.119.4</SkiaSharpVersion>
   </PropertyGroup>
 
 </Project>

@@ -14,5 +14,8 @@ class Program
             // ships in Avalonia.Desktop, which this project no longer references.
             .UseWin32()
             .UseSkia()
+            // Avalonia 12 split text shaping out of Skia. Without this the app throws
+            // "No text shaping system configured" at startup.
+            .UseHarfBuzz()
             .LogToTrace();
 }
