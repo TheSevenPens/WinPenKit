@@ -165,7 +165,7 @@ internal sealed class WmPointerSession : IPenSession
                   or PointerNative.WM_POINTERUP)
         {
             if (IsRunning)
-                OnPointerMessage(wParam);
+                OnPointerMessage(uMsg, wParam);
         }
 
         if (uMsg == PointerNative.WM_NCDESTROY && _subclassDelegate != null)
@@ -176,7 +176,7 @@ internal sealed class WmPointerSession : IPenSession
 
     // ── Message handler ──────────────────────────────────────────
 
-    private void OnPointerMessage(IntPtr wParam)
+    private void OnPointerMessage(uint uMsg, IntPtr wParam)
     {
         uint pointerId = PointerNative.GET_POINTERID_WPARAM(wParam);
 
@@ -184,8 +184,32 @@ internal sealed class WmPointerSession : IPenSession
         if (!PointerNative.GetPointerType(pointerId, out uint pointerType)) return;
         if (pointerType != PointerNative.PT_PEN) return;
 
-        if (!PointerNative.GetPointerPenInfo(pointerId, out var penInfo)) return;
+        // Windows coalesces updates that arrive faster than the message loop drains them.
+        // Taking only the newest sampled a fast stroke at the message rate rather than the
+        // device rate, and dropped the rest -- while WinFormsPointerSession and the native
+        // WM_POINTER session, reading the same API, kept them. Same message, same device,
+        // different stroke.
+        //
+        // History is newest first, so it is replayed in reverse. Only for UPDATE: down and up
+        // are single events and asking for their history returns the one point again.
+        if (uMsg == PointerNative.WM_POINTERUPDATE)
+        {
+            var history = new POINTER_PEN_INFO[64];
+            uint count = 64;
+            if (PointerNative.GetPointerPenInfoHistory(pointerId, ref count, history) && count > 1)
+            {
+                for (int i = (int)count - 1; i >= 0; i--)
+                    EnqueuePenInfo(history[i]);
+                return;
+            }
+        }
 
+        if (PointerNative.GetPointerPenInfo(pointerId, out var penInfo))
+            EnqueuePenInfo(penInfo);
+    }
+
+    private void EnqueuePenInfo(POINTER_PEN_INFO penInfo)
+    {
         var (desktopX, desktopY) = ResolvePosition(penInfo.pointerInfo);
 
         // Spatial scope: drop points outside the capture region.

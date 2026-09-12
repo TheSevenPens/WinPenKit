@@ -39,6 +39,21 @@ internal static class PointerNative
     public static extern bool GetPointerPenInfo(uint pointerId, out POINTER_PEN_INFO penInfo);
 
     /// <summary>
+    /// Every position Windows coalesced into one WM_POINTERUPDATE, newest first.
+    /// </summary>
+    /// <remarks>
+    /// Windows merges pointer updates that arrive faster than the message loop drains them.
+    /// <see cref="GetPointerPenInfo"/> returns only the newest, so a fast stroke read through
+    /// it alone is sampled at the message rate rather than the device rate. This declaration
+    /// was missing, which is why this session could not ask.
+    /// </remarks>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetPointerPenInfoHistory(
+        uint pointerId, ref uint entriesCount,
+        [In, Out] POINTER_PEN_INFO[]? penInfos);
+
+    /// <summary>
     /// The device's own extent in HIMETRIC, and the screen area it maps onto in pixels.
     /// </summary>
     /// <remarks>
