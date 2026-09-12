@@ -7,13 +7,17 @@
         <Border DockPanel.Dock="Top" Background="#F5F5F5"
                 BorderBrush="#CCCCCC" BorderThickness="0,0,0,1" Padding="8,6">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="16">
-                <!-- APP -->
+                <!-- PEN API. Combo and Clear side by side rather than stacked: stacked, this
+                     section is the tallest in the ribbon and sets its height for no good reason,
+                     and the combo has to be wide enough for "Wintab (high-res)". -->
                 <StackPanel>
-                    <TextBlock Text="APP" FontWeight="Bold" FontSize="10"
+                    <TextBlock Text="PEN API" FontWeight="Bold" FontSize="10"
                                Foreground="#555555" Margin="0,0,0,4" />
-                    <ComboBox x:Name="ApiCombo" Width="120" Height="28" />
-                    <Button Content="Clear" Height="28" Width="60" Margin="0,4,0,0"
-                            Click="Clear_Click" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ComboBox x:Name="ApiCombo" Width="150" Height="28" />
+                        <Button Content="Clear" Height="28" Padding="12,0"
+                                VerticalContentAlignment="Center" Click="Clear_Click" />
+                    </StackPanel>
                 </StackPanel>
                 <Rectangle Width="1" Fill="#DDDDDD" />
 

@@ -216,16 +216,29 @@ public partial class MainWindow : Window
         {
             _buttons.Update(pt);
 
-            // Convert desktop pixels to canvas-local coords.
-            // Avalonia's PointToClient on the TopLevel, then adjust for canvas position.
+            // Desktop pixels to canvas-local DIPs.
+            //
+            // Converted by hand rather than through PointToClient, which takes a PixelPoint and
+            // so forces the position onto the whole-pixel grid on the way in. That is not a
+            // rounding detail: quantizing the same hi-res input to whole pixels takes the median
+            // turn between consecutive segments from about 1.5 degrees to 11.3, because at the
+            // ~2px steps a tablet reports there are only a handful of directions a segment on an
+            // integer grid can point in. The path stops following the pen and starts zigzagging.
+            //
+            // The window origin is genuinely on a pixel boundary, so taking it as an integer
+            // loses nothing; only the pen's own position needs the precision kept.
             Point canvasPt;
             try
             {
                 var topLevel = TopLevel.GetTopLevel(this);
                 if (topLevel == null) continue;
 
-                var screenPt = new PixelPoint((int)pt.DesktopX, (int)pt.DesktopY);
-                var clientPt = topLevel.PointToClient(screenPt);
+                var windowOrigin = topLevel.PointToScreen(new Point(0, 0));
+                double scale = topLevel.RenderScaling;
+                var clientPt = new Point(
+                    (pt.DesktopX - windowOrigin.X) / scale,
+                    (pt.DesktopY - windowOrigin.Y) / scale);
+
                 var canvasOrigin = CanvasArea.TranslatePoint(new Point(0, 0), topLevel);
                 if (canvasOrigin == null) continue;
 
