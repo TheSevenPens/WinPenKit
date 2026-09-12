@@ -21,6 +21,9 @@ public partial class App : Application
 
         var window = new MainWindow();
 
+        if (StrokeRecorder.Requested(e.Args, out string? recordPath))
+            window.RecordTo(recordPath!);
+
         bool replay = StrokeReplay.Requested(e.Args, out string? replayPath);
         if (!SelfTest.Requested(e.Args) && !replay)
         {
