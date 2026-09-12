@@ -25,7 +25,21 @@ public sealed class StrokeReplay
     /// <summary>Points as recorded, in desktop pixels.</summary>
     public IReadOnlyList<(double X, double Y, int Pressure)> Points { get; }
 
-    private StrokeReplay(List<(double, double, int)> points) => Points = points;
+    /// <summary>
+    /// The pressure range the recording was captured under, or 0 when the file does not say.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Points"/> carries raw pressure, so normalising it needs this. Recordings
+    /// written before <see cref="StrokeRecorder"/> emitted the header line report 0, which
+    /// means "not stated" rather than "zero" -- check before dividing.
+    /// </remarks>
+    public int MaxPressure { get; }
+
+    private StrokeReplay(List<(double, double, int)> points, int maxPressure)
+    {
+        Points = points;
+        MaxPressure = maxPressure;
+    }
 
     /// <summary>
     /// Loads a recording: <c>desktopX,desktopY,pressure</c>, with <c>#</c> comments and a
@@ -34,9 +48,18 @@ public sealed class StrokeReplay
     public static StrokeReplay Load(string path)
     {
         var pts = new List<(double, double, int)>();
+        int maxPressure = 0;
+        const string maxPressureKey = "# MaxPressure:";
+
         foreach (string raw in File.ReadLines(path))
         {
             string line = raw.Trim();
+            if (line.StartsWith(maxPressureKey, StringComparison.OrdinalIgnoreCase))
+            {
+                int.TryParse(line[maxPressureKey.Length..].Trim(),
+                    NumberStyles.Integer, CultureInfo.InvariantCulture, out maxPressure);
+                continue;
+            }
             if (line.Length == 0 || line[0] == '#') continue;
 
             string[] f = line.Split(',');
@@ -48,7 +71,7 @@ public sealed class StrokeReplay
             int.TryParse(f[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int p);
             pts.Add((x, y, p));
         }
-        return new StrokeReplay(pts);
+        return new StrokeReplay(pts, maxPressure);
     }
 
     /// <summary>
@@ -79,7 +102,10 @@ public sealed class StrokeReplay
         var moved = new List<(double, double, int)>(Points.Count);
         foreach (var (x, y, p) in Points)
             moved.Add((x + dx, y + dy, p));
-        return new StrokeReplay(moved);
+
+        // Carries MaxPressure through. A shifted recording is the same capture in a different
+        // place; dropping the scale here would lose it on the one path every replay takes.
+        return new StrokeReplay(moved, MaxPressure);
     }
 
     /// <summary>

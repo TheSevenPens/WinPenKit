@@ -20,9 +20,35 @@ namespace WinPenKit.Diagnostics;
 public sealed class StrokeRecorder
 {
     private readonly List<(double X, double Y, uint Pressure)> _points = [];
+    private string? _source;
+    private int _maxPressure;
+    private bool _spansSessions;
 
-    /// <summary>Description written into the file's header, naming what produced the stream.</summary>
-    public string? Source { get; set; }
+    /// <summary>
+    /// Name the session these points are coming from, and its pressure range.
+    /// </summary>
+    /// <remarks>
+    /// <para>Call this when a session starts, not when the recording is saved. The pressure
+    /// column is raw, so a reader needs the maximum to normalise it, and by save time the
+    /// maximum may belong to a different device: this sample can switch pen API while a
+    /// recording is running. The same mistake was found and fixed in PenDynamicsLab, where
+    /// the metadata was read at stop and wrote the new device's range over samples scaled to
+    /// the old one.</para>
+    /// <para>Called again with different values after points exist, the earlier description
+    /// is kept -- those points belong to it -- and the file says the stream spans more than
+    /// one session, because one maximum cannot describe both halves.</para>
+    /// </remarks>
+    public void Describe(string source, int maxPressure)
+    {
+        if (_points.Count > 0 && (source != _source || maxPressure != _maxPressure))
+        {
+            _spansSessions = true;
+            return;
+        }
+
+        _source = source;
+        _maxPressure = maxPressure;
+    }
 
     /// <summary>Points captured so far.</summary>
     public int Count => _points.Count;
@@ -66,8 +92,16 @@ public sealed class StrokeRecorder
 
         var sb = new StringBuilder();
         sb.AppendLine("# Pen stroke recorded from a live session, in desktop pixels.");
-        if (Source != null)
-            sb.AppendLine(CultureInfo.InvariantCulture, $"# Source: {Source}");
+        if (_source != null)
+            sb.AppendLine(CultureInfo.InvariantCulture, $"# Source: {_source}");
+
+        // The pressure column is raw. Without this line a reader has nothing to divide by,
+        // and the file describes a stroke whose pressures cannot be interpreted.
+        sb.AppendLine(CultureInfo.InvariantCulture, $"# MaxPressure: {_maxPressure}");
+        if (_spansSessions)
+            sb.AppendLine("# WARNING: the pen API changed while this was recording. The values " +
+                          "above describe the session the first points came from; later points " +
+                          "came from another. Do not normalise pressure from this file.");
         sb.AppendLine(CultureInfo.InvariantCulture,
             $"# Captured: {DateTime.Now:yyyy-MM-dd HH:mm:ss}, {_points.Count} points");
         sb.AppendLine("desktopX,desktopY,pressure");
