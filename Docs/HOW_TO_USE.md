@@ -92,7 +92,7 @@ Every `PenPoint` contains:
 | `TiltY` | `double` | Planar: tilt toward/away in degrees (-90.0 to +90.0). |
 | `Twist` | `double` | Barrel rotation in degrees (0.0–360.0). |
 | `Z` | `int` | Height above tablet surface. 0 unless the session advertises `ZHeight`. |
-| `Status` | `uint` | Packet flags, carrying the proximity bit. Wintab only; 0 on every pointer backend. |
+| `Status` | `uint` | Packet flags, carrying the proximity bit. 0 unless the session advertises `Proximity`, which only the Wintab backends do. |
 | `Buttons` | `uint` | Button state, in **two different encodings**. Wintab: `(action << 16) \| buttonNumber`. Pointer backends: a flag bitmask, bit 0 barrel, bit 1 eraser. Read it through `PenButtonTracker`. |
 | `Cursor` | `uint` | Cursor type. Pointer backends normalise to 13 tip / 14 eraser. Wintab passes the driver's own number through, and those are device-assigned. |
 | `Source` | `InputApi` | Which backend produced this point. |
