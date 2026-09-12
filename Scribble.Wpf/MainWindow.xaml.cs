@@ -46,6 +46,18 @@ public partial class MainWindow : Window
     // Display scaling, so drawing can stay in DIPs while the bitmap is in pixels.
     private double _renderScale = 1.0;
 
+    // Set by --record. Captures the session's stream so one API can be measured against
+    // another away from the tablet that produced it.
+    private StrokeRecorder? _recorder;
+    private string? _recordPath;
+
+    /// <summary>Starts capturing the pen stream to <paramref name="path"/> on close.</summary>
+    internal void RecordTo(string path)
+    {
+        _recordPath = path;
+        _recorder = new StrokeRecorder();
+    }
+
     // Canvas origin in desktop device pixels, refreshed whenever the surface is rebuilt.
     private double _canvasOriginX;
     private double _canvasOriginY;
@@ -60,6 +72,30 @@ public partial class MainWindow : Window
         ((x - _canvasOriginX) / _renderScale, (y - _canvasOriginY) / _renderScale);
 
     /// <summary>
+    /// Re-reads where the canvas sits on the desktop.
+    /// </summary>
+    /// <remarks>
+    /// Called on every render tick that has points, not only when the surface is rebuilt.
+    /// Dragging the window changes this origin and raises no size change, so an origin cached
+    /// at bitmap-creation time goes stale the moment the window moves - and every pen position
+    /// after that converts against the old one, putting the ink exactly the drag distance away
+    /// from the pen. Both sessions show it, because the fault sits downstream of both.
+    ///
+    /// No check catches this. <c>L1.surface-alignment</c> asks whether the origin is a whole
+    /// number rather than whether it is correct, and the replay positions its input with
+    /// <c>CenteredOn(_canvasOriginX, ...)</c> before subtracting the same value, so a wrong
+    /// origin cancels itself exactly.
+    /// </remarks>
+    private void RefreshCanvasOrigin()
+    {
+        if (WinPenKit.Wpf.WpfCoordinates.GetTransform(CanvasArea) is { } xf)
+        {
+            _canvasOriginX = xf.OriginX;
+            _canvasOriginY = xf.OriginY;
+        }
+    }
+
+    /// <summary>
     /// Runs the launch-time acceptance checks against this window and returns the report.
     /// Called after the first layout pass, since the surface does not exist before then.
     /// </summary>
@@ -68,6 +104,8 @@ public partial class MainWindow : Window
     internal SelfTest RunSelfTest(string? replayPath = null)
     {
         var t = new SelfTest { AppName = "Scribble.Wpf" };
+
+        RefreshCanvasOrigin();
 
         t.CheckDpiAwareness();
         t.CheckWindowPlacement(_hwnd);
@@ -135,6 +173,13 @@ public partial class MainWindow : Window
 
         Closing += (_, _) =>
         {
+            if (_recorder != null && _recordPath != null)
+            {
+                _recorder.Source = _session?.GetType().Name ?? "unknown session";
+                int written = _recorder.Save(_recordPath);
+                Console.Error.WriteLine($"[record] {written} points -> {_recordPath}");
+            }
+
             _renderActive = false;
             _session?.Stop();
             _session?.Dispose();
@@ -174,11 +219,7 @@ public partial class MainWindow : Window
         _canvasDipHeight = dipH;
         _renderScale = scale;
 
-        if (WinPenKit.Wpf.WpfCoordinates.GetTransform(CanvasArea) is { } xf)
-        {
-            _canvasOriginX = xf.OriginX;
-            _canvasOriginY = xf.OriginY;
-        }
+        RefreshCanvasOrigin();
 
         // Physical pixels of canvas against pixels of bitmap. These must match, or the bitmap is
         // being scaled on its way to the screen.
@@ -303,12 +344,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        RefreshCanvasOrigin();
+
         int maxP = _session.MaxPressure;
         bool drew = false;
 
         foreach (var pt in points)
         {
             _buttons.Update(pt);
+            _recorder?.Add(pt);
 
             // Deliberately not CanvasArea.PointFromScreen: it truncates through an integer
             // Win32 POINT, which quantizes every pen position to a whole device pixel and

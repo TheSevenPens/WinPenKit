@@ -100,6 +100,27 @@ Two orders of magnitude between signal and noise, and the synthetic quantized fi
 
 `--replay <path>` takes a recording of your own — `desktopX,desktopY,pressure`, with `#` comments and a header line. That is how a stream captured from real hardware gets held to the same assertions.
 
+### Capturing one
+
+`--record <path>` writes the session's stream to that format. `Scribble.Wpf` implements it today.
+
+```
+Scribble.Wpf.exe --record wpf-stylus.csv
+```
+
+Draw, then close the window: the recording is written on close, and the point count goes to standard error. Positions are written with round-trip formatting and no rounding of any kind, because a recorder that quantized its own output would report every session as quantized.
+
+This is what makes one session measurable against another. `--replay` on the result prints the recording's own mean turn angle as the `in` figure of `L3.conversion-lossless`, so two captures from the same hand on the same tablet can be compared directly:
+
+```
+Scribble.Wpf.exe --replay wpf-stylus.csv
+[PASS] L3.conversion-lossless  mean turn angle in <this recording> deg, out ... 
+```
+
+Capture one stroke per API, drawn by the same hand at the same speed, and the `in` figures are directly comparable.
+
+`L2.recording-subpixel` on the same run says whether that session delivered sub-pixel data at all, which is the question `--replay` alone can never answer about the session that produced its input.
+
 ## Known flakiness
 
 `L0.window-placement` depends on where the window manager puts the window. A window cascaded down far enough to sit under the taskbar fails the check — correctly, since input aimed there really is discarded, but it means repeated launches can differ. If these flags are ever made a CI gate, that check needs either a deterministic window position or a documented exemption.
