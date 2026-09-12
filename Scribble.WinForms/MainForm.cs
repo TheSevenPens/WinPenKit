@@ -9,7 +9,10 @@ public sealed class MainForm : Form
     private IPenSession? _session;
     private readonly System.Windows.Forms.Timer _renderTimer = new() { Interval = 16 };
 
-    private Point? _lastCanvasPoint;
+    // PointF, not Point. The pen reports sub-pixel positions and Skia draws in floats; an
+    // integer here would quantize the path to the pixel grid between the two, which is exactly
+    // the precision the session goes to some trouble to deliver.
+    private PointF? _lastCanvasPoint;
     private double _brushSize = 6;
     private IReadOnlyList<InputApi> _apis = [];
     private DateTime _lastPointTime;
@@ -26,8 +29,16 @@ public sealed class MainForm : Form
     private int _bitmapHeight;
 
     // Controls.
-    private readonly ComboBox _apiCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
-    private readonly Button _clearButton = new() { Text = "Clear", Width = 60 };
+    private readonly ComboBox _apiCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
+    // AutoSize rather than a fixed width: 60px held "Clear" at 96 dpi and truncated it to "Cle"
+    // at 168, which is the kind of thing that only shows up on the machine that has the display.
+    private readonly Button _clearButton = new()
+    {
+        Text = "Clear",
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        Padding = new Padding(6, 0, 6, 0),
+    };
     private readonly TrackBar _brushSlider = new() { Minimum = 1, Maximum = 50, Value = 6, Width = 100, TickFrequency = 10 };
     private readonly Label _brushLabel = new() { Text = "Size 6 px", AutoSize = true };
     private readonly Panel _canvasPanel;
@@ -74,7 +85,7 @@ public sealed class MainForm : Form
             Padding = new Padding(4, 4, 4, 4)
         };
 
-        ribbon.Controls.Add(MakeSection("APP", _apiCombo, _clearButton));
+        ribbon.Controls.Add(MakeSection("PEN API", MakeRow(_apiCombo, _clearButton)));
         ribbon.Controls.Add(MakeSeparator());
         ribbon.Controls.Add(MakeSection("BRUSH", _brushLabel, _brushSlider));
         ribbon.Controls.Add(MakeSeparator());
@@ -175,6 +186,29 @@ public sealed class MainForm : Form
             panel.Controls.Add(child);
 
         return panel;
+    }
+
+    /// <summary>Lay controls out left to right, for a section that should not grow downward.</summary>
+    /// <remarks>
+    /// The ribbon takes its height from its tallest section, so a section that stacks tall
+    /// controls vertically can push past the ribbon and have its last child clipped - which is
+    /// what happened to Clear under the API combo.
+    /// </remarks>
+    private static FlowLayoutPanel MakeRow(params Control[] children)
+    {
+        var row = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            WrapContents = false,
+            Margin = new Padding(0)
+        };
+        foreach (var child in children)
+        {
+            child.Margin = new Padding(0, 0, 6, 0);
+            row.Controls.Add(child);
+        }
+        return row;
     }
 
     private static FlowLayoutPanel MakeDotRow(params object[] items)
@@ -349,8 +383,14 @@ public sealed class MainForm : Form
         {
             _buttons.Update(pt);
 
-            var screenPt = new Point((int)pt.DesktopX, (int)pt.DesktopY);
-            var canvasPt = _canvasPanel.PointToClient(screenPt);
+            // Converted by hand rather than through PointToClient, which takes an integer Point
+            // and so forces the position onto the whole-pixel grid on the way in. The panel's own
+            // origin is genuinely on a pixel boundary, so taking that as an integer loses nothing;
+            // only the pen's position needs its precision kept.
+            var origin = _canvasPanel.PointToScreen(Point.Empty);
+            var canvasPt = new PointF(
+                (float)(pt.DesktopX - origin.X),
+                (float)(pt.DesktopY - origin.Y));
 
             if (canvasPt.X < 0 || canvasPt.X > _bitmapWidth ||
                 canvasPt.Y < 0 || canvasPt.Y > _bitmapHeight)
@@ -399,7 +439,7 @@ public sealed class MainForm : Form
         _appPosLabel.Text = $"App: {appPt.X},{appPt.Y}";
 
         if (_lastCanvasPoint is { } cp)
-            _canvasPosLabel.Text = $"Canvas: {cp.X},{cp.Y}";
+            _canvasPosLabel.Text = $"Canvas: {cp.X:F1},{cp.Y:F1}";
 
         float pct = maxP > 0 ? (float)last.Pressure / maxP * 100f : 0f;
         _rawPressureLabel.Text = $"Raw: {last.Pressure}";

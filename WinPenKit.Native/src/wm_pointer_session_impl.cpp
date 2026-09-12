@@ -30,6 +30,8 @@ WmPointerSessionImpl::WmPointerSessionImpl() {
             GetProcAddress(user32, "GetPointerPenInfo"));
         get_pointer_pen_info_history_ = reinterpret_cast<GetPointerPenInfoHistory_t>(
             GetProcAddress(user32, "GetPointerPenInfoHistory"));
+        get_pointer_device_rects_ = reinterpret_cast<GetPointerDeviceRects_t>(
+            GetProcAddress(user32, "GetPointerDeviceRects"));
     }
 }
 
@@ -109,6 +111,42 @@ LRESULT CALLBACK WmPointerSessionImpl::subclass_proc(
     return DefSubclassProc(hWnd, uMsg, wParam, lParam);
 }
 
+// ── Sub-pixel positions ──────────────────────────────────────
+//
+// POINTER_INFO carries the position twice: ptPixelLocationRaw in whole screen pixels, and
+// ptHimetricLocationRaw in 0.01mm units - about 7x finer on a typical display. Both arrive in
+// every message, so reading the pixel one throws the precision away on arrival.
+//
+// The HIMETRIC value is expressed in the DEVICE's rect rather than in screen space, despite what
+// the field name suggests, so turning it into a screen position is a normalization between the
+// device rect and the display rect - not a conversion from 0.01mm to pixels. Getting that wrong
+// puts strokes in the wrong place entirely rather than merely imprecisely.
+void WmPointerSessionImpl::resolve_position(const POINTER_INFO& info, double& x, double& y)
+{
+    if (info.sourceDevice != rects_for_) {
+        rects_for_ = info.sourceDevice;
+        hi_res_ = get_pointer_device_rects_ && info.sourceDevice
+            && get_pointer_device_rects_(info.sourceDevice, &device_rect_, &display_rect_)
+            && device_rect_.right > device_rect_.left
+            && device_rect_.bottom > device_rect_.top;
+        Logger::log("Pointer device rects: hi-res=%d device=%ldx%ld display=%ldx%ld",
+            hi_res_ ? 1 : 0,
+            device_rect_.right - device_rect_.left, device_rect_.bottom - device_rect_.top,
+            display_rect_.right - display_rect_.left, display_rect_.bottom - display_rect_.top);
+    }
+
+    if (!hi_res_) {
+        x = static_cast<double>(info.ptPixelLocationRaw.x);
+        y = static_cast<double>(info.ptPixelLocationRaw.y);
+        return;
+    }
+
+    x = display_rect_.left + static_cast<double>(info.ptHimetricLocationRaw.x - device_rect_.left)
+        / (device_rect_.right - device_rect_.left) * (display_rect_.right - display_rect_.left);
+    y = display_rect_.top + static_cast<double>(info.ptHimetricLocationRaw.y - device_rect_.top)
+        / (device_rect_.bottom - device_rect_.top) * (display_rect_.bottom - display_rect_.top);
+}
+
 // ── Message handler ──────────────────────────────────────────────
 
 void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
@@ -136,8 +174,10 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
                 tilt_to_spherical(tx, ty, az, alt);
 
                 PenPoint pt = {};
-                pt.desktop_x = static_cast<double>(pi.pointerInfo.ptPixelLocationRaw.x);
-                pt.desktop_y = static_cast<double>(pi.pointerInfo.ptPixelLocationRaw.y);
+                double hx = 0.0, hy = 0.0;
+                resolve_position(pi.pointerInfo, hx, hy);
+                pt.desktop_x = hx;
+                pt.desktop_y = hy;
                 pt.raw_x     = pi.pointerInfo.ptPixelLocationRaw.x;
                 pt.raw_y     = pi.pointerInfo.ptPixelLocationRaw.y;
                 pt.pressure  = (pi.penMask & PEN_MASK_PRESSURE) ? pi.pressure : 0;
@@ -161,8 +201,8 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
     POINTER_PEN_INFO pen_info = {};
     if (!get_pointer_pen_info_(pointer_id, &pen_info)) return;
 
-    double desktop_x = static_cast<double>(pen_info.pointerInfo.ptPixelLocationRaw.x);
-    double desktop_y = static_cast<double>(pen_info.pointerInfo.ptPixelLocationRaw.y);
+    double desktop_x = 0.0, desktop_y = 0.0;
+    resolve_position(pen_info.pointerInfo, desktop_x, desktop_y);
 
     // Pressure (0-1024).
     uint32_t pressure = 0;

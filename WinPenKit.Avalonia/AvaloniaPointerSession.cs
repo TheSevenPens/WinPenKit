@@ -98,10 +98,20 @@ public sealed class AvaloniaPointerSession : IPenSession
             var elementPos = _element.TranslatePoint(point.Position, topLevel);
             if (elementPos == null) return;
 
-            // Convert window-relative to screen pixels.
-            var screenPt = topLevel.PointToScreen(elementPos.Value);
-            desktopX = screenPt.X;
-            desktopY = screenPt.Y;
+            // Window-relative DIPs to screen pixels, by hand.
+            //
+            // PointToScreen(Point) returns a PixelPoint, whose members are integers - so using it
+            // here would throw away the sub-pixel position Avalonia just went to the trouble of
+            // providing. Avalonia reads ptHimetricLocationRaw and maps it through
+            // GetPointerDeviceRects, falling back to whole pixels only where that API is missing,
+            // so point.Position genuinely carries a fraction on Windows.
+            //
+            // Scaling only the offset preserves it: the window origin is genuinely on a pixel
+            // boundary, so taking that as an integer costs nothing.
+            var windowOrigin = topLevel.PointToScreen(new Point(0, 0));
+            double scale = topLevel.RenderScaling;
+            desktopX = windowOrigin.X + elementPos.Value.X * scale;
+            desktopY = windowOrigin.Y + elementPos.Value.Y * scale;
         }
         catch
         {
