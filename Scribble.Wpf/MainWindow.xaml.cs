@@ -327,7 +327,12 @@ public partial class MainWindow : Window
 
             if (_lastCanvasPoint is { } from && pt.Pressure > 0 && maxP > 0)
             {
-                float width = (float)pt.Pressure / maxP * (float)_brushSize + 0.5f;
+                // Brush size is a count of physical pixels, the same as in every other
+                // sample. The canvas carries Scale(scale), so a width handed to it in canvas
+                // units arrives on screen multiplied by that - divide it back out here rather
+                // than letting the same slider mean 6px in one sample and 13.5 in another.
+                float width = ((float)pt.Pressure / maxP * (float)_brushSize + 0.5f)
+                              / (float)_renderScale;
 
                 using var paint = new SKPaint
                 {

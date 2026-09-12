@@ -247,8 +247,12 @@ static void process_points(HWND hwnd) {
             float norm = static_cast<float>(pt.pressure) / g_max_pressure;
             // Fractional width too: GDI+ can draw a sub-pixel line, where the old integer pen
             // snapped every stroke to a whole number of pixels wide.
-            float width = norm * g_brush_size;
-            if (width < 0.25f) width = 0.25f;
+            //
+            // The + 0.5 matches the other five samples rather than the 0.25 floor this used
+            // to carry. At a brush size of 6 the difference was 6.0 against 6.5 - small, but
+            // these samples exist to be compared with each other, so a width formula that
+            // differs between them is a confound in the one measurement they are for.
+            float width = norm * g_brush_size + 0.5f;
             draw_stroke(g_last_pt, client_pt, width);
             dirty = true;
         }

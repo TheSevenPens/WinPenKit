@@ -224,10 +224,11 @@ impl ScribbleApp {
 
             if let Some((from_x, from_y)) = self.last_canvas_point {
                 if pt.pressure > 0 && max_p > 0.0 {
-                    // Brush size is a point size, so it scales up with everything else now
-                    // that the pixmap is in physical pixels.
-                    let width =
-                        ((pt.pressure as f32 / max_p) * self.brush_size + 0.5) * pixels_per_point;
+                    // Brush size is a count of physical pixels, the same as in every other
+                    // sample. The pixmap is physical and so are these coordinates, so the
+                    // width needs no scaling - applying it is what made this slider mean
+                    // something different from the one in Scribble.Win32.
+                    let width = (pt.pressure as f32 / max_p) * self.brush_size + 0.5;
 
                     let mut paint = Paint::default();
                     paint.set_color_rgba8(0, 0, 0, 255);

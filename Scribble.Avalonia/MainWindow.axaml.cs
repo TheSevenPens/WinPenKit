@@ -328,9 +328,11 @@ public partial class MainWindow : Window
 
             if (_lastCanvasPoint is { } from && pt.Pressure > 0 && maxP > 0)
             {
-                // Brush size is a DIP size, so it scales with the surface.
-                float width = ((float)pt.Pressure / maxP * (float)_brushSize + 0.5f)
-                              * (float)_renderScale;
+                // Brush size is a count of physical pixels, the same as in every other
+                // sample. The canvas has no transform and its coordinates are already
+                // physical, so the width needs no scaling - applying it is what made this
+                // slider mean something different from the one in Scribble.WinForms.
+                float width = (float)pt.Pressure / maxP * (float)_brushSize + 0.5f;
 
                 using var paint = new SKPaint
                 {
