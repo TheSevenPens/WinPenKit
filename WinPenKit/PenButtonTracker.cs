@@ -111,13 +111,20 @@ public sealed class PenButtonTracker
     {
         // Wintab encodes one event per packet: (action << 16) | buttonNumber.
         // Packets with no event have Buttons == 0; state is preserved.
-        switch (pt.ButtonAction)
+        //
+        // Decoded here rather than through PenPoint's properties. Those apply this encoding
+        // to any point regardless of which backend produced it, which is why they are
+        // obsolete; this method has already established that the source is Wintab.
+        var action = (PenButtonAction)(pt.Buttons >> 16);
+        int number = (int)(pt.Buttons & 0xFFFF);
+
+        switch (action)
         {
             case PenButtonAction.Pressed:
-                SetWintabState(pt.ButtonNumber, true);
+                SetWintabState(number, true);
                 break;
             case PenButtonAction.Released:
-                SetWintabState(pt.ButtonNumber, false);
+                SetWintabState(number, false);
                 break;
         }
     }

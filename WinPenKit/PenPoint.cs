@@ -81,34 +81,52 @@ public readonly record struct PenPoint(
     /// <summary>Which input API produced this point.</summary>
     InputApi Source)
 {
+    // These five decode the Wintab encoding -- (action << 16) | buttonNumber -- and nothing
+    // here knows whether that is the encoding in hand. The five pointer backends set only
+    // bits 0 and 1, so Buttons >> 16 is always 0, ButtonAction is always None, and all three
+    // predicates are always false on those backends. False, not "cannot say".
+    //
+    // PenButtonTracker branches on PenPoint.Source and decodes both encodings, which is why
+    // it is the supported way to read buttons and these are not. They had no callers in any
+    // repository when this attribute was added.
+
     /// <summary>
     /// The button action from the high word: Pressed, Released, or None.
     /// </summary>
+    [Obsolete("Decodes the Wintab button encoding unconditionally, so it is always false on the five pointer backends. Use PenButtonTracker, which decodes per backend.")]
     public PenButtonAction ButtonAction => (PenButtonAction)(Buttons >> 16);
 
     /// <summary>
     /// The button number from the low word (0 = tip, 1 = barrel 1, etc.).
-    /// Only meaningful when <see cref="ButtonAction"/> is not <see cref="PenButtonAction.None"/>.
+    /// Only meaningful when the action is not <see cref="PenButtonAction.None"/>.
     /// </summary>
+    [Obsolete("Decodes the Wintab button encoding unconditionally, so it is always false on the five pointer backends. Use PenButtonTracker, which decodes per backend.")]
     public int ButtonNumber => (int)(Buttons & 0xFFFF);
 
     /// <summary>
     /// Returns true if the specified button was just pressed in this packet.
     /// </summary>
+    [Obsolete("Decodes the Wintab button encoding unconditionally, so it is always false on the five pointer backends. Use PenButtonTracker, which decodes per backend.")]
     public bool IsButtonPressed(int buttonNumber) =>
-        ButtonAction == PenButtonAction.Pressed && ButtonNumber == buttonNumber;
+        (Buttons >> 16) == (uint)PenButtonAction.Pressed
+        && (Buttons & 0xFFFF) == (uint)buttonNumber;
 
     /// <summary>
     /// Returns true if the specified button was just released in this packet.
     /// </summary>
+    [Obsolete("Decodes the Wintab button encoding unconditionally, so it is always false on the five pointer backends. Use PenButtonTracker, which decodes per backend.")]
     public bool IsButtonReleased(int buttonNumber) =>
-        ButtonAction == PenButtonAction.Released && ButtonNumber == buttonNumber;
+        (Buttons >> 16) == (uint)PenButtonAction.Released
+        && (Buttons & 0xFFFF) == (uint)buttonNumber;
 
     /// <summary>
     /// Returns true if the pen tip is being pressed in this packet.
     /// For continuous tip-down detection, check <see cref="Pressure"/> &gt; 0 instead.
     /// </summary>
-    public bool IsTipPressed => IsButtonPressed(PenButtonNumber.Tip);
+    [Obsolete("Decodes the Wintab button encoding unconditionally, so it is always false on the five pointer backends. Use PenButtonTracker, which decodes per backend.")]
+    public bool IsTipPressed =>
+        (Buttons >> 16) == (uint)PenButtonAction.Pressed
+        && (Buttons & 0xFFFF) == PenButtonNumber.Tip;
 
     /// <summary>
     /// Returns true if the eraser cursor is active. This is true whenever
