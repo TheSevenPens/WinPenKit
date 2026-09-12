@@ -70,6 +70,10 @@ typedef enum {
 typedef struct {
     double   desktop_x;
     double   desktop_y;
+    // Raw position in whatever units the input API reports natively. The unit differs per
+    // backend and no field says which one you have: tablet units from a Wintab digitizer
+    // context, screen pixels from a Wintab system context, hundredths of a millimetre from
+    // WM_POINTER (ptHimetricLocationRaw). A diagnostic, not a position.
     int32_t  raw_x;
     int32_t  raw_y;
     uint32_t pressure;

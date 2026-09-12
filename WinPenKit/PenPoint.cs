@@ -25,10 +25,24 @@ public readonly record struct PenPoint(
     /// <summary>Desktop Y in physical screen pixels (double for sub-pixel precision).</summary>
     double DesktopY,
 
-    /// <summary>Raw X from the input API (tablet-native in digitizer mode, screen pixels in system mode).</summary>
+    /// <summary>Raw X from the input API, in whatever units that API reports natively.</summary>
+    /// <remarks>
+    /// <para>The unit differs per backend, and there is no field saying which one you have:</para>
+    /// <list type="bullet">
+    /// <item><description>Wintab digitizer context: tablet-native units</description></item>
+    /// <item><description>Wintab system context: screen pixels, already mapped by the driver</description></item>
+    /// <item><description>WM_POINTER: hundredths of a millimetre, from <c>ptHimetricLocationRaw</c></description></item>
+    /// <item><description>Avalonia, WPF stylus and WinUI: <see cref="DesktopX"/> truncated to an
+    /// <c>int</c>, because those frameworks expose no device-native coordinate</description></item>
+    /// </list>
+    /// <para>Treat this as a diagnostic rather than as a position. Sane values here against a
+    /// wrong <see cref="DesktopX"/> point at the mapping; both wrong points upstream of it. The
+    /// last case above carries no information <see cref="DesktopX"/> does not already carry,
+    /// which is tracked in issue 24.</para>
+    /// </remarks>
     int RawX,
 
-    /// <summary>Raw Y from the input API.</summary>
+    /// <summary>Raw Y from the input API. See <see cref="RawX"/> for the units.</summary>
     int RawY,
 
     /// <summary>Raw pen tip pressure (0 to <see cref="IPenSession.MaxPressure"/>).</summary>

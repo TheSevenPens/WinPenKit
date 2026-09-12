@@ -184,8 +184,12 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
         _points.Enqueue(new PenPoint(
             DesktopX: desktopX,
             DesktopY: desktopY,
-            RawX: penInfo.pointerInfo.ptPixelLocationRaw.X,
-            RawY: penInfo.pointerInfo.ptPixelLocationRaw.Y,
+            // ptHimetricLocationRaw, not ptPixelLocationRaw. Both are unfiltered, and only this
+            // one is device-native: hundredths of a millimetre straight off the digitizer.
+            // The pixel field has already been mapped to the screen grid, so reporting it as
+            // "raw" describes the same space DesktopX is in, at lower resolution.
+            RawX: penInfo.pointerInfo.ptHimetricLocationRaw.X,
+            RawY: penInfo.pointerInfo.ptHimetricLocationRaw.Y,
             Pressure: pressure,
             Azimuth: azimuth,
             Altitude: altitude,
