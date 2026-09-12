@@ -326,7 +326,17 @@ public sealed class MainForm : Form
     /// The checks that catch real bugs in WPF and Rust are structurally unable to fail in this
     /// framework - which is most of why it is the gentler place to start.
     /// </remarks>
-    internal SelfTest RunSelfTest()
+    /// <summary>
+    /// The form's own desktop-to-canvas conversion, exposed so a replay goes through the same
+    /// code the pen does. A replay with its own arithmetic would be testing itself.
+    /// </summary>
+    private (double X, double Y) DesktopToCanvas(double x, double y)
+    {
+        var origin = _canvasPanel.PointToScreen(Point.Empty);
+        return (x - origin.X, y - origin.Y);
+    }
+
+    internal SelfTest RunSelfTest(string? replayPath = null)
     {
         var t = new SelfTest { AppName = "Scribble.WinForms" };
 
@@ -346,6 +356,14 @@ public sealed class MainForm : Form
         // DrawImageUnscaled, so the bitmap reaches the screen at its own pixel size.
         t.CheckPresentation1To1(_bitmapWidth, _bitmapHeight,
                                 _canvasPanel.Width, _canvasPanel.Height);
+
+        if (replayPath != null)
+        {
+            var canvasOrigin = _canvasPanel.PointToScreen(Point.Empty);
+            var stroke = StrokeReplay.Load(replayPath)
+                .CenteredOn(canvasOrigin.X, canvasOrigin.Y, _bitmapWidth, _bitmapHeight);
+            t.CheckReplay(stroke, DesktopToCanvas, 1.0);
+        }
 
         return t;
     }

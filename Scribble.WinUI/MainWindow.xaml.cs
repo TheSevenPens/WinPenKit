@@ -159,17 +159,30 @@ public sealed partial class MainWindow : Window
     /// with the report's code. The canvas is a private XAML field, so this lives here rather
     /// than in App.
     /// </summary>
-    internal void ArmSelfTest()
+    internal void ArmSelfTest(string? replayPath = null)
     {
         Canvas.SizeChanged += (_, e) =>
         {
             if (e.NewSize.Width <= 0 || e.NewSize.Height <= 0) return;
-            DispatcherQueue.TryEnqueue(() => Environment.Exit(RunSelfTest().Emit()));
+            DispatcherQueue.TryEnqueue(() => Environment.Exit(RunSelfTest(replayPath).Emit()));
         };
     }
 
+    /// <summary>
+    /// The window's own desktop-to-canvas conversion, in effective pixels, exposed so a replay
+    /// goes through the same code the pen does.
+    /// </summary>
+    private (double X, double Y) DesktopToCanvas(double x, double y)
+    {
+        double scale = Canvas.CanvasLogicalSize.Scale;
+        var pos = Canvas.GetPositionInWindow();
+        var origin = new POINT { X = 0, Y = 0 };
+        ClientToScreen(WinRT.Interop.WindowNative.GetWindowHandle(this), ref origin);
+        return ((x - origin.X) / scale - pos.X, (y - origin.Y) / scale - pos.Y);
+    }
+
     /// <summary>Runs the launch-time acceptance checks against this window.</summary>
-    internal SelfTest RunSelfTest()
+    internal SelfTest RunSelfTest(string? replayPath = null)
     {
         var t = new SelfTest { AppName = "Scribble.WinUI" };
 
@@ -193,6 +206,16 @@ public sealed partial class MainWindow : Window
 
         var (presW, presH) = Canvas.PresentedDeviceSize;
         t.CheckPresentation1To1(bmpW, bmpH, presW, presH);
+
+        if (replayPath != null)
+        {
+            // The conversion yields effective pixels, so the snap scale is the rasterization
+            // scale - that is what turns them into device pixels.
+            var stroke = StrokeReplay.Load(replayPath)
+                .CenteredOn(clientOrigin.X + posInWindow.X * scale,
+                            clientOrigin.Y + posInWindow.Y * scale, bmpW, bmpH);
+            t.CheckReplay(stroke, DesktopToCanvas, scale);
+        }
 
         return t;
     }
