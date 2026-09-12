@@ -119,5 +119,11 @@ public readonly record struct PenPoint(
     /// <summary>
     /// Returns true if the pen is in proximity of the tablet surface.
     /// </summary>
+    /// <remarks>
+    /// Only meaningful when the session advertises
+    /// <see cref="PenCapabilities.Proximity"/>. Without it this reads a bit nothing sets, so
+    /// it is false on every point -- including the hover points the pointer backends do
+    /// produce -- and false means "not reported" rather than "not in proximity".
+    /// </remarks>
     public bool IsInProximity => (Status & 0x0001) != 0;
 }

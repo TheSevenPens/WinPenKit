@@ -64,14 +64,15 @@ PenSessionHandle pen_session_create(PenInputApi api) {
     case PEN_API_WINTAB_SYSTEM:
         s->wintab = new (std::nothrow) WintabSessionImpl();
         s->capabilities = PEN_CAP_PRESSURE | PEN_CAP_TILT | PEN_CAP_TWIST |
-                          PEN_CAP_ZHEIGHT | PEN_CAP_BUTTONS | PEN_CAP_ERASER;
+                          PEN_CAP_ZHEIGHT | PEN_CAP_BUTTONS | PEN_CAP_ERASER |
+                          PEN_CAP_PROXIMITY;
         break;
 
     case PEN_API_WINTAB_DIGITIZER:
         s->wintab = new (std::nothrow) WintabSessionImpl();
         s->capabilities = PEN_CAP_PRESSURE | PEN_CAP_TILT | PEN_CAP_TWIST |
                           PEN_CAP_ZHEIGHT | PEN_CAP_BUTTONS | PEN_CAP_ERASER |
-                          PEN_CAP_HIRES;
+                          PEN_CAP_HIRES | PEN_CAP_PROXIMITY;
         break;
 
     case PEN_API_WM_POINTER:

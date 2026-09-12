@@ -46,4 +46,16 @@ public enum PenCapabilities
     /// to <see cref="PenCaptureRegion.Unbounded"/> to use it. Wintab only.
     /// </summary>
     GlobalCapture = 1 << 7,
+
+    /// <summary>
+    /// The session reports proximity, so <see cref="PenPoint.IsInProximity"/> means something.
+    /// </summary>
+    /// <remarks>
+    /// Without this flag <see cref="PenPoint.IsInProximity"/> is false on every point the
+    /// session produces, including hover points it does report. The five pointer backends
+    /// leave <see cref="PenPoint.Status"/> at zero because the pointer APIs carry no
+    /// equivalent of Wintab's proximity bit, so a consumer that uses the property to tell
+    /// hover from no-pen has to ask this first.
+    /// </remarks>
+    Proximity = 1 << 8,
 }

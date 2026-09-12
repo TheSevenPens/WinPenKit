@@ -11,7 +11,7 @@ internal sealed class WintabSystemSession : WintabSessionBase
     public override PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt | PenCapabilities.Twist |
         PenCapabilities.ZHeight | PenCapabilities.Buttons | PenCapabilities.Eraser |
-        PenCapabilities.GlobalCapture;
+        PenCapabilities.GlobalCapture | PenCapabilities.Proximity;
 
     protected override string? OpenContext(IntPtr hwnd)
     {

@@ -55,7 +55,11 @@ typedef enum {
     PEN_CAP_ZHEIGHT  = 1 << 3,
     PEN_CAP_BUTTONS  = 1 << 4,
     PEN_CAP_HIRES    = 1 << 5,
-    PEN_CAP_ERASER   = 1 << 6
+    PEN_CAP_ERASER   = 1 << 6,
+    // 1 << 7 is GlobalCapture in the managed PenCapabilities. It is left as a hole rather
+    // than reused, so a value means the same thing on both surfaces; that this binding does
+    // not report it is issue 41.
+    PEN_CAP_PROXIMITY = 1 << 8
 } PenCapabilities;
 
 // ── PenPoint ────────────────────────────────────────────────────
