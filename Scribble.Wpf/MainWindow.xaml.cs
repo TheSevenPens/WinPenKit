@@ -6,6 +6,7 @@ using System.Windows.Media.Imaging;
 using System.Linq;
 using WinPenKit;
 using WinPenKit.Wpf;
+using WinPenKit.Diagnostics;
 using SkiaSharp;
 
 namespace Scribble.Wpf;
@@ -49,6 +50,33 @@ public partial class MainWindow : Window
     private double _canvasOriginX;
     private double _canvasOriginY;
 
+
+    /// <summary>
+    /// Runs the launch-time acceptance checks against this window and returns the report.
+    /// Called after the first layout pass, since the surface does not exist before then.
+    /// </summary>
+    internal SelfTest RunSelfTest()
+    {
+        var t = new SelfTest { AppName = "Scribble.Wpf" };
+
+        t.CheckDpiAwareness();
+        t.CheckWindowPlacement(_hwnd);
+        t.ReportScale(_renderScale);
+
+        t.CheckSurfacePhysical(_bitmapWidth, _bitmapHeight,
+                               _canvasDipWidth, _canvasDipHeight, _renderScale);
+        t.CheckSurfaceAlignment(_canvasOriginX, _canvasOriginY);
+
+        // Stretch="None" means the image is presented at the bitmap's own DIP size, which is
+        // its pixel count divided by the DPI it was declared at. Measuring it rather than
+        // asserting it is the point: this is exactly where a correctly sized bitmap can still
+        // be scaled back off the pixel grid.
+        double presentedPxW = DrawImage.ActualWidth * _renderScale;
+        double presentedPxH = DrawImage.ActualHeight * _renderScale;
+        t.CheckPresentation1To1(_bitmapWidth, _bitmapHeight, presentedPxW, presentedPxH);
+
+        return t;
+    }
 
     public MainWindow()
     {

@@ -1,11 +1,31 @@
+using WinPenKit.Diagnostics;
+
 namespace Scribble.WinForms;
 
 static class Program
 {
     [STAThread]
-    static void Main()
+    static int Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+
+        var form = new MainForm();
+
+        if (!SelfTest.Requested(args))
+        {
+            Application.Run(form);
+            return 0;
+        }
+
+        // The form has to be shown: every level 1 check is about the drawing surface, and the
+        // surface does not exist until the first layout pass.
+        int code = 0;
+        form.Shown += (_, _) =>
+        {
+            code = form.RunSelfTest().Emit();
+            form.Close();
+        };
+        Application.Run(form);
+        return code;
     }
 }

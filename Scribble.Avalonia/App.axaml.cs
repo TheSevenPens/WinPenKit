@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
+using WinPenKit.Diagnostics;
 
 namespace Scribble.Avalonia;
 
@@ -11,7 +13,22 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-            desktop.MainWindow = new MainWindow();
+        {
+            var window = new MainWindow();
+            desktop.MainWindow = window;
+
+            if (SelfTest.Requested(desktop.Args ?? []))
+            {
+                // Opened fires before the first layout pass has produced a surface, so the
+                // checks are posted behind it at Loaded priority rather than run inline.
+                window.Opened += (_, _) => Dispatcher.UIThread.Post(
+                    () =>
+                    {
+                        desktop.Shutdown(window.RunSelfTest().Emit());
+                    },
+                    DispatcherPriority.Loaded);
+            }
+        }
 
         base.OnFrameworkInitializationCompleted();
     }

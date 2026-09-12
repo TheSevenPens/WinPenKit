@@ -1,4 +1,5 @@
 mod pen_session_ffi;
+mod selftest;
 
 use eframe::egui;
 use pen_session_ffi::{PenInputApi, PenPoint, PenSession};
@@ -7,15 +8,25 @@ use tiny_skia::{Color, LineCap, Paint, PathBuilder, Pixmap, Stroke, Transform};
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1200.0, 700.0])
+            // Points, so this is multiplied by the display scale. At 2.25x, 700 points is
+            // 1575px before chrome, which does not fit a 2052px work area once the window
+            // manager has cascaded it down a few launches - and a window whose bottom is
+            // under the taskbar silently discards every pen point aimed there.
+            .with_inner_size([1100.0, 600.0])
             .with_title("Scribble Rust - WinPenKit"),
         ..Default::default()
     };
 
+    let run_selftest = selftest::requested();
+
     eframe::run_native(
         "Scribble.Rust",
         options,
-        Box::new(|_cc| Ok(Box::new(ScribbleApp::new()))),
+        Box::new(move |_cc| {
+            let mut app = ScribbleApp::new();
+            app.selftest_pending = run_selftest;
+            Ok(Box::new(app))
+        }),
     )
 }
 
@@ -29,6 +40,11 @@ struct ScribbleApp {
     pixmap: Option<Pixmap>,
     texture: Option<egui::TextureHandle>,
     canvas_size: [usize; 2],
+
+    /// Set from the command line. The checks need a canvas that has been laid out, and the
+    /// earliest that exists is inside the first update() that sizes the pixmap.
+    selftest_pending: bool,
+    selftest_frames: u32,
     last_canvas_point: Option<(f32, f32)>,
     brush_size: f32,
     needs_texture_update: bool,
@@ -61,6 +77,8 @@ impl ScribbleApp {
             pixmap: None,
             texture: None,
             canvas_size: [0, 0],
+            selftest_pending: false,
+            selftest_frames: 0,
             last_canvas_point: None,
             brush_size: 6.0,
             needs_texture_update: false,
@@ -460,9 +478,12 @@ impl eframe::App for ScribbleApp {
             // with TextureOptions::NEAREST, i.e. no filtering at all. That is a canvas drawn at
             // 57% of the screen's resolution and then blown up with hard edges, and no amount
             // of coordinate precision survives it.
+            // ceil, not truncate: a pixmap one pixel short of the canvas leaves a strip the
+            // stroke can never reach, and puts the surface permanently out of step with the
+            // rect it is presented into.
             self.ensure_pixmap(
-                (available.x * ppp) as usize,
-                (available.y * ppp) as usize,
+                (available.x * ppp).ceil() as usize,
+                (available.y * ppp).ceil() as usize,
             );
 
             // Drawing therefore happens in physical pixels too. egui positions are in points,
@@ -470,19 +491,69 @@ impl eframe::App for ScribbleApp {
             // gets converted - by multiplying up - rather than the pen position being divided
             // down.
             let canvas_rect = ui.min_rect();
-            let canvas_screen_min = egui::pos2(
+
+            // Snap the canvas to whole device pixels. egui has no equivalent of layout
+            // rounding, so a panel below a text-sized ribbon starts wherever that ribbon
+            // happens to end - routinely half a pixel off. The texture is then resampled
+            // across the whole canvas to draw it there, softening every edge at once while
+            // the coordinates and the resolution both still measure correct.
+            let raw_screen_min = egui::pos2(
                 window_pos.x + canvas_rect.min.x,
                 window_pos.y + canvas_rect.min.y,
             );
+            let canvas_screen_min = egui::pos2(
+                (raw_screen_min.x * ppp).round() / ppp,
+                (raw_screen_min.y * ppp).round() / ppp,
+            );
+            let snap_shift = canvas_screen_min - raw_screen_min;
 
             self.process_points(canvas_screen_min, ppp);
             self.update_texture(ctx);
 
             if let Some(ref tex) = self.texture {
-                ui.image(egui::ImageSource::Texture(egui::load::SizedTexture::new(
-                    tex.id(),
-                    available,
-                )));
+                // Presented at exactly the pixmap's size, at the snapped origin, so one texel
+                // covers one device pixel. Drawing it at `available` instead would stretch a
+                // ceil-rounded pixmap by a fraction of a pixel and undo the snapping.
+                let size_pt = egui::vec2(
+                    self.canvas_size[0] as f32 / ppp,
+                    self.canvas_size[1] as f32 / ppp,
+                );
+                let rect = egui::Rect::from_min_size(canvas_rect.min + snap_shift, size_pt);
+                egui::Image::new(egui::load::SizedTexture::new(tex.id(), size_pt))
+                    .paint_at(ui, rect);
+            }
+
+            // The handle is captured from GetActiveWindow, which returns null until the
+            // window has focus, so the checks wait for it - with a frame budget so a window
+            // that never activates still produces a report rather than hanging.
+            self.selftest_frames += 1;
+            if self.selftest_pending
+                && self.canvas_size[0] > 0
+                && (!self.hwnd.is_null() || self.selftest_frames > 60)
+            {
+                self.selftest_pending = false;
+
+                let mut r = selftest::Report::new("Scribble.Rust");
+                r.check_dpi_awareness();
+                r.check_window_placement(self.hwnd);
+                r.report_scale(ppp);
+
+                // egui lays out in points, so the ratio here is pixels_per_point.
+                r.check_surface_physical(
+                    self.canvas_size[0] as u32, self.canvas_size[1] as u32,
+                    available.x, available.y, ppp);
+
+                // The canvas rect is in points; scaled up it is where the surface actually
+                // lands, which is the thing that has to be whole.
+                r.check_surface_alignment(canvas_screen_min.x * ppp, canvas_screen_min.y * ppp);
+
+                // Drawn into a rect of `available` points, which is the pixmap's size in
+                // points when the surface is correct.
+                r.check_presentation_1to1(
+                    self.canvas_size[0] as u32, self.canvas_size[1] as u32,
+                    self.canvas_size[0] as f32, self.canvas_size[1] as f32);
+
+                std::process::exit(r.emit());
             }
         });
     }

@@ -117,12 +117,34 @@ public sealed partial class DrawingCanvas : UserControl
         CopyToWriteableBitmap();
     }
 
+    /// <summary>Backing bitmap size in device pixels.</summary>
+    internal (int Width, int Height) BitmapSize => (_bitmapWidth, _bitmapHeight);
+
+    /// <summary>Canvas size in XAML's effective pixels, and the scale relating them to
+    /// device pixels.</summary>
+    internal (double Width, double Height, double Scale) CanvasLogicalSize =>
+        (CanvasArea.ActualWidth, CanvasArea.ActualHeight, XamlRoot?.RasterizationScale ?? 1.0);
+
+    /// <summary>Size the image actually reaches the screen at, in device pixels.</summary>
+    internal (double Width, double Height) PresentedDeviceSize
+    {
+        get
+        {
+            double s = XamlRoot?.RasterizationScale ?? 1.0;
+            return (DrawImage.ActualWidth * s, DrawImage.ActualHeight * s);
+        }
+    }
+
     // ── Bitmap management ────────────────────────────────────────
 
     private void EnsureBitmap()
     {
-        int w = (int)CanvasArea.ActualWidth;
-        int h = (int)CanvasArea.ActualHeight;
+        // Physical pixels, not effective pixels. ActualWidth is in XAML's effective pixels,
+        // and a bitmap sized from it is magnified by the rasterization scale on its way to
+        // the screen - at 2.25x that is a canvas drawn at 44% of the display's resolution.
+        double scale = XamlRoot?.RasterizationScale ?? 1.0;
+        int w = (int)Math.Ceiling(CanvasArea.ActualWidth * scale);
+        int h = (int)Math.Ceiling(CanvasArea.ActualHeight * scale);
         if (w <= 0 || h <= 0) return;
         if (_skBitmap != null && _bitmapWidth == w && _bitmapHeight == h) return;
 
@@ -131,6 +153,12 @@ public sealed partial class DrawingCanvas : UserControl
 
         _skBitmap = new SKBitmap(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
         _skCanvas = new SKCanvas(_skBitmap);
+
+        // Stroke coordinates arrive in effective pixels, so the transform is the only thing
+        // that knows the surface is physical. Everything downstream keeps working in the
+        // units it already used.
+        _skCanvas.Scale((float)scale);
+
         _bitmapWidth = w;
         _bitmapHeight = h;
 
@@ -138,12 +166,24 @@ public sealed partial class DrawingCanvas : UserControl
 
         if (oldBitmap != null)
         {
+            // Old pixels are already physical, so the scale comes off for the blit or the
+            // preserved content grows by the scale factor on every resize.
+            _skCanvas.Save();
+            _skCanvas.ResetMatrix();
             _skCanvas.DrawBitmap(oldBitmap, 0, 0);
+            _skCanvas.Restore();
             oldCanvas?.Dispose();
             oldBitmap.Dispose();
         }
 
         _wbBitmap = new WriteableBitmap(w, h);
+
+        // WinUI has no per-bitmap dpi, so the image is sized explicitly in effective pixels:
+        // w physical px shown across w/scale epx is exactly one texel per device pixel.
+        // Left at its natural size it would occupy w epx and be magnified by the scale.
+        DrawImage.Width = w / scale;
+        DrawImage.Height = h / scale;
+
         CopyToWriteableBitmap();
         DrawImage.Source = _wbBitmap;
     }
