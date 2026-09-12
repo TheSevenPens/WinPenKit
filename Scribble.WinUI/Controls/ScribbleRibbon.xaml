@@ -187,6 +187,35 @@
                 </StackPanel>
             </StackPanel>
 
+            <!-- ═══ DIAGNOSTICS ═══
+                 For a stroke that silently fails to appear. The three counters separate causes
+                 that look identical on screen: no points means input never arrived, points but
+                 all off-canvas means the coordinate mapping is wrong, points and segments but
+                 no ink means the fault is in rendering. -->
+            <StackPanel Margin="0,0,16,0">
+                <TextBlock Text="DIAGNOSTICS" FontWeight="Bold" FontSize="10"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,4" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Pts:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="PointsValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="0" MinWidth="52" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1,0,0">
+                    <TextBlock Text="Off:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="OffCanvasValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="0" MinWidth="52" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1,0,0">
+                    <TextBlock Text="Seg:" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="SegmentsValue" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="0" MinWidth="52" />
+                </StackPanel>
+            </StackPanel>
+
         </StackPanel>
     </Border>
 </UserControl>

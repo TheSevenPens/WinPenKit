@@ -29,8 +29,21 @@ public partial class MainWindow : Window
     private SKBitmap? _skBitmap;
     private SKCanvas? _skCanvas;
     private WriteableBitmap? _wpfBitmap;
+
+    // Physical pixels, not DIPs. The canvas used to be sized from ActualWidth - which is DIPs -
+    // and handed to a WriteableBitmap declared at 96 dpi, so on a scaled display WPF magnified
+    // the result to fit. At 1.75x that is a canvas drawn at 57% of the screen's resolution and
+    // then blown up, which looks bumpy no matter how precise the pen positions are. It is why
+    // every input API looked equally bad here.
     private int _bitmapWidth;
     private int _bitmapHeight;
+
+    // DIPs, for bounds-checking pen positions, which arrive in DIPs.
+    private double _canvasDipWidth;
+    private double _canvasDipHeight;
+
+    // Display scaling, so drawing can stay in DIPs while the bitmap is in pixels.
+    private double _renderScale = 1.0;
 
     public MainWindow()
     {
@@ -84,9 +97,15 @@ public partial class MainWindow : Window
 
     private void EnsureBitmap()
     {
-        int w = (int)CanvasArea.ActualWidth;
-        int h = (int)CanvasArea.ActualHeight;
-        if (w <= 0 || h <= 0) return;
+        double dipW = CanvasArea.ActualWidth;
+        double dipH = CanvasArea.ActualHeight;
+        if (dipW <= 0 || dipH <= 0) return;
+
+        double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        if (scale <= 0) scale = 1.0;
+
+        int w = (int)Math.Ceiling(dipW * scale);
+        int h = (int)Math.Ceiling(dipH * scale);
         if (_skBitmap != null && _bitmapWidth == w && _bitmapHeight == h) return;
 
         var oldBitmap = _skBitmap;
@@ -94,8 +113,21 @@ public partial class MainWindow : Window
 
         _skBitmap = new SKBitmap(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
         _skCanvas = new SKCanvas(_skBitmap);
+
+        // Drawing code keeps working in DIPs; the canvas transform is the only thing that knows
+        // about display scaling.
+        _skCanvas.Scale((float)scale);
+
         _bitmapWidth = w;
         _bitmapHeight = h;
+        _canvasDipWidth = dipW;
+        _canvasDipHeight = dipH;
+        _renderScale = scale;
+
+        // Physical pixels of canvas against pixels of bitmap. These must match, or the bitmap is
+        // being scaled on its way to the screen.
+        SurfaceLabel.Text =
+            $"Surface: {w}x{h}px  scale {scale:F2}  canvas {dipW:F0}x{dipH:F0}dip";
 
         // Clear to background.
         _skCanvas.Clear(new SKColor(0xF0, 0xF0, 0xF0));
@@ -103,13 +135,19 @@ public partial class MainWindow : Window
         // Copy old content if resizing.
         if (oldBitmap != null)
         {
+            // Old pixels are already physical, so the DIP transform has to come off for the
+            // blit or the preserved content would be magnified by the scale factor each resize.
+            _skCanvas.Save();
+            _skCanvas.ResetMatrix();
             _skCanvas.DrawBitmap(oldBitmap, 0, 0);
+            _skCanvas.Restore();
             oldCanvas?.Dispose();
             oldBitmap.Dispose();
         }
 
-        // Create WPF bitmap for display.
-        _wpfBitmap = new WriteableBitmap(w, h, 96, 96, PixelFormats.Bgra32, null);
+        // Declared at the display's dpi, so WPF lays the image out at its DIP size and presents
+        // the pixels 1:1 instead of scaling them.
+        _wpfBitmap = new WriteableBitmap(w, h, 96 * scale, 96 * scale, PixelFormats.Bgra32, null);
         CopyToWpfBitmap();
         DrawImage.Source = _wpfBitmap;
     }
@@ -207,8 +245,9 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            if (canvasPt.X < 0 || canvasPt.X > _bitmapWidth ||
-                canvasPt.Y < 0 || canvasPt.Y > _bitmapHeight)
+            // Bounds in DIPs: canvasPt is in DIPs, the bitmap is in pixels.
+            if (canvasPt.X < 0 || canvasPt.X > _canvasDipWidth ||
+                canvasPt.Y < 0 || canvasPt.Y > _canvasDipHeight)
             {
                 _lastCanvasPoint = null;
                 continue;

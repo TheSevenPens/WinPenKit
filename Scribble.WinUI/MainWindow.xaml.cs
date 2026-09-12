@@ -140,6 +140,10 @@ public sealed partial class MainWindow : Window
 
         Canvas.Flush();
 
+        // Every tick, not only when points arrive: a counter that stops moving while the pen is
+        // down says as much as one that climbs.
+        Toolbar.UpdateCounters(_session.PointsSeen, _session.PointsOffCanvas, _session.SegmentsDrawn);
+
         if (_session.HasNewTelemetry)
         {
             Toolbar.UpdateTelemetry(_session.GetTelemetry());

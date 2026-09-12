@@ -119,6 +119,17 @@ public sealed partial class ScribbleRibbon : UserControl
     /// <summary>Resets the tracker — call when restarting a session.</summary>
     public void ResetButtons() => _buttons.Reset();
 
+    /// <summary>
+    /// Show the point/segment counters. Updated every tick, not only when points arrive, so a
+    /// stalled counter is itself the signal.
+    /// </summary>
+    public void UpdateCounters(long points, long offCanvas, long segments)
+    {
+        PointsValue.Text = points.ToString();
+        OffCanvasValue.Text = offCanvas.ToString();
+        SegmentsValue.Text = segments.ToString();
+    }
+
     public void Tick()
     {
         if ((DateTime.UtcNow - _lastPointTime).TotalMilliseconds > 200)
