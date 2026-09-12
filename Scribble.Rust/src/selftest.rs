@@ -378,6 +378,51 @@ impl Report {
     }
 }
 
+/// Moves the window inside its monitor's work area, shrinking it first if it does not fit.
+///
+/// The window manager cascades each launch a little further down, so an application that fits
+/// on one run hangs below the work area a few runs later - and pen input aimed at the part
+/// hanging off is discarded with no error. `L0.window-placement` reports that correctly when
+/// it happens, which is why the placement is worth fixing rather than the check loosening.
+///
+/// Lives here because this module already holds the Win32 declarations it needs.
+pub fn clamp_to_work_area(hwnd: *mut c_void) -> bool {
+    if hwnd.is_null() { return false; }
+    unsafe {
+        if IsZoomed(hwnd) != 0 { return false; }
+
+        let mut win = Rect::default();
+        if GetWindowRect(hwnd, &mut win) == 0 { return false; }
+
+        let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut mi = MonitorInfo {
+            cb_size: std::mem::size_of::<MonitorInfo>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(mon, &mut mi) == 0 { return false; }
+
+        let wa = mi.rc_work;
+        let (w, h) = (win.right - win.left, win.bottom - win.top);
+
+        // Shrink first: moving a window larger than the work area can never bring it inside.
+        let new_w = w.min(wa.right - wa.left);
+        let new_h = h.min(wa.bottom - wa.top);
+
+        let new_x = win.left.clamp(wa.left, (wa.right - new_w).max(wa.left));
+        let new_y = win.top.clamp(wa.top, (wa.bottom - new_h).max(wa.top));
+
+        if new_x == win.left && new_y == win.top && new_w == w && new_h == h {
+            return false;
+        }
+
+        // SWP_NOZORDER | SWP_NOACTIVATE, plus SWP_NOSIZE when only the position changes.
+        let mut flags: u32 = 0x0004 | 0x0010;
+        if new_w == w && new_h == h { flags |= 0x0001; }
+
+        SetWindowPos(hwnd, std::ptr::null_mut(), new_x, new_y, new_w, new_h, flags) != 0
+    }
+}
+
 /// The window's top-left corner in desktop pixels.
 pub fn window_origin(hwnd: *mut c_void) -> Option<(i32, i32)> {
     if hwnd.is_null() { return None; }

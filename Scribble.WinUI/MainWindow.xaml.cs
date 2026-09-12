@@ -26,6 +26,12 @@ public sealed partial class MainWindow : Window
         this.InitializeComponent();
         _renderTimer.Tick += RenderTimer_Tick;
 
+        // The window manager cascades each launch a little further down, so an application that
+        // fits on one run hangs below the work area a few runs later - and pen input aimed at
+        // the part hanging off is discarded with no error.
+        WinPenKit.WindowPlacement.ClampToWorkArea(
+            WinRT.Interop.WindowNative.GetWindowHandle(this));
+
         // Populate the toolbar dropdown with discovered APIs + WinUI Pointer.
         // WM_POINTER subclassing doesn't receive events in WinUI 3.
         var apis = PenSessionFactory.GetAvailableApis()

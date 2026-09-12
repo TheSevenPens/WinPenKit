@@ -159,6 +159,11 @@ public partial class MainWindow : Window
         {
             _hwnd = new WindowInteropHelper(this).Handle;
 
+            // The window manager cascades each launch a little further down, so an application
+            // that fits on one run hangs below the work area a few runs later - and pen input
+            // aimed at the part hanging off is discarded with no error.
+            WinPenKit.WindowPlacement.ClampToWorkArea(_hwnd);
+
             // WM_POINTER subclassing doesn't receive events in WPF.
             var apiList = PenSessionFactory.GetAvailableApis()
                 .Where(a => a != InputApi.WmPointer).ToList();

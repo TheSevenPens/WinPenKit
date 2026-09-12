@@ -131,9 +131,23 @@ Capture one stroke per API, drawn by the same hand at the same speed, and the `i
 
 `L2.recording-subpixel` on the same run says whether that session delivered sub-pixel data at all, which is the question `--replay` alone can never answer about the session that produced its input.
 
-## Known flakiness
+## Window placement
 
-`L0.window-placement` depends on where the window manager puts the window. A window cascaded down far enough to sit under the taskbar fails the check — correctly, since input aimed there really is discarded, but it means repeated launches can differ. If these flags are ever made a CI gate, that check needs either a deterministic window position or a documented exemption.
+`L0.window-placement` used to depend on launch history. Windows cascades each launch a little further down and to the right, so a sample that fitted on one run hung below the work area a few runs later and failed — correctly, since input aimed at the part hanging off really is discarded, but it made the check look unreliable.
+
+The fix went into the samples rather than the check. Each one calls `WinPenKit.WindowPlacement.ClampToWorkArea` as soon as its window exists, which moves the window inside its monitor's work area and shrinks it first if it does not fit. `Scribble.Win32` and `Scribble.Rust` carry their own copies, as they do for the checks themselves.
+
+Measured on a 3840x2052 work area, running `Scribble.Avalonia` twelve times in a row. Its client top cycles through three cascade positions:
+
+```
+463, 175, 340, 463, 175, 340, 463, 175, 340, 463, 175, 340
+```
+
+The third of those used to be 505, which put the bottom edge 23 pixels past the work area. 463 is the clamp. Thirty consecutive runs across all six samples now pass.
+
+**Loosening the check was the wrong fix.** A window below the work area silently discards pen input aimed there, which is a real defect in an application a person is about to draw on. The check was reporting something true.
+
+Two things still make the placement worth watching: a window dragged off the display by hand after startup, and a display-scale change that makes a window too large for the monitor it lands on. Neither is covered by a clamp at startup alone.
 
 ## Implementation
 

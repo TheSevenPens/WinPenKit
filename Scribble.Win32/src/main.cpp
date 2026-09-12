@@ -830,6 +830,40 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 // ── Entry point ─────────────────────────────────────────────────
 
+// Moves the window inside its monitor's work area, shrinking it first if it does not fit.
+// A maximized window already occupies exactly the work area and its window rect overhangs by
+// the invisible resize border on purpose, so leave one alone.
+static void clamp_to_work_area(HWND hwnd) {
+    if (!hwnd || IsZoomed(hwnd) || IsIconic(hwnd)) return;
+
+    RECT win{};
+    if (!GetWindowRect(hwnd, &win)) return;
+
+    HMONITOR mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{ sizeof(MONITORINFO) };
+    if (!GetMonitorInfoW(mon, &mi)) return;
+
+    const RECT& wa = mi.rcWork;
+    int w = static_cast<int>(win.right - win.left);
+    int h = static_cast<int>(win.bottom - win.top);
+    int wa_left = static_cast<int>(wa.left),   wa_top    = static_cast<int>(wa.top);
+    int wa_right = static_cast<int>(wa.right), wa_bottom = static_cast<int>(wa.bottom);
+    int win_left = static_cast<int>(win.left), win_top   = static_cast<int>(win.top);
+
+    // Shrink first: moving a window larger than the work area can never bring it inside.
+    int new_w = std::min(w, wa_right - wa_left);
+    int new_h = std::min(h, wa_bottom - wa_top);
+
+    int new_x = std::clamp(win_left, wa_left, std::max(wa_left, wa_right - new_w));
+    int new_y = std::clamp(win_top,  wa_top,  std::max(wa_top,  wa_bottom - new_h));
+
+    if (new_x == win_left && new_y == win_top && new_w == w && new_h == h) return;
+
+    UINT flags = SWP_NOZORDER | SWP_NOACTIVATE;
+    if (new_w == w && new_h == h) flags |= SWP_NOSIZE;
+    SetWindowPos(hwnd, nullptr, new_x, new_y, new_w, new_h, flags);
+}
+
 int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int nShow) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
@@ -856,6 +890,12 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
         nullptr, nullptr, hInst, nullptr);
 
     g_main_hwnd = hwnd;
+    // The window manager cascades each launch a little further down, so an application that
+    // fits on one run hangs below the work area a few runs later - and pen input aimed at the
+    // part hanging off is discarded with no error. Before showing, not after, so the window
+    // never appears in the wrong place.
+    clamp_to_work_area(hwnd);
+
     ShowWindow(hwnd, nShow);
     UpdateWindow(hwnd);
 
