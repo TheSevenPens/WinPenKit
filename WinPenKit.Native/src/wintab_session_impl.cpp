@@ -103,7 +103,18 @@ void WintabSessionImpl::stop() {
 static void configure_packet_data(LOGCONTEXTA& lc) {
     // Request all standard packet fields — must match our PACKET struct layout.
     lc.lcPktData = PK_PKTBITS_ALL;
-    lc.lcPktMode = 0; // absolute mode for all fields
+
+    // Buttons relative, everything else absolute -- the same mode the managed binding sets,
+    // and the encoding this repository's own consumers already decode.
+    //
+    // This used to be 0, absolute for every field, so pkButtons arrived as a live bitmask:
+    // the high word zero on every packet, the low word non-zero while a button was held.
+    // Scribble.Win32 and Scribble.Rust both branch on pt.source, take the Wintab path for a
+    // Wintab source, and read (action << 16) | buttonNumber from it. Against a bitmask that
+    // decodes as action 0 -- no event -- so a tip press never registered and button state
+    // never changed. PenPoint.IsTipPressed on the managed side reads the same encoding.
+    lc.lcPktMode = PK_BUTTONS;
+
     lc.lcMoveMask = PK_PKTBITS_ALL;
     lc.lcBtnDnMask = 0xFFFFFFFF;
     lc.lcBtnUpMask = 0xFFFFFFFF;
