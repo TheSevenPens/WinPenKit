@@ -149,14 +149,27 @@ public sealed class WpfStylusSession : IPenSession
                 twist = sp.GetPropertyValue(StylusPointProperties.TwistOrientation) / 100.0;
 
             // Buttons.
+            //
+            // Bit 0 is barrel in the encoding PenButtonTracker reads. This used to be set for
+            // every button that was down, with no filter: StylusButtons includes the tip
+            // switch, so a plain tip stroke lit the barrel indicator for its whole length,
+            // where WinUI, Avalonia and WM_POINTER all read a dedicated barrel flag and
+            // reported nothing.
+            //
+            // The tip switch is excluded by identity; anything else that is down counts as
+            // barrel. Filtering to StylusPointProperties.BarrelButton alone would be stricter,
+            // but devices differ in which property they report a side switch under, and a
+            // stricter filter risks dropping a real barrel press on hardware that cannot be
+            // tested here. Losing a barrel press is a worse failure than the one being fixed.
+            //
+            // Two side switches still collapse onto one bit. That is the encoding's ceiling,
+            // already documented in HOW_TO_USE.md, and not something this filter can lift.
             uint buttons = 0;
-            if (e.StylusDevice.StylusButtons.Count > 0)
+            foreach (var btn in e.StylusDevice.StylusButtons)
             {
-                foreach (var btn in e.StylusDevice.StylusButtons)
-                {
-                    if (btn.StylusButtonState == StylusButtonState.Down)
-                        buttons |= 0x0001; // simplified: any barrel button
-                }
+                if (btn.StylusButtonState != StylusButtonState.Down) continue;
+                if (btn.Guid == StylusPointProperties.TipButton.Id) continue;
+                buttons |= 0x0001;
             }
             if (isEraser) buttons |= 0x0002;
 
