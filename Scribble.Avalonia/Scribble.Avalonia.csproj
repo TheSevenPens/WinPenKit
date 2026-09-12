@@ -13,9 +13,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <!-- Avalonia.Win32 + Avalonia.Skia rather than the Avalonia.Desktop metapackage, which
+         also pulls the X11, FreeDesktop and macOS backends this Windows-only app can never
+         load. Avalonia.Win32 does not depend on Avalonia.Skia, so both are named. -->
+    <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Win32" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Skia" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
     <PackageReference Include="SkiaSharp" Version="3.116.1" />
   </ItemGroup>
 

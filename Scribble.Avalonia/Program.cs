@@ -10,6 +10,9 @@ class Program
 
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
-            .UsePlatformDetect()
+            // UseWin32().UseSkia() rather than UsePlatformDetect(): that extension method
+            // ships in Avalonia.Desktop, which this project no longer references.
+            .UseWin32()
+            .UseSkia()
             .LogToTrace();
 }
