@@ -299,7 +299,7 @@ impl eframe::App for ScribbleApp {
             ui.horizontal(|ui| {
 
                 ui.vertical(|ui| {
-                    ui.strong("APP");
+                    ui.strong("PEN API");
                     let api_names: Vec<&str> = self
                         .available_apis
                         .iter()
