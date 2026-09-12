@@ -24,6 +24,7 @@
 #pragma comment(lib, "comctl32.lib")
 
 #include "pen_session.h"
+#include "selftest.h"
 
 // ── Control IDs ─────────────────────────────────────────────────
 
@@ -853,6 +854,39 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
     g_main_hwnd = hwnd;
     ShowWindow(hwnd, nShow);
     UpdateWindow(hwnd);
+
+    // The window has to be shown: every level 1 check is about the drawing surface, and the
+    // surface does not exist until the first WM_SIZE has run.
+    if (selftest::requested()) {
+        selftest::Report r("Scribble.Win32");
+
+        RECT client{};
+        GetClientRect(hwnd, &client);
+        int rbh = ribbon_height();
+        int canvas_w = client.right - client.left;
+        int canvas_h = (client.bottom - client.top) - rbh;
+
+        r.check_dpi_awareness();
+        r.check_window_placement(hwnd);
+        r.report_scale(GetDpiForWindow(hwnd) / 96.0);
+
+        // Win32 lays out in physical pixels, so the logical-to-physical ratio is 1.0 even
+        // though the display scale above is not.
+        r.check_surface_physical(g_width, g_height, canvas_w, canvas_h, 1.0);
+
+        // The canvas sits below the ribbon, at a whole-pixel offset from a client origin that
+        // is itself whole - there is no layout system here to land it between pixels.
+        POINT origin{0, rbh};
+        ClientToScreen(hwnd, &origin);
+        r.check_surface_alignment(origin.x, origin.y);
+
+        // BitBlt with no stretch, so the surface reaches the screen at its own pixel size.
+        r.check_presentation_1to1(g_width, g_height, g_width, g_height);
+
+        int code = r.emit();
+        if (g_gdiplus_token) Gdiplus::GdiplusShutdown(g_gdiplus_token);
+        return code;
+    }
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0)) {

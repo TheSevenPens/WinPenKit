@@ -1,4 +1,5 @@
 using WinPenKit;
+using WinPenKit.Diagnostics;
 using WinPenKit.WinForms;
 using SkiaSharp;
 
@@ -313,6 +314,40 @@ public sealed class MainForm : Form
         _skCanvas?.Clear(new SKColor(0xF0, 0xF0, 0xF0));
         CopyToGfxBitmap();
         _canvasPanel.Invalidate();
+    }
+
+    /// <summary>
+    /// Runs the launch-time acceptance checks against this form and returns the report.
+    /// </summary>
+    /// <remarks>
+    /// Most of level 1 is close to tautological here, and that is worth knowing rather than
+    /// mistaking for a strong pass. A Per-Monitor V2 WinForms app lays out in physical pixels,
+    /// so the canvas cannot be sized in the wrong unit and a control origin is always whole.
+    /// The checks that catch real bugs in WPF and Rust are structurally unable to fail in this
+    /// framework - which is most of why it is the gentler place to start.
+    /// </remarks>
+    internal SelfTest RunSelfTest()
+    {
+        var t = new SelfTest { AppName = "Scribble.WinForms" };
+
+        t.CheckDpiAwareness();
+        t.CheckWindowPlacement(Handle);
+        t.ReportScale(DeviceDpi / 96.0);
+
+        // Layout units are device pixels here, so the logical-to-physical ratio is 1.0 even
+        // though the display scale above is not. Passing the display scale would compare the
+        // bitmap against a size it was never meant to have.
+        t.CheckSurfacePhysical(_bitmapWidth, _bitmapHeight,
+                               _canvasPanel.Width, _canvasPanel.Height, 1.0);
+
+        var origin = _canvasPanel.PointToScreen(Point.Empty);
+        t.CheckSurfaceAlignment(origin.X, origin.Y);
+
+        // DrawImageUnscaled, so the bitmap reaches the screen at its own pixel size.
+        t.CheckPresentation1To1(_bitmapWidth, _bitmapHeight,
+                                _canvasPanel.Width, _canvasPanel.Height);
+
+        return t;
     }
 
     // ── Session lifecycle ────────────────────────────────────────

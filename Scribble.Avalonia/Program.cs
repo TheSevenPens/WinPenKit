@@ -5,7 +5,7 @@ namespace Scribble.Avalonia;
 class Program
 {
     [STAThread]
-    public static void Main(string[] args) => BuildAvaloniaApp()
+    public static int Main(string[] args) => BuildAvaloniaApp()
         .StartWithClassicDesktopLifetime(args);
 
     public static AppBuilder BuildAvaloniaApp()

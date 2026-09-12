@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using WinPenKit;
+using WinPenKit.Diagnostics;
 using System.Linq;
 
 namespace Scribble.WinUI;
@@ -152,6 +153,58 @@ public sealed partial class MainWindow : Window
                 Toolbar.UpdateButtons(pt);
         }
     }
+
+    /// <summary>
+    /// Arranges for the launch-time checks to run once the canvas has a surface, then exit
+    /// with the report's code. The canvas is a private XAML field, so this lives here rather
+    /// than in App.
+    /// </summary>
+    internal void ArmSelfTest()
+    {
+        Canvas.SizeChanged += (_, e) =>
+        {
+            if (e.NewSize.Width <= 0 || e.NewSize.Height <= 0) return;
+            DispatcherQueue.TryEnqueue(() => Environment.Exit(RunSelfTest().Emit()));
+        };
+    }
+
+    /// <summary>Runs the launch-time acceptance checks against this window.</summary>
+    internal SelfTest RunSelfTest()
+    {
+        var t = new SelfTest { AppName = "Scribble.WinUI" };
+
+        var (logicalW, logicalH, scale) = Canvas.CanvasLogicalSize;
+        var (bmpW, bmpH) = Canvas.BitmapSize;
+        IntPtr hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+
+        t.CheckDpiAwareness();
+        t.CheckWindowPlacement(hwnd);
+        t.ReportScale(scale);
+
+        // ActualWidth is in XAML effective pixels, so the ratio here is the rasterization
+        // scale.
+        t.CheckSurfacePhysical(bmpW, bmpH, logicalW, logicalH, scale);
+
+        var posInWindow = Canvas.GetPositionInWindow();
+        var clientOrigin = new POINT { X = 0, Y = 0 };
+        ClientToScreen(hwnd, ref clientOrigin);
+        t.CheckSurfaceAlignment(clientOrigin.X + posInWindow.X * scale,
+                                clientOrigin.Y + posInWindow.Y * scale);
+
+        var (presW, presH) = Canvas.PresentedDeviceSize;
+        t.CheckPresentation1To1(bmpW, bmpH, presW, presH);
+
+        return t;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(
+        System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct POINT { public int X; public int Y; }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(
+        System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
 
     private sealed class CanvasInfoCache : ICanvasInfo
     {

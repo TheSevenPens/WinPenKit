@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Grid x:Name="CanvasArea" Background="#F0F0F0">
-        <Image x:Name="DrawImage" Stretch="None"
+        <Image x:Name="DrawImage" Stretch="Fill"
                HorizontalAlignment="Left" VerticalAlignment="Top" />
     </Grid>
 </UserControl>

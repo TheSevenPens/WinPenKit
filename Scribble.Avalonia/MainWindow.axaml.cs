@@ -7,6 +7,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using System.Linq;
 using WinPenKit;
+using WinPenKit.Diagnostics;
 using WinPenKit.Avalonia;
 using SkiaSharp;
 
@@ -32,6 +33,9 @@ public partial class MainWindow : Window
     private WriteableBitmap? _avBitmap;
     private int _bitmapWidth;
     private int _bitmapHeight;
+
+    /// <summary>Layout-unit-to-device-pixel ratio the surface was built at.</summary>
+    private double _renderScale = 1.0;
 
     public MainWindow()
     {
@@ -96,12 +100,46 @@ public partial class MainWindow : Window
         };
     }
 
+    /// <summary>Runs the launch-time acceptance checks against this window.</summary>
+    internal SelfTest RunSelfTest()
+    {
+        var t = new SelfTest { AppName = "Scribble.Avalonia" };
+
+        double scale = RenderScaling;
+
+        t.CheckDpiAwareness();
+        t.CheckWindowPlacement(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
+        t.ReportScale(scale);
+
+        // Bounds are DIPs in Avalonia, so the ratio here is the render scaling.
+        t.CheckSurfacePhysical(_bitmapWidth, _bitmapHeight,
+                               CanvasArea.Bounds.Width, CanvasArea.Bounds.Height, scale);
+
+        // Window origin is a whole device pixel, so taking it through PixelPoint loses
+        // nothing; the canvas offset within the window is the part that must stay fractional.
+        var windowOrigin = this.PointToScreen(new global::Avalonia.Point(0, 0));
+        var dipOffset = CanvasArea.TranslatePoint(new global::Avalonia.Point(0, 0), this)
+                        ?? new global::Avalonia.Point(0, 0);
+        t.CheckSurfaceAlignment(windowOrigin.X + dipOffset.X * scale,
+                                windowOrigin.Y + dipOffset.Y * scale);
+
+        t.CheckPresentation1To1(_bitmapWidth, _bitmapHeight,
+                                DrawImage.Bounds.Width * scale,
+                                DrawImage.Bounds.Height * scale);
+
+        return t;
+    }
+
     // ── Skia bitmap management ───────────────────────────────────
 
     private void EnsureBitmap()
     {
-        int w = (int)CanvasArea.Bounds.Width;
-        int h = (int)CanvasArea.Bounds.Height;
+        // Physical pixels, not DIPs. Bounds are DIPs, and a bitmap sized from them is
+        // magnified to fit the canvas - at 2.25x that is a surface drawn at 44% of the
+        // display's resolution, which no amount of coordinate precision survives.
+        double scale = RenderScaling;
+        int w = (int)Math.Ceiling(CanvasArea.Bounds.Width * scale);
+        int h = (int)Math.Ceiling(CanvasArea.Bounds.Height * scale);
         if (w <= 0 || h <= 0) return;
         if (_skBitmap != null && _bitmapWidth == w && _bitmapHeight == h) return;
 
@@ -112,6 +150,7 @@ public partial class MainWindow : Window
         _skCanvas = new SKCanvas(_skBitmap);
         _bitmapWidth = w;
         _bitmapHeight = h;
+        _renderScale = scale;
 
         // Clear to background color.
         _skCanvas.Clear(new SKColor(0xF0, 0xF0, 0xF0));
@@ -124,10 +163,11 @@ public partial class MainWindow : Window
             oldBitmap.Dispose();
         }
 
-        // Create Avalonia bitmap for display.
+        // Declared at the display's dpi, so Avalonia lays the image out at its DIP size and
+        // presents the pixels 1:1 instead of scaling them.
         _avBitmap = new WriteableBitmap(
             new PixelSize(w, h),
-            new Vector(96, 96),
+            new Vector(96 * scale, 96 * scale),
             global::Avalonia.Platform.PixelFormat.Bgra8888,
             global::Avalonia.Platform.AlphaFormat.Premul);
 
@@ -242,9 +282,11 @@ public partial class MainWindow : Window
                 var canvasOrigin = CanvasArea.TranslatePoint(new Point(0, 0), topLevel);
                 if (canvasOrigin == null) continue;
 
+                // Physical pixels, matching the surface. Scaling up here rather than
+                // dividing the pen position down keeps the sub-pixel precision intact.
                 canvasPt = new Point(
-                    clientPt.X - canvasOrigin.Value.X,
-                    clientPt.Y - canvasOrigin.Value.Y);
+                    (clientPt.X - canvasOrigin.Value.X) * scale,
+                    (clientPt.Y - canvasOrigin.Value.Y) * scale);
             }
             catch
             {
@@ -261,7 +303,9 @@ public partial class MainWindow : Window
 
             if (_lastCanvasPoint is { } from && pt.Pressure > 0 && maxP > 0)
             {
-                float width = (float)pt.Pressure / maxP * (float)_brushSize + 0.5f;
+                // Brush size is a DIP size, so it scales with the surface.
+                float width = ((float)pt.Pressure / maxP * (float)_brushSize + 0.5f)
+                              * (float)_renderScale;
 
                 using var paint = new SKPaint
                 {
