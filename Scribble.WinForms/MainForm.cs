@@ -129,6 +129,11 @@ public sealed class MainForm : Form
 
         Load += (_, _) =>
         {
+            // The window manager cascades each launch a little further down, so an application
+            // that fits on one run hangs below the work area a few runs later - and pen input
+            // aimed at the part hanging off is discarded with no error.
+            WinPenKit.WindowPlacement.ClampToWorkArea(Handle);
+
             // WM_POINTER via DLL subclassing doesn't work in WinForms.
             // Use WinFormsPointer (NativeWindow WndProc override) instead.
             var allApis = PenSessionFactory.GetAvailableApis();

@@ -323,6 +323,10 @@ impl eframe::App for ScribbleApp {
             let hwnd = unsafe { GetActiveWindow() };
             if !hwnd.is_null() {
                 self.hwnd = hwnd;
+                // Once, as soon as the window exists. eframe sizes in points and the window
+                // manager cascades, so a 600-point window on a 2.25x display can start with
+                // its lower edge under the taskbar - where pen input is discarded silently.
+                selftest::clamp_to_work_area(hwnd);
             }
         }
 
