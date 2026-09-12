@@ -84,17 +84,29 @@ Every `PenPoint` contains:
 | Field | Type | Description |
 |---|---|---|
 | `DesktopX/Y` | `double` | Physical screen pixels. Sub-pixel precision in digitizer mode. |
-| `RawX/Y` | `int` | Raw values from the API. Tablet-native in digitizer mode, screen pixels otherwise. |
+| `RawX/Y` | `int` | Raw values from the API, in **four different units** depending on the backend. See below. |
 | `Pressure` | `uint` | Raw tip pressure. 0 = hovering. Normalize: `(float)pt.Pressure / session.MaxPressure` |
 | `Azimuth` | `double` | Spherical: compass direction in degrees (0.0–360.0). |
 | `Altitude` | `double` | Spherical: angle from surface in degrees (0.0–90.0). 90 = perpendicular. |
 | `TiltX` | `double` | Planar: tilt right/left in degrees (-90.0 to +90.0). |
 | `TiltY` | `double` | Planar: tilt toward/away in degrees (-90.0 to +90.0). |
 | `Twist` | `double` | Barrel rotation in degrees (0.0–360.0). |
-| `Z` | `int` | Height above tablet surface. 0 if unsupported. |
-| `Buttons` | `uint` | Button state. Wintab: `(action << 16) \| buttonNumber`. |
-| `Cursor` | `uint` | Cursor type. 13 = pen tip, 14 = eraser (Wacom). |
+| `Z` | `int` | Height above tablet surface. 0 unless the session advertises `ZHeight`. |
+| `Status` | `uint` | Packet flags, carrying the proximity bit. Wintab only; 0 on every pointer backend. |
+| `Buttons` | `uint` | Button state, in **two different encodings**. Wintab: `(action << 16) \| buttonNumber`. Pointer backends: a flag bitmask, bit 0 barrel, bit 1 eraser. Read it through `PenButtonTracker`. |
+| `Cursor` | `uint` | Cursor type. Pointer backends normalise to 13 tip / 14 eraser. Wintab passes the driver's own number through, and those are device-assigned. |
 | `Source` | `InputApi` | Which backend produced this point. |
+
+### What `RawX/Y` holds
+
+| Backend | Unit |
+|---|---|
+| Wintab digitizer | tablet-native units |
+| Wintab system | screen pixels |
+| WM_POINTER, WinForms | hundredths of a millimetre (`ptHimetricLocationRaw`) |
+| WPF, WinUI, Avalonia | `DesktopX` truncated to `int` — no device-native value is available |
+
+**Nothing in the API reports which unit you have.** Read it as a diagnostic, not a position: sane raw values against a wrong `DesktopX` point at the mapping, and both wrong point upstream of it. The last row carries nothing `DesktopX` does not already carry. Tracked in issues 24 and 53.
 
 Both tilt representations are always present — Wintab backends compute TiltX/TiltY from Azimuth/Altitude, and WM_POINTER backends compute Azimuth/Altitude from TiltX/TiltY.
 
@@ -201,11 +213,15 @@ Call `buttons.Reset()` when restarting a session.
 
 ### Raw access (advanced)
 
-If you need the raw event encoding, `PenPoint` exposes `pt.ButtonAction`, `pt.ButtonNumber`, `pt.IsTipPressed`, `pt.IsButtonPressed(int)`, `pt.IsButtonReleased(int)`. These match the Wintab encoding only — for non-Wintab backends you must read `pt.Buttons` as a bitmask.
+`PenPoint` exposes `ButtonAction`, `ButtonNumber`, `IsTipPressed`, `IsButtonPressed(int)` and `IsButtonReleased(int)`. **All five are obsolete.** They apply the Wintab encoding to any point, and the five pointer backends set only bits 0 and 1, so on those backends `ButtonAction` is always `None` and the three predicates are always `false` — false, rather than any indication that the question could not be answered.
+
+Use `PenButtonTracker`. It branches on `pt.Source` and decodes both encodings. If you must read `pt.Buttons` yourself, check `pt.Source` first and decode accordingly.
 
 ### Eraser detection
 
-Eraser is detected via `pt.IsEraser` (which checks `pt.Cursor == 14`). In Wintab, cursor type changes on hover before contact. WM_POINTER uses `PEN_FLAG_INVERTED`, mapped to cursor 14 for consistency. `PenButtonTracker.IsEraser` mirrors this from the latest point.
+Eraser is detected via `pt.IsEraser`, which checks `pt.Cursor == 14`. In Wintab, cursor type changes on hover before contact. The pointer backends read `PEN_FLAG_INVERTED` and write 13 or 14 to match. `PenButtonTracker.IsEraser` mirrors this from the latest point.
+
+**The match is one-way.** Wintab writes the driver's own cursor number through unchanged, and Wintab cursor indices are assigned by the device — `PenCursorType` documents 13 and 14 as *observed* values, not standard ones. On a tablet that numbers its eraser differently, `IsEraser` is false on Wintab while true on every pointer backend. Tracked in issue 48.
 
 ## Error Handling
 
