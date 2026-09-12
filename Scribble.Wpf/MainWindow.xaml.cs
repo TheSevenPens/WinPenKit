@@ -190,7 +190,6 @@ public partial class MainWindow : Window
         {
             if (_recorder != null && _recordPath != null)
             {
-                _recorder.Source = _session?.GetType().Name ?? "unknown session";
                 int written = _recorder.Save(_recordPath);
                 Console.Error.WriteLine($"[record] {written} points -> {_recordPath}");
             }
@@ -337,6 +336,11 @@ public partial class MainWindow : Window
             _session = null;
             return;
         }
+
+        // Described here rather than at save time, so the header names the session the points
+        // actually came from. Switching the API while recording lands in Describe's
+        // spans-more-than-one-session path instead of relabelling everything captured so far.
+        _recorder?.Describe(_session.GetType().Name, _session.MaxPressure);
 
         Title = "Scribble WPF - WinPenKit";
         _renderActive = true;
