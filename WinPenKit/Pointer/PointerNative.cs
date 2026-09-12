@@ -38,6 +38,20 @@ internal static class PointerNative
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetPointerPenInfo(uint pointerId, out POINTER_PEN_INFO penInfo);
 
+    /// <summary>
+    /// The device's own extent in HIMETRIC, and the screen area it maps onto in pixels.
+    /// </summary>
+    /// <remarks>
+    /// Needed to make sense of <c>ptHimetricLocation</c>. Despite the documentation calling it
+    /// "screen coordinates in HIMETRIC units", the value is expressed in the device's rect - so
+    /// turning it into a screen position is a normalization between these two rectangles, not a
+    /// conversion from 0.01mm to pixels.
+    /// </remarks>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetPointerDeviceRects(
+        IntPtr device, out RECT pointerDeviceRect, out RECT displayRect);
+
     // ── Subclass API (comctl32) ──────────────────────────────────
 
     public delegate IntPtr SubclassProc(
@@ -107,6 +121,18 @@ internal struct POINT
 {
     public int X;
     public int Y;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct RECT
+{
+    public int Left;
+    public int Top;
+    public int Right;
+    public int Bottom;
+
+    public int Width => Right - Left;
+    public int Height => Bottom - Top;
 }
 
 [StructLayout(LayoutKind.Sequential)]

@@ -25,7 +25,16 @@ public enum PenCapabilities
     /// <summary>Barrel buttons and button state reporting.</summary>
     Buttons = 1 << 4,
 
-    /// <summary>Sub-pixel tablet-native resolution (digitizer hi-res mode).</summary>
+    /// <summary>
+    /// Positions carry sub-pixel precision rather than whole screen pixels.
+    /// </summary>
+    /// <remarks>
+    /// Set by the Wintab digitizer session, which asks the driver for tablet-native output, and
+    /// by the WM_POINTER session when it can map the HIMETRIC position through the device rects.
+    /// It is a statement about the data actually being delivered, not a mode that was selected:
+    /// the WM_POINTER session always tries, and clears this flag if the device rects are
+    /// unavailable and it has to fall back to whole pixels.
+    /// </remarks>
     HiRes = 1 << 5,
 
     /// <summary>Eraser detection (via cursor type or pen flags).</summary>

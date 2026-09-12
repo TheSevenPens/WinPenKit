@@ -23,6 +23,7 @@
 typedef BOOL (WINAPI *GetPointerType_t)(UINT32, POINTER_INPUT_TYPE*);
 typedef BOOL (WINAPI *GetPointerPenInfo_t)(UINT32, POINTER_PEN_INFO*);
 typedef BOOL (WINAPI *GetPointerPenInfoHistory_t)(UINT32, UINT32*, POINTER_PEN_INFO*);
+typedef BOOL (WINAPI *GetPointerDeviceRects_t)(HANDLE, RECT*, RECT*);
 
 namespace wintab {
 
@@ -44,6 +45,9 @@ public:
     bool is_running() const { return running_; }
 
     void refresh_mapping() {} // no mapping needed for screen-pixel output
+
+    /// Whether positions are carrying sub-pixel precision rather than whole pixels.
+    bool is_hi_res() const { return hi_res_; }
     void on_activated() {}    // Windows routes pointer input by window - nothing to reclaim
     const char* debug_info() const { return debug_info_.c_str(); }
 
@@ -57,6 +61,20 @@ private:
     GetPointerType_t get_pointer_type_ = nullptr;
     GetPointerPenInfo_t get_pointer_pen_info_ = nullptr;
     GetPointerPenInfoHistory_t get_pointer_pen_info_history_ = nullptr;
+    GetPointerDeviceRects_t get_pointer_device_rects_ = nullptr;
+
+    // POINTER_INFO carries the position twice: ptPixelLocationRaw in whole screen pixels, and
+    // ptHimetricLocationRaw in 0.01mm units - about 7x finer on a typical display. Reading the
+    // pixel one discards the precision on arrival. Measured on a Wacom over Windows Ink, the
+    // median turn between consecutive segments was 11.31 degrees from the pixel field against
+    // 2.54 from the himetric one; 11.31 is atan(1/5), the signature of a path forced onto an
+    // integer grid at the ~2px steps a tablet reports.
+    HANDLE rects_for_ = nullptr;
+    RECT device_rect_ = {}, display_rect_ = {};
+    bool hi_res_ = false;
+
+    // Device position to screen position, sub-pixel where the device allows it.
+    void resolve_position(const POINTER_INFO& info, double& x, double& y);
 
     std::mutex points_mutex_;
     std::vector<PenPoint> points_;

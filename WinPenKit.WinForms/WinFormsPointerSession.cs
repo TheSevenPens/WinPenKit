@@ -21,7 +21,42 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
 
     public PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt |
-        PenCapabilities.Buttons | PenCapabilities.Eraser;
+        PenCapabilities.Buttons | PenCapabilities.Eraser |
+        (_hiRes ? PenCapabilities.HiRes : PenCapabilities.None);
+
+    // ── Sub-pixel positions ──────────────────────────────────────
+    //
+    // POINTER_INFO carries the position twice: ptPixelLocationRaw in whole screen pixels and
+    // ptHimetricLocationRaw in 0.01mm units, roughly 7x finer. Reading the pixel one discards the
+    // precision on arrival, which shows up as a path that zigzags between the few directions an
+    // integer grid offers at the ~2px steps a tablet reports. See WmPointerSession for the
+    // measurements; this session duplicates the interop and so has to duplicate the fix.
+    private IntPtr _rectsFor = IntPtr.Zero;
+    private PointerApi.RECT _deviceRect, _displayRect;
+    private bool _hiRes;
+
+    /// <summary>Pen position in physical screen pixels, sub-pixel where the device allows it.</summary>
+    private (double X, double Y) ResolvePosition(in PointerApi.POINTER_INFO info)
+    {
+        if (info.sourceDevice != _rectsFor)
+        {
+            _rectsFor = info.sourceDevice;
+            _hiRes = info.sourceDevice != IntPtr.Zero
+                && PointerApi.GetPointerDeviceRects(info.sourceDevice, out _deviceRect, out _displayRect)
+                && _deviceRect.Width > 0 && _deviceRect.Height > 0;
+        }
+
+        if (!_hiRes)
+            return (info.ptPixelLocationRaw.X, info.ptPixelLocationRaw.Y);
+
+        // The HIMETRIC value lives in the device's rect, so this is a normalization between the
+        // two rectangles rather than a conversion from 0.01mm to pixels.
+        return (
+            _displayRect.Left + (double)(info.ptHimetricLocationRaw.X - _deviceRect.Left)
+                / _deviceRect.Width * _displayRect.Width,
+            _displayRect.Top + (double)(info.ptHimetricLocationRaw.Y - _deviceRect.Top)
+                / _deviceRect.Height * _displayRect.Height);
+    }
 
     public int MaxPressure => 1024;
     public bool IsRunning { get; private set; }
@@ -120,8 +155,7 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
 
     private void EnqueuePenInfo(PointerApi.POINTER_PEN_INFO penInfo)
     {
-        double desktopX = penInfo.pointerInfo.ptPixelLocationRaw.X;
-        double desktopY = penInfo.pointerInfo.ptPixelLocationRaw.Y;
+        var (desktopX, desktopY) = ResolvePosition(penInfo.pointerInfo);
 
         // Spatial scope: drop points outside an explicit capture region.
         if (CaptureRegion is { } region && !region.Contains(desktopX, desktopY))
@@ -249,6 +283,20 @@ internal static class PointerApi
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetPointerPenInfo(uint pointerId, out POINTER_PEN_INFO penInfo);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int Left, Top, Right, Bottom;
+        public int Width => Right - Left;
+        public int Height => Bottom - Top;
+    }
+
+    /// <summary>The device's extent in HIMETRIC, and the screen area it maps onto in pixels.</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetPointerDeviceRects(
+        IntPtr device, out RECT pointerDeviceRect, out RECT displayRect);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
