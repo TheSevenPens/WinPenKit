@@ -435,7 +435,8 @@ impl eframe::App for ScribbleApp {
                     ui.strong("POSITION");
                     if let Some(pt) = &self.last_point {
                         ui.monospace(format!("Raw: {},{}", pt.raw_x, pt.raw_y));
-                        ui.monospace(format!("Screen: {:.0},{:.0}", pt.desktop_x, pt.desktop_y));
+                        // A pen position is sub-pixel, so this is shown to two decimals. At zero decimals the readout cannot show the one fault it would most often be used to find: a coordinate quantized to a whole pixel looks identical to a good one.
+                        ui.monospace(format!("Screen: {:.2},{:.2}", pt.desktop_x, pt.desktop_y));
                         let app_x = pt.desktop_x as f32 / ppp - window_pos.x;
                         let app_y = pt.desktop_y as f32 / ppp - window_pos.y;
                         ui.monospace(format!("App: {app_x:.0},{app_y:.0}"));

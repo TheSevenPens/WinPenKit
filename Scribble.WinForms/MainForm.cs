@@ -494,7 +494,8 @@ public sealed class MainForm : Form
         _cursorLabel.Text = $"Cursor: {last.Cursor}";
 
         _rawPosLabel.Text = $"Raw: {last.RawX},{last.RawY}";
-        _screenPosLabel.Text = $"Screen: {last.DesktopX:F0},{last.DesktopY:F0}";
+        // A pen position is sub-pixel, so this is shown to two decimals. At zero decimals the readout cannot show the one fault it would most often be used to find: a coordinate quantized to a whole pixel looks identical to a good one.
+        _screenPosLabel.Text = $"Screen: {last.DesktopX:F2},{last.DesktopY:F2}";
 
         var appPt = PointToClient(new Point((int)last.DesktopX, (int)last.DesktopY));
         _appPosLabel.Text = $"App: {appPt.X},{appPt.Y}";
