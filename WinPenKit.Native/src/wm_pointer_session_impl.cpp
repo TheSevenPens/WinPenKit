@@ -86,6 +86,15 @@ int WmPointerSessionImpl::drain_points(PenPoint* buffer, int max_points) {
         memcpy(buffer, points_.data(), count * sizeof(PenPoint));
         points_.erase(points_.begin(), points_.begin() + count);
     }
+
+    // A buffer smaller than the queue leaves points behind. Clearing the flag and stopping
+    // there told a caller polling has_new_data() that the queue was empty when it was not,
+    // and if the pen had lifted nothing would set it again.
+    //
+    // Only ever set true here. The false above still happens before the lock, so a point
+    // appended by the input thread cannot be masked by this.
+    if (!points_.empty()) has_new_data_ = true;
+
     return count;
 }
 

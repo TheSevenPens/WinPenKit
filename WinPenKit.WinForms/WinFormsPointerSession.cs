@@ -110,6 +110,17 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
         int count = 0;
         while (count < buffer.Length && _points.TryDequeue(out var pt))
             buffer[count++] = pt;
+
+        // A buffer smaller than the queue leaves points behind. Clearing the flag and
+        // stopping there told a caller that polls HasNewData the queue was empty when it was
+        // not, and if the pen had lifted nothing would set it again: those points waited for
+        // a drain that happened for some other reason.
+        //
+        // Only ever set true here, never false. The false above still happens before the
+        // drain, so a point enqueued by the pen thread mid-drain sets the flag itself and
+        // this cannot overwrite it.
+        if (!_points.IsEmpty) _hasNewData = true;
+
         return count;
     }
 
