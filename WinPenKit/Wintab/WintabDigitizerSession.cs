@@ -19,7 +19,7 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
     public override PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt | PenCapabilities.Twist |
         PenCapabilities.ZHeight | PenCapabilities.Buttons | PenCapabilities.Eraser |
-        PenCapabilities.GlobalCapture |
+        PenCapabilities.GlobalCapture | PenCapabilities.Proximity |
         (_useScaleAxis ? PenCapabilities.HiRes : PenCapabilities.None);
 
     protected override string? OpenContext(IntPtr hwnd)
