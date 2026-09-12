@@ -20,8 +20,9 @@ SELFTEST Scribble.Wpf
 [PASS] L1.presentation-1to1    bitmap 2672x1230 presented at 2672.0x1230.0 device px
 [PASS] L2.recording-subpixel   0.0% of 480 recorded points are on whole pixels
 [PASS] L3.conversion-snap      0.0% of converted points land on whole device pixels
-[PASS] L3.conversion-lossless  mean turn angle in 0.74 deg, out 0.74 deg (delta 0.00)
-RESULT 9/9 passed
+[PASS] L3.conversion-lossless   mean turn angle in 0.74 deg, out 0.74 deg (delta 0.00)
+[PASS] L3.origin-tracks-window  moved 37,23px; conversion followed
+RESULT 10/10 passed
 ```
 
 ## Why these exist
@@ -69,10 +70,19 @@ A recorded stroke is pushed through the application's **own** desktop-to-canvas 
 | `L2.recording-subpixel` | the recording is already quantized, so nothing below it can fail |
 | `L3.conversion-snap` | an integer-typed API truncating the position somewhere in the conversion |
 | `L3.conversion-lossless` | the conversion changed the shape of the path |
+| `L3.origin-tracks-window` | the canvas origin is cached, and goes stale when the window moves |
 
 **`L3.conversion-lossless` is the strongest check here, and the only one that needs no threshold.** A conversion is a translation and a uniform scale, both of which preserve angles exactly — so a lossless implementation reproduces the input's mean turn angle to the decimal. Comparing against a fixed number would require calibrating against how the stroke was drawn; comparing against the input calibrates itself.
 
 That matters more than it sounds. Every other measurement tried during the investigation needed a reference value that depended on the stroke, and two of them produced confident wrong answers because of it.
+
+**`L3.origin-tracks-window` covers the term the other three cannot see.** A conversion is an origin and a scale, and every check above holds the window still — so an origin that is simply wrong cancels out of all of them. The replay places its input relative to the origin the application reports, then the application subtracts the same value back off. `L1.surface-alignment` does not close the gap either: it asks whether the origin is a whole number, not whether it is the right one.
+
+So this check moves the window a known distance and converts the same desktop point again. A conversion that reads the origin fresh reports a position shifted by exactly that distance; one that cached the origin reports what it did before.
+
+`Scribble.Wpf` shipped with that fault. It cached the origin at bitmap-creation time, dragging the window raised no size change, and every stroke after a drag landed the drag distance away from the pen while all nine checks passed. A person drawing found it in seconds.
+
+The window is moved and put back, so this check runs last. It skips on a maximized window, since moving one restores it. `Scribble.Rust` measures the same property across two frames rather than within one, because egui reads the window position once per frame into its input snapshot.
 
 ## What is not covered
 

@@ -365,6 +365,9 @@ public sealed class MainForm : Form
             t.CheckReplay(stroke, DesktopToCanvas, 1.0);
         }
 
+        // Last: this one moves the window and puts it back.
+        t.CheckOriginTracksWindow(Handle, DesktopToCanvas, 1.0);
+
         return t;
     }
 

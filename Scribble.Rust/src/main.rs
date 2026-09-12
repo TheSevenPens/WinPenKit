@@ -49,6 +49,9 @@ struct ScribbleApp {
     selftest_pending: bool,
     selftest_frames: u32,
     replay_requested: bool,
+    // Set on the frame that nudges the window, read on the next one. egui reads the window
+    // position once per frame, so the move and the measurement cannot share a frame.
+    origin_probe: Option<((i32, i32), (f32, f32))>,
     replay_path: Option<String>,
     last_canvas_point: Option<(f32, f32)>,
     brush_size: f32,
@@ -85,6 +88,7 @@ impl ScribbleApp {
             selftest_pending: false,
             selftest_frames: 0,
             replay_requested: false,
+            origin_probe: None,
             replay_path: None,
             last_canvas_point: None,
             brush_size: 6.0,
@@ -539,6 +543,22 @@ impl eframe::App for ScribbleApp {
                 && self.canvas_size[0] > 0
                 && (!self.hwnd.is_null() || self.selftest_frames > 60)
             {
+                // One frame before the checks: nudge the window, and come back next frame to
+                // see whether the canvas origin moved with it. Odd numbers, so a conversion
+                // that happens to quantize cannot match by luck.
+                const DX: i32 = 37;
+                const DY: i32 = 23;
+                if self.origin_probe.is_none() {
+                    if let Some((wx, wy)) = selftest::window_origin(self.hwnd) {
+                        if selftest::move_window(self.hwnd, wx + DX, wy + DY) {
+                            self.origin_probe =
+                                Some(((wx, wy), (canvas_screen_min.x, canvas_screen_min.y)));
+                            ctx.request_repaint();
+                            return;
+                        }
+                    }
+                }
+
                 self.selftest_pending = false;
 
                 let mut r = selftest::Report::new("Scribble.Rust");
@@ -589,6 +609,20 @@ impl eframe::App for ScribbleApp {
                             }
                         }
                     }
+                }
+
+                // Last: the window was nudged a frame ago, so this reads what moved with it.
+                match self.origin_probe.take() {
+                    Some(((wx, wy), (ox, oy))) => {
+                        let now = selftest::window_origin(self.hwnd).unwrap_or((wx, wy));
+                        let window_delta = ((now.0 - wx) as f64, (now.1 - wy) as f64);
+                        let origin_delta = (((canvas_screen_min.x - ox) * ppp) as f64,
+                                            ((canvas_screen_min.y - oy) * ppp) as f64);
+                        selftest::move_window(self.hwnd, wx, wy);
+                        r.check_origin_tracks_window(window_delta, origin_delta);
+                    }
+                    None => r.check("L3.origin-tracks-window", false,
+                                    "could not run: window would not move".into()),
                 }
 
                 std::process::exit(r.emit());

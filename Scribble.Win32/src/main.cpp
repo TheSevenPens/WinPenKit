@@ -888,6 +888,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
         // BitBlt with no stretch, so the surface reaches the screen at its own pixel size.
         r.check_presentation_1to1(g_width, g_height, g_width, g_height);
 
+        // The conversion the pen goes through, as a function, so the replay and the
+        // origin-tracking check both exercise it rather than a copy of it.
+        auto desktop_to_canvas = [hwnd, rbh](double x, double y) {
+            POINT o{0, rbh};
+            ClientToScreen(hwnd, &o);
+            return std::make_pair(x - o.x, y - o.y);
+        };
+
         std::string replay_path;
         if (selftest::replay_requested(replay_path)) {
             auto input = selftest::load_recording(replay_path);
@@ -903,13 +911,16 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
                 std::vector<std::pair<double, double>> out;
                 out.reserve(input.size());
                 for (const auto& pt : input)
-                    out.emplace_back(pt.first - origin.x, pt.second - origin.y);
+                    out.push_back(desktop_to_canvas(pt.first, pt.second));
 
                 r.check_recording_subpixel(input);
                 r.check_conversion_snap(out, 1.0);
                 r.check_conversion_lossless(input, out);
             }
         }
+
+        // Last: this one moves the window and puts it back.
+        r.check_origin_tracks_window(hwnd, desktop_to_canvas, 1.0);
 
         int code = r.emit();
         if (g_gdiplus_token) Gdiplus::GdiplusShutdown(g_gdiplus_token);

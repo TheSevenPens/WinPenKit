@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 
 namespace WinPenKit.Diagnostics;
 
@@ -209,4 +210,101 @@ public static class SelfTestReplay
             $"mean turn angle in {inAngle:F2} deg, out {outAngle:F2} deg (delta {delta:F2})" +
             (lossless ? "" : "  <- the conversion changed the shape of the path"));
     }
+    /// <summary>
+    /// Whether the application's canvas origin follows the window when the window moves.
+    /// </summary>
+    /// <remarks>
+    /// <para>Every other check here converts points while the window holds still, and a canvas
+    /// origin that is simply wrong cancels out of all of them: the replay positions its input
+    /// relative to the origin the application reports, then the application subtracts the same
+    /// value back off. <c>L1.surface-alignment</c> does not close the gap either, because it
+    /// asks whether the origin is a whole number rather than whether it is the right one.</para>
+    /// <para>So this check moves the window a known distance and converts the same desktop
+    /// point again. A conversion that reads the origin fresh reports a canvas position shifted
+    /// by exactly that distance. One that cached the origin reports the same position as
+    /// before, because nothing told it the window moved.</para>
+    /// <para>That is the fault this exists for: <c>Scribble.Wpf</c> cached its origin at
+    /// bitmap-creation time, dragging the window raised no size change, and every stroke after
+    /// a drag landed the drag distance away from the pen while all nine checks passed.</para>
+    /// <para>The window is moved and put back, so run this after the checks that measure where
+    /// the window sits.</para>
+    /// </remarks>
+    /// <param name="hwnd">The application window.</param>
+    /// <param name="convert">
+    /// The application's desktop-to-canvas conversion, obtained the way the input path obtains
+    /// it. A delegate that re-reads the origin when the pen code would not re-read it tests
+    /// something the pen never does.
+    /// </param>
+    /// <param name="canvasScale">
+    /// Device pixels per unit of whatever <paramref name="convert"/> returns. The same value
+    /// passed to <see cref="CheckReplay"/>.
+    /// </param>
+    public static void CheckOriginTracksWindow(this SelfTest test, IntPtr hwnd,
+                                               Func<double, double, (double X, double Y)> convert,
+                                               double canvasScale)
+    {
+        const string id = "L3.origin-tracks-window";
+
+        if (hwnd == IntPtr.Zero) { test.Skip(id, "no window handle"); return; }
+        if (IsZoomed(hwnd)) { test.Skip(id, "window is maximized; moving it would restore it"); return; }
+        if (!GetWindowRect(hwnd, out RECT before)) { test.Skip(id, "GetWindowRect failed"); return; }
+        if (canvasScale <= 0) { test.Skip(id, "canvas scale not reported"); return; }
+
+        // Odd numbers, so a conversion that happens to quantize cannot match by luck, and small
+        // enough that the window stays where it was to within a nudge.
+        const int dx = 37, dy = 23;
+
+        // One fixed point on the desktop, converted before and after. Which point does not
+        // matter: the conversion is affine, so every point shifts by the same amount.
+        double probeX = before.Left + 64, probeY = before.Top + 64;
+
+        var beforeMove = convert(probeX, probeY);
+
+        if (!SetWindowPos(hwnd, IntPtr.Zero, before.Left + dx, before.Top + dy, 0, 0, MoveOnly))
+        {
+            test.Skip(id, "SetWindowPos failed");
+            return;
+        }
+
+        var afterMove = convert(probeX, probeY);
+
+        bool restored = SetWindowPos(hwnd, IntPtr.Zero, before.Left, before.Top, 0, 0, MoveOnly);
+
+        // The canvas moved with the window, so a fixed point on the desktop sits that much
+        // further back in canvas coordinates.
+        double expectedX = beforeMove.X - dx / canvasScale;
+        double expectedY = beforeMove.Y - dy / canvasScale;
+        double errX = Math.Abs(afterMove.X - expectedX);
+        double errY = Math.Abs(afterMove.Y - expectedY);
+
+        // Half a device pixel. Wide enough for a conversion that rounds its origin, narrow
+        // enough that a cached origin - out by the full 37 and 23 - cannot pass.
+        double tolerance = 0.5 / canvasScale;
+        bool tracks = errX < tolerance && errY < tolerance;
+
+        string detail = tracks
+            ? $"moved {dx},{dy}px; conversion followed"
+            : $"moved {dx},{dy}px; conversion off by {errX * canvasScale:F2},{errY * canvasScale:F2}px" +
+              "  <- the canvas origin is cached and nothing refreshes it when the window moves";
+
+        test.Check(id, tracks, detail + (restored ? "" : "  (window not restored)"));
+    }
+
+    private const uint MoveOnly = 0x0001 | 0x0004 | 0x0010;   // NOSIZE | NOZORDER | NOACTIVATE
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+                                            int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsZoomed(IntPtr hWnd);
 }

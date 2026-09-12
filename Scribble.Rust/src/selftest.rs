@@ -340,6 +340,66 @@ const DPI_SYSTEM_AWARE: *mut c_void = -2isize as *mut c_void;
 const DPI_PER_MONITOR_AWARE: *mut c_void = -3isize as *mut c_void;
 const DPI_PER_MONITOR_AWARE_V2: *mut c_void = -4isize as *mut c_void;
 
+impl Report {
+    /// Whether the canvas origin followed the window when the window moved.
+    ///
+    /// Every other check converts points while the window holds still, and a canvas origin
+    /// that is simply wrong cancels out of all of them: the replay places its input relative
+    /// to the origin the application reports, then the application subtracts the same value
+    /// back off. `L1.surface-alignment` does not close the gap either, since it asks whether
+    /// the origin is a whole number rather than whether it is the right one.
+    ///
+    /// This takes the two measurements rather than a conversion closure, unlike the managed
+    /// and C++ versions. egui reads the window position once per frame into its input
+    /// snapshot, so moving the window and re-converting inside the same frame would measure
+    /// the snapshot rather than the window. The caller moves the window at the end of one
+    /// frame and reports both deltas on the next.
+    ///
+    /// `window_delta` is how far the window moved, `origin_delta` how far the canvas origin
+    /// moved with it, both in device pixels.
+    pub fn check_origin_tracks_window(&mut self, window_delta: (f64, f64),
+                                      origin_delta: (f64, f64)) {
+        const ID: &str = "L3.origin-tracks-window";
+
+        let err_x = (origin_delta.0 - window_delta.0).abs();
+        let err_y = (origin_delta.1 - window_delta.1).abs();
+        let ok = err_x < 0.5 && err_y < 0.5;
+
+        let detail = if ok {
+            format!("moved {:.0},{:.0}px; canvas origin followed",
+                    window_delta.0, window_delta.1)
+        } else {
+            format!(
+                "moved {:.0},{:.0}px; canvas origin moved {:.2},{:.2}px  <- the canvas origin is cached and nothing refreshes it when the window moves",
+                window_delta.0, window_delta.1, origin_delta.0, origin_delta.1)
+        };
+
+        self.check(ID, ok, detail);
+    }
+}
+
+/// The window's top-left corner in desktop pixels.
+pub fn window_origin(hwnd: *mut c_void) -> Option<(i32, i32)> {
+    if hwnd.is_null() { return None; }
+    unsafe {
+        let mut r = Rect::default();
+        if GetWindowRect(hwnd, &mut r) == 0 { return None; }
+        Some((r.left, r.top))
+    }
+}
+
+/// Moves the window without resizing it. Returns false if the window is maximized, since
+/// moving one restores it.
+pub fn move_window(hwnd: *mut c_void, x: i32, y: i32) -> bool {
+    if hwnd.is_null() { return false; }
+    // SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+    const MOVE_ONLY: u32 = 0x0001 | 0x0004 | 0x0010;
+    unsafe {
+        if IsZoomed(hwnd) != 0 { return false; }
+        SetWindowPos(hwnd, std::ptr::null_mut(), x, y, 0, 0, MOVE_ONLY) != 0
+    }
+}
+
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
 struct Rect { left: i32, top: i32, right: i32, bottom: i32 }
@@ -358,4 +418,8 @@ unsafe extern "system" {
     fn ClientToScreen(hwnd: *mut c_void, point: *mut Point) -> i32;
     fn MonitorFromWindow(hwnd: *mut c_void, flags: u32) -> *mut c_void;
     fn GetMonitorInfoW(monitor: *mut c_void, info: *mut MonitorInfo) -> i32;
+    fn GetWindowRect(hwnd: *mut c_void, rect: *mut Rect) -> i32;
+    fn SetWindowPos(hwnd: *mut c_void, after: *mut c_void,
+                    x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
+    fn IsZoomed(hwnd: *mut c_void) -> i32;
 }
