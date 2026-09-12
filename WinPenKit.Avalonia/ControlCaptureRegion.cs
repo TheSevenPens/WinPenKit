@@ -14,9 +14,9 @@ namespace WinPenKit.Avalonia;
 /// only reads the cached rectangle, so it is safe to call from a Wintab capture
 /// thread — it never touches Avalonia visuals off the UI thread.</para>
 ///
-/// <para>Both corners are projected through <see cref="TopLevel.PointToScreen"/>,
-/// so the rectangle is DPI-correct without manual scaling. Construct on the UI
-/// thread and <see cref="Dispose"/> when the session stops.</para>
+/// <para>The window origin is projected through <see cref="TopLevel.PointToScreen"/> and
+/// the control's offsets are scaled by hand, rather than projecting both corners. Construct
+/// on the UI thread and <see cref="Dispose"/> when the session stops.</para>
 /// </summary>
 public sealed class ControlCaptureRegion : IPenCaptureRegion, IDisposable
 {
@@ -55,25 +55,55 @@ public sealed class ControlCaptureRegion : IPenCaptureRegion, IDisposable
 
     private void OnLayoutUpdated(object? sender, EventArgs e) => Refresh();
 
+    /// <summary>A control that is not on screen contains nothing. Zero area, so
+    /// <see cref="Contains"/> is false everywhere.</summary>
+    private static readonly ScreenBox Offscreen = new(0, 0, 0, 0);
+
     /// <summary>Recomputes the cached screen rectangle. UI thread only.</summary>
     private void Refresh()
     {
         BindWindow();
 
+        // No top level is "not attached yet", which is unknown rather than offscreen. Leave
+        // the cached box alone so Contains keeps failing open.
         var topLevel = TopLevel.GetTopLevel(_control);
-        if (topLevel is null || !_control.IsVisible) return;
+        if (topLevel is null) return;
+
+        // Hidden is known, not unknown. Returning here without touching _box left the last
+        // visible rectangle in place, so Wintab went on reporting points over the area the
+        // control used to occupy while the Avalonia session, which stops producing events,
+        // reported none.
+        if (!_control.IsVisible)
+        {
+            _box = Offscreen;
+            return;
+        }
 
         var bounds = _control.Bounds;
         var topLeft     = _control.TranslatePoint(new Point(0, 0), topLevel);
         var bottomRight = _control.TranslatePoint(new Point(bounds.Width, bounds.Height), topLevel);
         if (topLeft is null || bottomRight is null) return;
 
-        var p1 = topLevel.PointToScreen(topLeft.Value);
-        var p2 = topLevel.PointToScreen(bottomRight.Value);
+        // One PointToScreen, for the window origin only. It takes a PixelPoint, so projecting
+        // the far corner through it truncated the right and bottom bounds inward; Contains
+        // tests desktopX < Right, so a point on a fractional edge -- ordinary at 1.25x and
+        // 1.75x -- was dropped here while AvaloniaPointerSession, which avoids PointToScreen
+        // for this very reason, reported it. The two disagreed about whether the pen was over
+        // the canvas.
+        //
+        // The window origin is on a whole device pixel, so taking that through PixelPoint
+        // loses nothing. The offsets within the window are scaled in doubles.
+        var windowOrigin = topLevel.PointToScreen(new Point(0, 0));
+        double scale = topLevel.RenderScaling;
+
+        double left   = windowOrigin.X + topLeft.Value.X * scale;
+        double top    = windowOrigin.Y + topLeft.Value.Y * scale;
+        double right  = windowOrigin.X + bottomRight.Value.X * scale;
+        double bottom = windowOrigin.Y + bottomRight.Value.Y * scale;
 
         _box = new ScreenBox(
-            Math.Min(p1.X, p2.X), Math.Min(p1.Y, p2.Y),
-            Math.Max(p1.X, p2.X), Math.Max(p1.Y, p2.Y));
+            Math.Min(left, right), Math.Min(top, bottom),
+            Math.Max(left, right), Math.Max(top, bottom));
     }
 
     private void BindWindow()
