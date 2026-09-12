@@ -46,6 +46,18 @@ public partial class MainWindow : Window
     // Display scaling, so drawing can stay in DIPs while the bitmap is in pixels.
     private double _renderScale = 1.0;
 
+    // Set by --record. Captures the session's stream so one API can be measured against
+    // another away from the tablet that produced it.
+    private StrokeRecorder? _recorder;
+    private string? _recordPath;
+
+    /// <summary>Starts capturing the pen stream to <paramref name="path"/> on close.</summary>
+    internal void RecordTo(string path)
+    {
+        _recordPath = path;
+        _recorder = new StrokeRecorder();
+    }
+
     // Canvas origin in desktop device pixels, refreshed whenever the surface is rebuilt.
     private double _canvasOriginX;
     private double _canvasOriginY;
@@ -161,6 +173,13 @@ public partial class MainWindow : Window
 
         Closing += (_, _) =>
         {
+            if (_recorder != null && _recordPath != null)
+            {
+                _recorder.Source = _session?.GetType().Name ?? "unknown session";
+                int written = _recorder.Save(_recordPath);
+                Console.Error.WriteLine($"[record] {written} points -> {_recordPath}");
+            }
+
             _renderActive = false;
             _session?.Stop();
             _session?.Dispose();
@@ -333,6 +352,7 @@ public partial class MainWindow : Window
         foreach (var pt in points)
         {
             _buttons.Update(pt);
+            _recorder?.Add(pt);
 
             // Deliberately not CanvasArea.PointFromScreen: it truncates through an integer
             // Win32 POINT, which quantizes every pen position to a whole device pixel and
