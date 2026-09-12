@@ -178,8 +178,10 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
                 resolve_position(pi.pointerInfo, hx, hy);
                 pt.desktop_x = hx;
                 pt.desktop_y = hy;
-                pt.raw_x     = pi.pointerInfo.ptPixelLocationRaw.x;
-                pt.raw_y     = pi.pointerInfo.ptPixelLocationRaw.y;
+                // ptHimetricLocationRaw, not ptPixelLocationRaw: only the former is
+                // device-native. See resolve_position above.
+                pt.raw_x     = pi.pointerInfo.ptHimetricLocationRaw.x;
+                pt.raw_y     = pi.pointerInfo.ptHimetricLocationRaw.y;
                 pt.pressure  = (pi.penMask & PEN_MASK_PRESSURE) ? pi.pressure : 0;
                 pt.azimuth   = az;
                 pt.altitude  = alt;
@@ -241,8 +243,9 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
     PenPoint pt = {};
     pt.desktop_x = desktop_x;
     pt.desktop_y = desktop_y;
-    pt.raw_x     = pen_info.pointerInfo.ptPixelLocationRaw.x;
-    pt.raw_y     = pen_info.pointerInfo.ptPixelLocationRaw.y;
+    // ptHimetricLocationRaw, not ptPixelLocationRaw: only the former is device-native.
+    pt.raw_x     = pen_info.pointerInfo.ptHimetricLocationRaw.x;
+    pt.raw_y     = pen_info.pointerInfo.ptHimetricLocationRaw.y;
     pt.pressure  = pressure;
     pt.azimuth   = azimuth;
     pt.altitude  = altitude;
