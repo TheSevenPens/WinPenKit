@@ -1,0 +1,19 @@
+<Project>
+
+  <!--
+    One Avalonia version for the repo.
+
+    Scribble.Avalonia names its backends rather than taking the Avalonia.Desktop
+    metapackage, which drops the X11, FreeDesktop and macOS subtrees it can never load. The
+    cost of hand-picking is that the version appears in several places, so it lives here
+    instead of being repeated as a literal in each project file.
+
+    Bumping Avalonia without bumping a backend is the failure this prevents. The nuspec
+    constraints are minimums, so a mixed set resolves quietly: core 11.4 against an 11.3
+    backend satisfies ">= 11.3.22" and nothing warns.
+  -->
+  <PropertyGroup>
+    <AvaloniaVersion>11.3.22</AvaloniaVersion>
+  </PropertyGroup>
+
+</Project>
