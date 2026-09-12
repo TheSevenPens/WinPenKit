@@ -152,6 +152,10 @@ public partial class MainWindow : Window
             t.CheckReplay(stroke, DesktopToCanvas, 1.0);
         }
 
+        // Last: this one moves the window and puts it back.
+        t.CheckOriginTracksWindow(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero,
+                                  DesktopToCanvas, 1.0);
+
         return t;
     }
 

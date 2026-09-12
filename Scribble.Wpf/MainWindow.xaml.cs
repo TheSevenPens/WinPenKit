@@ -68,8 +68,15 @@ public partial class MainWindow : Window
     /// through the same code the pen goes through. A replay that used its own arithmetic
     /// would be testing itself.
     /// </summary>
-    private (double X, double Y) DesktopToCanvas(double x, double y) =>
-        ((x - _canvasOriginX) / _renderScale, (y - _canvasOriginY) / _renderScale);
+    private (double X, double Y) DesktopToCanvas(double x, double y)
+    {
+        // Re-read first, exactly as the render tick does before converting a batch of points.
+        // Every other sample computes the origin inline here; this one used to read a field
+        // that only the surface rebuild wrote, which is the bug L3.origin-tracks-window exists
+        // to catch.
+        RefreshCanvasOrigin();
+        return ((x - _canvasOriginX) / _renderScale, (y - _canvasOriginY) / _renderScale);
+    }
 
     /// <summary>
     /// Re-reads where the canvas sits on the desktop.
@@ -129,6 +136,9 @@ public partial class MainWindow : Window
                 .CenteredOn(_canvasOriginX, _canvasOriginY, _bitmapWidth, _bitmapHeight);
             t.CheckReplay(stroke, DesktopToCanvas, _renderScale);
         }
+
+        // Last: this one moves the window and puts it back.
+        t.CheckOriginTracksWindow(_hwnd, DesktopToCanvas, _renderScale);
 
         return t;
     }

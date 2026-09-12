@@ -217,6 +217,9 @@ public sealed partial class MainWindow : Window
             t.CheckReplay(stroke, DesktopToCanvas, scale);
         }
 
+        // Last: this one moves the window and puts it back.
+        t.CheckOriginTracksWindow(hwnd, DesktopToCanvas, scale);
+
         return t;
     }
 

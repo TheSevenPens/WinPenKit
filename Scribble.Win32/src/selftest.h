@@ -278,6 +278,73 @@ public:
         check("L3.conversion-lossless", ok, buf);
     }
 
+    // Every other check here converts points while the window holds still, and a canvas
+    // origin that is simply wrong cancels out of all of them: the replay positions its input
+    // relative to the origin the application reports, then the application subtracts the same
+    // value back off. L1.surface-alignment does not close the gap either, because it asks
+    // whether the origin is a whole number rather than whether it is the right one.
+    //
+    // So move the window a known distance and convert the same desktop point again. A
+    // conversion that reads the origin fresh reports a canvas position shifted by exactly
+    // that distance; one that cached the origin reports what it did before, because nothing
+    // told it the window moved. Scribble.Wpf shipped with exactly that fault, and every
+    // other check passed throughout.
+    //
+    // The window is moved and put back, so run this after the checks that measure where the
+    // window sits.
+    template <typename Convert>
+    void check_origin_tracks_window(HWND hwnd, Convert convert, double scale) {
+        const char* id = "L3.origin-tracks-window";
+
+        if (!hwnd) { skip(id, "no window handle"); return; }
+        if (IsZoomed(hwnd)) { skip(id, "window is maximized; moving it would restore it"); return; }
+        if (scale <= 0) { skip(id, "canvas scale not reported"); return; }
+
+        RECT before{};
+        if (!GetWindowRect(hwnd, &before)) { skip(id, "GetWindowRect failed"); return; }
+
+        // Odd numbers, so a conversion that happens to quantize cannot match by luck.
+        const int dx = 37, dy = 23;
+        const UINT move_only = SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
+
+        // One fixed desktop point. Which point does not matter: the conversion is affine, so
+        // every point shifts by the same amount.
+        double probe_x = before.left + 64.0, probe_y = before.top + 64.0;
+
+        auto a = convert(probe_x, probe_y);
+
+        if (!SetWindowPos(hwnd, nullptr, before.left + dx, before.top + dy, 0, 0, move_only)) {
+            skip(id, "SetWindowPos failed");
+            return;
+        }
+
+        auto b = convert(probe_x, probe_y);
+
+        bool restored = SetWindowPos(hwnd, nullptr, before.left, before.top, 0, 0, move_only) != FALSE;
+
+        double err_x = fabs(b.first  - (a.first  - dx / scale));
+        double err_y = fabs(b.second - (a.second - dy / scale));
+
+        // Half a device pixel: wide enough for a conversion that rounds its origin, narrow
+        // enough that a cached origin cannot pass.
+        double tolerance = 0.5 / scale;
+        bool ok = err_x < tolerance && err_y < tolerance;
+
+        char buf[256];
+        if (ok) {
+            _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                "moved %d,%dpx; conversion followed%s", dx, dy,
+                restored ? "" : "  (window not restored)");
+        } else {
+            _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                "moved %d,%dpx; conversion off by %.2f,%.2fpx"
+                "  <- the canvas origin is cached and nothing refreshes it when the window moves%s",
+                dx, dy, err_x * scale, err_y * scale,
+                restored ? "" : "  (window not restored)");
+        }
+        check(id, ok, buf);
+    }
+
     // Presenting a correctly sized surface into a differently sized rect scales it back off
     // the pixel grid, which undoes the point of sizing it physically.
     void check_presentation_1to1(int bitmap_w, int bitmap_h,
