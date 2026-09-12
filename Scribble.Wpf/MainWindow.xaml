@@ -1,7 +1,8 @@
 <Window x:Class="Scribble.Wpf.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Scribble WPF - WinPenKit" Width="1200" Height="700">
+        Title="Scribble WPF - WinPenKit" Width="1200" Height="700"
+        UseLayoutRounding="True">
     <DockPanel>
         <!-- Ribbon -->
         <Border DockPanel.Dock="Top" Background="#F5F5F5" BorderBrush="#CCCCCC"
@@ -89,6 +90,8 @@
                          coordinate precision survives that. -->
                     <TextBlock x:Name="SurfaceLabel" Text="Surface: --" FontSize="11"
                                Foreground="#777" />
+                    <TextBlock x:Name="OffsetLabel" Text="Offset: --" FontSize="11"
+                               Foreground="#777" />
                 </StackPanel>
                 <Rectangle Width="1" Fill="#DDD" Margin="0,0,16,0" />
 
@@ -115,7 +118,15 @@
         <!-- Canvas — bitmap-backed for performance -->
         <Border x:Name="CanvasArea" Background="#F0F0F0" ClipToBounds="True"
                 SizeChanged="CanvasArea_SizeChanged">
+            <!-- NearestNeighbor because the bitmap is built at exactly the display's
+                 physical resolution and must reach the screen untouched. With the default
+                 mode WPF is free to resample it, and at a fractional device-pixel offset it
+                 will - softening every edge in the canvas uniformly while the coordinates and
+                 the resolution both still measure correct. UseLayoutRounding on the window is
+                 what keeps the offset whole; this makes a regression there visible as aliasing
+                 rather than as a blur that looks like a brush-engine problem. -->
             <Image x:Name="DrawImage" Stretch="None"
+                   RenderOptions.BitmapScalingMode="NearestNeighbor"
                    HorizontalAlignment="Left" VerticalAlignment="Top" />
         </Border>
     </DockPanel>
