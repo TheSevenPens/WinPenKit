@@ -47,6 +47,7 @@ const char* WintabSessionImpl::start(WintabResolution resolution) {
         return "Wintab not found. Is the tablet driver installed?";
 
     use_digitizer_ = (resolution == WINTAB_RESOLUTION_DIGITIZER);
+    requested_digitizer_ = use_digitizer_;
 
     // Start the message pump thread FIRST — we need its HWND for WTOpen.
     running_ = true;
@@ -411,7 +412,12 @@ void WintabSessionImpl::on_packet(WPARAM serial) {
     pt.status    = pkt.pkStatus;
     pt.buttons   = pkt.pkButtons;
     pt.cursor    = pkt.pkCursor;
-    pt.source    = use_digitizer_ ? PEN_API_WINTAB_DIGITIZER : PEN_API_WINTAB_SYSTEM;
+    // The session that is running, not the resolution it settled on. A digitizer session
+    // that fell back to screen pixels is still a digitizer session; that the hi-res context
+    // failed is reported by PEN_CAP_HIRES dropping out of the capabilities, which is how the
+    // managed binding says it too. Reporting the fallback here as well said the caller had
+    // asked for something they had not.
+    pt.source    = requested_digitizer_ ? PEN_API_WINTAB_DIGITIZER : PEN_API_WINTAB_SYSTEM;
 
     {
         std::lock_guard<std::mutex> lock(points_mutex_);

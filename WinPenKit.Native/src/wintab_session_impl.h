@@ -85,6 +85,9 @@ public:
     bool is_running() const { return running_.load(); }
     bool is_digitizer_mode() const { return use_digitizer_; }
 
+    /// Which resolution was asked for, regardless of what the fallback settled on.
+    bool was_digitizer_requested() const { return requested_digitizer_; }
+
     void refresh_mapping();
     void on_activated();
     const char* debug_info() const { return debug_info_.c_str(); }
@@ -95,6 +98,11 @@ private:
     WintabLoader loader_;
     ContextGuard context_;
     bool use_digitizer_ = false;
+
+    // Set once at start and never cleared. use_digitizer_ flips to false when the hi-res
+    // context fails to open, and the point's source has to keep naming the session that is
+    // running rather than the resolution it ended up with.
+    bool requested_digitizer_ = false;
     int max_pressure_ = 0;
 
     // Cached system mapping for digitizer ScaleAxis conversion
