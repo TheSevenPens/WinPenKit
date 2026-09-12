@@ -581,7 +581,8 @@ static void paint_ribbon(HDC hdc) {
         rp.draw_label_value(pos_x, 0, "Raw: ", raw_buf);
 
         char screen_buf[32];
-        snprintf(screen_buf, sizeof(screen_buf), "%.0f,%.0f", g_last_pen.desktop_x, g_last_pen.desktop_y);
+        // A pen position is sub-pixel, so this is shown to two decimals. At zero decimals the readout cannot show the one fault it would most often be used to find: a coordinate quantized to a whole pixel looks identical to a good one.
+        snprintf(screen_buf, sizeof(screen_buf), "%.2f,%.2f", g_last_pen.desktop_x, g_last_pen.desktop_y);
         rp.draw_label_value(pos_x, 1, "Screen: ", screen_buf);
 
         char app_buf[32];

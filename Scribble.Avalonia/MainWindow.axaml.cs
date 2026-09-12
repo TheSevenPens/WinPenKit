@@ -378,7 +378,8 @@ public partial class MainWindow : Window
         CursorLabel.Text = $"Cursor: {last.Cursor}";
 
         RawPosLabel.Text = $"Raw: {last.RawX},{last.RawY}";
-        ScreenPosLabel.Text = $"Screen: {last.DesktopX:F0},{last.DesktopY:F0}";
+        // A pen position is sub-pixel, so this is shown to two decimals. At zero decimals the readout cannot show the one fault it would most often be used to find: a coordinate quantized to a whole pixel looks identical to a good one.
+        ScreenPosLabel.Text = $"Screen: {last.DesktopX:F2},{last.DesktopY:F2}";
 
         // App = position relative to the window client area
         try

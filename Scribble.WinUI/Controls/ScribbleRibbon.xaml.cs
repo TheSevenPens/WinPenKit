@@ -85,7 +85,8 @@ public sealed partial class ScribbleRibbon : UserControl
 
         // Position
         RawPosValue.Text = $"{pt.RawX}, {pt.RawY}";
-        ScreenPosValue.Text = $"{telemetry.ScreenPoint.X:F0}, {telemetry.ScreenPoint.Y:F0}";
+        // A pen position is sub-pixel, so this is shown to two decimals. At zero decimals the readout cannot show the one fault it would most often be used to find: a coordinate quantized to a whole pixel looks identical to a good one.
+        ScreenPosValue.Text = $"{telemetry.ScreenPoint.X:F2}, {telemetry.ScreenPoint.Y:F2}";
         AppPosValue.Text = $"{telemetry.AppPoint.X:F0}, {telemetry.AppPoint.Y:F0}";
         CanvasPosValue.Text = $"{cp.X:F1}, {cp.Y:F1}";
 
