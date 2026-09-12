@@ -208,6 +208,18 @@ public sealed class SelfTest
     // ── Console plumbing ─────────────────────────────────────────
 
     /// <summary>
+    /// Where <see cref="Emit"/> left the report when it could not print it. Null when the
+    /// report was printed, and null when writing the file also failed.
+    /// </summary>
+    /// <remarks>
+    /// A caller that has a way to show the path -- a window title, a dialog, its own log --
+    /// is the only thing that can put it in front of the person who launched the process.
+    /// The library cannot: the one channel it has is the console, and this property only has
+    /// a value in the case where the console did not work.
+    /// </remarks>
+    public string? ReportPath { get; private set; }
+
+    /// <summary>
     /// Prints the report and returns the exit code: 0 when everything passed.
     /// </summary>
     /// <remarks>
@@ -231,15 +243,45 @@ public sealed class SelfTest
             attached = false;
         }
 
-        if (!attached && Console.IsOutputRedirected == false)
+        // Measured on Windows 11, one build, three launch contexts:
+        //
+        //   context                    attached  IsOutputRedirected  stdout handle
+        //   no console, no redirect    false     true                0
+        //   stdout redirected to file  true      true                valid
+        //   started from a console     true      false               valid
+        //
+        // So IsOutputRedirected is true in the case this branch exists for, and the guard it
+        // used to have -- IsOutputRedirected == false -- was satisfied only in the third row,
+        // where printing had already worked. The file was never written in the one case that
+        // needed it. .NET reports an absent stdout as redirected, because the handle is not a
+        // character device; only the handle itself separates "sent somewhere" from "sent
+        // nowhere".
+        IntPtr stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+        bool nothingVisible = !attached
+            && (stdout == IntPtr.Zero || stdout == new IntPtr(-1));
+
+        if (nothingVisible)
         {
             // Nothing would have been visible. Leave it somewhere findable and say where.
+            //
+            // Saying where cannot go to the console: this branch runs precisely because the
+            // console did not work. It goes to the debugger output instead, which DebugView
+            // shows with no debugger attached, and to ReportPath, which is the only way a
+            // caller with a window can put the path in front of a person.
+            string path = Path.Combine(Path.GetTempPath(), $"selftest-{AppName}.txt");
             try
             {
-                string path = Path.Combine(Path.GetTempPath(), $"selftest-{AppName}.txt");
                 File.WriteAllText(path, text);
+                ReportPath = path;
+                OutputDebugString($"[{AppName}] self test report written to {path}" + Environment.NewLine);
             }
-            catch (IOException) { /* nothing more to try */ }
+            catch (IOException ex)
+            {
+                // The last resort failed too. Announcing that is the difference between a
+                // report that is hard to find and a run that produced nothing at all.
+                OutputDebugString(
+                    $"[{AppName}] self test could not write {path}: {ex.Message}" + Environment.NewLine);
+            }
         }
 
         return AllPassed ? 0 : 1;
@@ -252,6 +294,7 @@ public sealed class SelfTest
     // ── P/Invoke ─────────────────────────────────────────────────
 
     private const int ATTACH_PARENT_PROCESS = -1;
+    private const int STD_OUTPUT_HANDLE = -11;
     private const int MONITOR_DEFAULTTONEAREST = 2;
     private static readonly IntPtr DPI_AWARENESS_CONTEXT_UNAWARE = -1;
     private static readonly IntPtr DPI_AWARENESS_CONTEXT_SYSTEM_AWARE = -2;
@@ -276,6 +319,14 @@ public sealed class SelfTest
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AttachConsole(int dwProcessId);
+
+    // Not Debug.WriteLine: that is compiled out of a Release build, and a Release build is
+    // what a sample ships as and what this branch exists for.
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern void OutputDebugString(string lpOutputString);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetStdHandle(int nStdHandle);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetThreadDpiAwarenessContext();
