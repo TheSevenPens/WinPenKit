@@ -182,7 +182,22 @@ PenInputApi pen_session_get_api(PenSessionHandle handle) {
 
 int pen_session_get_capabilities(PenSessionHandle handle) {
     if (!handle) return PEN_CAP_NONE;
-    return reinterpret_cast<PenSessionOpaque*>(handle)->capabilities;
+    auto* s = reinterpret_cast<PenSessionOpaque*>(handle);
+
+    // Computed, not frozen. s->capabilities is assigned once in pen_session_create, before
+    // any context is opened, so anything decided at start time was missing from it: a
+    // digitizer session that fell back to screen pixels still advertised PEN_CAP_HIRES, and
+    // a WM_POINTER session resolving positions in HIMETRIC never advertised it at all. The
+    // managed bindings compute both from live state; these now match.
+    int caps = s->capabilities;
+
+    if (s->wintab && !s->wintab->is_digitizer_mode())
+        caps &= ~PEN_CAP_HIRES;
+
+    if (s->pointer && s->pointer->is_hi_res())
+        caps |= PEN_CAP_HIRES;
+
+    return caps;
 }
 
 const char* pen_session_get_debug_info(PenSessionHandle handle) {
