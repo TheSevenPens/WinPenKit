@@ -56,9 +56,9 @@ typedef enum {
     PEN_CAP_BUTTONS  = 1 << 4,
     PEN_CAP_HIRES    = 1 << 5,
     PEN_CAP_ERASER   = 1 << 6,
-    // 1 << 7 is GlobalCapture in the managed PenCapabilities. It is left as a hole rather
-    // than reused, so a value means the same thing on both surfaces; that this binding does
-    // not report it is issue 41.
+    // Desktop-wide capture: the session can report points anywhere on screen, not only over
+    // the application window. Wintab only.
+    PEN_CAP_GLOBAL_CAPTURE = 1 << 7,
     PEN_CAP_PROXIMITY = 1 << 8
 } PenCapabilities;
 
@@ -112,13 +112,44 @@ PEN_API PenSessionHandle pen_session_create_default(void);
 // ── Lifecycle ───────────────────────────────────────────────────
 
 // Starts the session. Returns NULL on success, or a static error string.
-// app_hwnd: the application window handle. Required for WM_POINTER sessions
-// (the session subclasses this window to intercept pointer messages).
-// Pass NULL for Wintab sessions (they create their own hidden pump window).
+//
+// app_hwnd: the application window handle.
+//
+//   WM_POINTER  required. The session subclasses this window to intercept
+//               pointer messages.
+//   Wintab      optional, and it sets the default capture region. Wintab reads
+//               the whole desktop, so a session given a window reports only
+//               points over that window, and a session given NULL reports the
+//               pen anywhere on screen -- including over other applications.
+//               Wintab still creates its own hidden pump window either way.
+//
+// Passing a window matches the managed binding, where a null CaptureRegion means
+// window-scoped. Passing NULL keeps the desktop-wide behaviour this function had
+// before the region existed.
 PEN_API const char* pen_session_start(PenSessionHandle handle, void* app_hwnd);
 
 // Stops the session (closes context, stops producing points).
 PEN_API void pen_session_stop(PenSessionHandle handle);
+
+// ── Capture region (Wintab only) ────────────────────────────────
+//
+// Which part of the desktop a Wintab session reports points from. WM_POINTER
+// sessions are scoped to the window they subclass and ignore these.
+//
+// The default is the window passed to pen_session_start, or unbounded when that
+// was NULL. The window rectangle is read live, so moving or resizing the window
+// is followed without another call.
+
+// Report only points over this window. NULL means unbounded.
+PEN_API void pen_session_set_capture_window(PenSessionHandle handle, void* hwnd);
+
+// Report only points inside this desktop rectangle, in physical screen pixels.
+// Left and top are inclusive, right and bottom exclusive.
+PEN_API void pen_session_set_capture_rect(PenSessionHandle handle,
+                                          int left, int top, int right, int bottom);
+
+// Report points anywhere on the desktop.
+PEN_API void pen_session_set_capture_unbounded(PenSessionHandle handle);
 
 // Destroys the session and frees all resources.
 PEN_API void pen_session_destroy(PenSessionHandle handle);

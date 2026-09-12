@@ -75,7 +75,16 @@ public:
     WintabSessionImpl(const WintabSessionImpl&) = delete;
     WintabSessionImpl& operator=(const WintabSessionImpl&) = delete;
 
-    const char* start(WintabResolution resolution);
+    const char* start(WintabResolution resolution, HWND app_hwnd);
+
+    // ── Capture region ──────────────────────────────────────────
+    //
+    // Wintab reads the whole desktop, so without a region a session reports the pen over
+    // other applications' windows. The managed binding defaults to the application window;
+    // this had no region at all, which is issue 41.
+    void set_capture_window(HWND hwnd);
+    void set_capture_rect(int left, int top, int right, int bottom);
+    void set_capture_unbounded();
     void stop();
 
     int drain_points(PenPoint* buffer, int max_points);
@@ -103,6 +112,22 @@ private:
     // context fails to open, and the point's source has to keep naming the session that is
     // running rather than the resolution it ended up with.
     bool requested_digitizer_ = false;
+    // ── Capture region ──────────────────────────────────────────
+    //
+    // Read on the pump thread, written from the caller's, so it is guarded. The window
+    // rectangle is queried per point rather than cached, which is how the managed
+    // WindowRegion does it, and is what makes a moved window followed for free.
+    enum class RegionMode { Window, Rect, Unbounded };
+
+    mutable std::mutex region_mutex_;
+    RegionMode region_mode_ = RegionMode::Unbounded;
+    HWND region_hwnd_ = nullptr;
+    RECT region_rect_ = {};
+
+    // True when a point at this desktop position should be reported. Fails open: an unknown
+    // window or a failed GetWindowRect reports the point rather than dropping it, matching
+    // PenCaptureRegion.Window on the managed side.
+    bool region_contains(double x, double y) const;
     int max_pressure_ = 0;
 
     // Cached system mapping for digitizer ScaleAxis conversion

@@ -42,12 +42,17 @@ int WintabSessionImpl::get_max_pressure_from_driver() {
 
 // ── Lifecycle ───────────────────────────────────────────────────
 
-const char* WintabSessionImpl::start(WintabResolution resolution) {
+const char* WintabSessionImpl::start(WintabResolution resolution, HWND app_hwnd) {
     if (!loader_.is_loaded())
         return "Wintab not found. Is the tablet driver installed?";
 
     use_digitizer_ = (resolution == WINTAB_RESOLUTION_DIGITIZER);
     requested_digitizer_ = use_digitizer_;
+
+    // The default region. A caller that passes its window gets the managed behaviour, where
+    // a null CaptureRegion means window-scoped; a caller that passes NULL, which is what this
+    // function's documentation used to ask for, keeps the desktop-wide behaviour it had.
+    set_capture_window(app_hwnd);
 
     // Start the message pump thread FIRST — we need its HWND for WTOpen.
     running_ = true;
@@ -380,6 +385,11 @@ void WintabSessionImpl::on_packet(WPARAM serial) {
         desktop_y = static_cast<double>(pkt.pkY);
     }
 
+    // Outside the capture region is not this session's input. Dropped here, before the
+    // packet becomes a PenPoint, so a point over another application's window never reaches
+    // the queue at all.
+    if (!region_contains(desktop_x, desktop_y)) return;
+
     // Log button/cursor changes.
     if (pkt.pkButtons != last_buttons_ || pkt.pkCursor != last_cursor_) {
         Logger::log("Button change: 0x%08X -> 0x%08X  Cursor: %u -> %u  Pressure: %u",
@@ -425,6 +435,46 @@ void WintabSessionImpl::on_packet(WPARAM serial) {
     }
 
     has_new_data_ = true;
+}
+
+// ── Capture region ──────────────────────────────────────────────
+
+void WintabSessionImpl::set_capture_window(HWND hwnd) {
+    std::lock_guard<std::mutex> lock(region_mutex_);
+    region_hwnd_ = hwnd;
+    region_mode_ = hwnd ? RegionMode::Window : RegionMode::Unbounded;
+}
+
+void WintabSessionImpl::set_capture_rect(int left, int top, int right, int bottom) {
+    std::lock_guard<std::mutex> lock(region_mutex_);
+    region_rect_ = RECT{ left, top, right, bottom };
+    region_mode_ = RegionMode::Rect;
+}
+
+void WintabSessionImpl::set_capture_unbounded() {
+    std::lock_guard<std::mutex> lock(region_mutex_);
+    region_mode_ = RegionMode::Unbounded;
+}
+
+bool WintabSessionImpl::region_contains(double x, double y) const {
+    std::lock_guard<std::mutex> lock(region_mutex_);
+
+    switch (region_mode_) {
+    case RegionMode::Unbounded:
+        return true;
+
+    case RegionMode::Rect:
+        return x >= region_rect_.left && x < region_rect_.right
+            && y >= region_rect_.top  && y < region_rect_.bottom;
+
+    case RegionMode::Window: {
+        if (!region_hwnd_) return true;
+        RECT r;
+        if (!GetWindowRect(region_hwnd_, &r)) return true;   // unknown, so do not filter
+        return x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+    }
+    }
+    return true;
 }
 
 // ── Diagnostics ─────────────────────────────────────────────────

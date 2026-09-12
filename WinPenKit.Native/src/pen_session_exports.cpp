@@ -65,14 +65,14 @@ PenSessionHandle pen_session_create(PenInputApi api) {
         s->wintab = new (std::nothrow) WintabSessionImpl();
         s->capabilities = PEN_CAP_PRESSURE | PEN_CAP_TILT | PEN_CAP_TWIST |
                           PEN_CAP_ZHEIGHT | PEN_CAP_BUTTONS | PEN_CAP_ERASER |
-                          PEN_CAP_PROXIMITY;
+                          PEN_CAP_GLOBAL_CAPTURE | PEN_CAP_PROXIMITY;
         break;
 
     case PEN_API_WINTAB_DIGITIZER:
         s->wintab = new (std::nothrow) WintabSessionImpl();
         s->capabilities = PEN_CAP_PRESSURE | PEN_CAP_TILT | PEN_CAP_TWIST |
                           PEN_CAP_ZHEIGHT | PEN_CAP_BUTTONS | PEN_CAP_ERASER |
-                          PEN_CAP_HIRES | PEN_CAP_PROXIMITY;
+                          PEN_CAP_HIRES | PEN_CAP_GLOBAL_CAPTURE | PEN_CAP_PROXIMITY;
         break;
 
     case PEN_API_WM_POINTER:
@@ -116,7 +116,7 @@ const char* pen_session_start(PenSessionHandle handle, void* app_hwnd) {
         WintabResolution res = (s->api == PEN_API_WINTAB_DIGITIZER)
             ? WINTAB_RESOLUTION_DIGITIZER
             : WINTAB_RESOLUTION_SCREEN;
-        return s->wintab->start(res);
+        return s->wintab->start(res, static_cast<HWND>(app_hwnd));
     }
 
     if (s->pointer) {
@@ -224,6 +224,27 @@ void pen_session_on_activated(PenSessionHandle handle) {
     auto* s = reinterpret_cast<PenSessionOpaque*>(handle);
     if (s->wintab) s->wintab->on_activated();
     if (s->pointer) s->pointer->on_activated();
+}
+
+// ── Capture region ──────────────────────────────────────────────
+
+void pen_session_set_capture_window(PenSessionHandle handle, void* hwnd) {
+    if (!handle) return;
+    auto* s = reinterpret_cast<PenSessionOpaque*>(handle);
+    if (s->wintab) s->wintab->set_capture_window(static_cast<HWND>(hwnd));
+}
+
+void pen_session_set_capture_rect(PenSessionHandle handle,
+                                  int left, int top, int right, int bottom) {
+    if (!handle) return;
+    auto* s = reinterpret_cast<PenSessionOpaque*>(handle);
+    if (s->wintab) s->wintab->set_capture_rect(left, top, right, bottom);
+}
+
+void pen_session_set_capture_unbounded(PenSessionHandle handle) {
+    if (!handle) return;
+    auto* s = reinterpret_cast<PenSessionOpaque*>(handle);
+    if (s->wintab) s->wintab->set_capture_unbounded();
 }
 
 // ── Diagnostics ─────────────────────────────────────────────────
