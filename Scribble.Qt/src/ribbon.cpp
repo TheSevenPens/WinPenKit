@@ -86,11 +86,10 @@ ScribbleRibbon::ScribbleRibbon(PenApi active, QWidget* parent)
     connect(m_clear, &QPushButton::clicked, this, &ScribbleRibbon::clearClicked);
 
     // Sits under the dropdown and is normally empty, so the ribbon does not reserve space for
-    // a warning that is usually not there -- but it appears in place rather than as a dialog,
-    // because a dialog is dismissed and forgotten while this stays visible until the restart.
-    m_restart = new QLabel;
-    m_restart->setStyleSheet(QStringLiteral("color:#b06000;"));
-    m_restart->setVisible(false);
+    // a line that is usually not there. It appears in place rather than as a dialog, because a
+    // dialog is dismissed and forgotten.
+    m_status = new QLabel;
+    m_status->setVisible(false);
 
     auto* apiBody = new QWidget;
     auto* apiV = new QVBoxLayout(apiBody);
@@ -102,7 +101,7 @@ ScribbleRibbon::ScribbleRibbon(PenApi active, QWidget* parent)
     apiRow->addWidget(m_api);
     apiRow->addWidget(m_clear);
     apiV->addLayout(apiRow);
-    apiV->addWidget(m_restart);
+    apiV->addWidget(m_status);
     row->addWidget(makeSection(QStringLiteral("PEN API"), apiBody));
     row->addWidget(separator());
 
@@ -220,18 +219,30 @@ double ScribbleRibbon::brushSize() const {
 void ScribbleRibbon::onApiSelected(int index) {
     const PenApi chosen = index == 1 ? PenApi::WinTab : PenApi::WmPointer;
 
-    // Saved, not applied. Qt picked the backend before this window existed and offers no way to
-    // change it, so the honest thing is to say what will happen and what is happening now.
+    // Remembered for the next launch, and applied to this one. Qt 6.8.3 does switch at
+    // runtime; the claim that it cannot, which this sample was built on, was wrong.
     penapi::save(chosen);
+    Q_EMIT apiSelected(chosen);
+}
 
-    if (chosen == m_active) {
-        m_restart->setVisible(false);
-        return;
+void ScribbleRibbon::setActiveApi(PenApi obtained, bool switchSucceeded) {
+    m_active = obtained;
+
+    // Set without re-entering the handler: this is the answer to a request, not a new one.
+    const QSignalBlocker block(m_api);
+    m_api->setCurrentIndex(obtained == PenApi::WinTab ? 1 : 0);
+
+    if (switchSucceeded) {
+        m_status->setStyleSheet(QStringLiteral("color:#3a7a3a;"));
+        m_status->setText(QStringLiteral("Now on %1.").arg(penapi::description(obtained)));
+    } else {
+        // The dropdown has already been moved back to what Qt reports, so this says why it
+        // moved rather than leaving the user to notice.
+        m_status->setStyleSheet(QStringLiteral("color:#b06000;"));
+        m_status->setText(QStringLiteral("Qt refused the switch. Still on %1.")
+                              .arg(penapi::description(obtained)));
     }
-
-    m_restart->setText(QStringLiteral("Restart to use %1. Still on %2.")
-                           .arg(penapi::description(chosen), penapi::description(m_active)));
-    m_restart->setVisible(true);
+    m_status->setVisible(true);
 }
 
 void ScribbleRibbon::clearReadout() {

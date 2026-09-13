@@ -85,10 +85,13 @@ class ScribbleWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    explicit ScribbleWindow(PenApi active, QWidget* parent = nullptr);
+    /// `requested` is what the command line or the stored setting asked for; `obtained` is
+    /// what Qt reported afterwards. They are kept apart on purpose -- reporting the request as
+    /// though it were the result is the fault this sample shipped with.
+    explicit ScribbleWindow(PenApi requested, PenApi obtained, QWidget* parent = nullptr);
 
     CanvasWidget* canvas() const { return m_canvas; }
-    PenApi penApi() const { return m_api; }
+    PenApi penApi() const { return m_obtained; }
 
     /// Runs the launch-time acceptance checks and returns the process exit code.
     int runSelfTest(const std::string& replayPath);
@@ -108,7 +111,8 @@ private:
     /// below it starts on the pixel grid.
     void snapRibbonHeight();
 
-    PenApi m_api;
+    PenApi m_requested;
+    PenApi m_obtained;
     CanvasWidget* m_canvas = nullptr;
     ScribbleRibbon* m_ribbon = nullptr;
 };

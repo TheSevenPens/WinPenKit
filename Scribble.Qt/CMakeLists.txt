@@ -12,20 +12,24 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+# GuiPrivate for QNativeInterface::Private::QWindowsApplication, the only route to Qt's
+# tablet backend. See src/qtbackend.h for why that is unavoidable.
+find_package(Qt6 REQUIRED COMPONENTS Widgets Gui)
 
 qt_standard_project_setup()
 
 qt_add_executable(ScribbleQt WIN32
     src/main.cpp
     src/penapi.h
+    src/qtbackend.cpp
+    src/qtbackend.h
     src/ribbon.cpp
     src/ribbon.h
     src/scribblewindow.cpp
     src/scribblewindow.h
 )
 
-target_link_libraries(ScribbleQt PRIVATE Qt6::Widgets)
+target_link_libraries(ScribbleQt PRIVATE Qt6::Widgets Qt6::GuiPrivate)
 
 # The self test is shared with Scribble.Win32 rather than copied. The report ids, the line
 # format and the recording format have to match exactly or the comparison this sample exists

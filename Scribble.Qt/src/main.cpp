@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "penapi.h"
+#include "qtbackend.h"
 #include "scribblewindow.h"
 
 // After Qt, deliberately: see the note in scribblewindow.cpp.
@@ -57,19 +58,10 @@ int main(int argc, char** argv) {
     PenApi api = penapi::load();
     if (hasFlag(argc, argv, "--wintab"))  api = PenApi::WinTab;
     if (hasFlag(argc, argv, "--pointer")) api = PenApi::WmPointer;
-    const bool wantWinTab = api == PenApi::WinTab;
 
-    // Qt reads -platform out of argv inside the QApplication constructor, so the choice has to
-    // be made here, in a copy of argv, before that constructor runs. There is no later moment:
-    // the Windows platform plugin decides between WM_POINTER and WinTab while it initialises.
-    std::vector<char*> args(argv, argv + argc);
-    char platformFlag[] = "-platform";
-    char platformValue[] = "windows:nowmpointer";
-    if (wantWinTab) {
-        args.push_back(platformFlag);
-        args.push_back(platformValue);
-    }
-    int qtArgc = static_cast<int>(args.size());
+    // The backend is selected after QApplication exists, through Qt's private native
+    // interface. This used to inject `-platform windows:nowmpointer`, which Qt 6.8.3 does not
+    // parse -- see src/qtbackend.h. argv is passed through untouched now.
 
     // Without this Qt rounds the scale factor to a whole number, so a 225% display reports a
     // device pixel ratio of 2 and every surface measurement is 11% out while looking tidy.
@@ -78,9 +70,19 @@ int main(int argc, char** argv) {
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
-    QApplication app(qtArgc, args.data());
+    QApplication app(argc, argv);
 
-    ScribbleWindow window(api);
+    // After the constructor, because the platform integration does not exist before it. The
+    // result is checked rather than assumed: Qt is asked what it ended up with.
+    const bool applied = qtbackend::select(api);
+    const PenApi obtained = qtbackend::current();
+    if (!applied) {
+        fprintf(stderr, "[pen-api] requested %s, got %s\n",
+                penapi::description(api).toUtf8().constData(),
+                penapi::description(obtained).toUtf8().constData());
+    }
+
+    ScribbleWindow window(api, obtained);
 
     std::string recordPath;
     if (selftest::record_requested(recordPath))
