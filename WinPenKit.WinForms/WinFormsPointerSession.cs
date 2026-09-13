@@ -34,7 +34,8 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
     public PenConventions Conventions => new(
         PenRawUnits.HundredthsOfMillimetre,
         PenButtonEncoding.PointerFlags,
-        PenCursorNumbering.Normalised);
+        PenCursorNumbering.Normalised,
+        PenTimestampSource.PerformanceCounter);
 
     public PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt |
@@ -241,7 +242,9 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
             Status: 0,
             Buttons: buttons,
             Cursor: cursor,
-            Source: InputApi.WinFormsPointer));
+            Source: InputApi.WinFormsPointer,
+            TimestampMicroseconds: PenTimestamp.FromPerformanceCount(
+                penInfo.pointerInfo.PerformanceCount)));
 
         _hasNewData = true;
     }

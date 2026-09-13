@@ -1,4 +1,14 @@
 using WinPenKit;
+using WinPenKit.TestConsole;
+
+// The clock checks need no tablet and no window, so they run before discovery -- which asks
+// for one, and would turn a headless check into a prompt nobody answers.
+if (args.Any(a => string.Equals(a, "--selftest-clock", StringComparison.OrdinalIgnoreCase)))
+{
+    // Environment.Exit rather than return, so that adding a check does not turn this into an
+    // int-returning entry point and make every existing bare return a compile error.
+    Environment.Exit(ClockSelfTest.Run());
+}
 
 // ── Discovery ────────────────────────────────────────────────────
 

@@ -9,6 +9,7 @@
 //! or a person, which is what makes them worth automating. Levels 2 and 3 - the pen stream and
 //! the coordinate conversion - need input, so they are not part of a launch-time self test.
 
+use crate::pen_session_ffi::PenTimestampSource;
 use std::ffi::c_void;
 
 pub struct Report {
@@ -771,9 +772,10 @@ unsafe extern "system" {
 /// Captures a live pen stream, written when the application closes.
 #[derive(Default)]
 pub struct Recorder {
-    points: Vec<(f64, f64, u32)>,
+    points: Vec<(f64, f64, u32, i64)>,
     source: String,
     max_pressure: i32,
+    timestamp: PenTimestampSource,
     spans_sessions: bool,
 }
 
@@ -786,7 +788,7 @@ impl Recorder {
     ///
     /// Called when a session starts rather than when the file is written: this sample switches
     /// pen API while a recording runs, and one maximum cannot describe two devices.
-    pub fn describe(&mut self, source: &str, max_pressure: i32) {
+    pub fn describe(&mut self, source: &str, max_pressure: i32, timestamp: PenTimestampSource) {
         if !self.points.is_empty() && (self.source != source || self.max_pressure != max_pressure)
         {
             self.spans_sessions = true;
@@ -794,14 +796,15 @@ impl Recorder {
         }
         self.source = source.to_string();
         self.max_pressure = max_pressure;
+        self.timestamp = timestamp;
     }
 
     /// Hover carries no stroke, so a point at zero pressure is not part of one.
-    pub fn add(&mut self, x: f64, y: f64, pressure: u32) {
+    pub fn add(&mut self, x: f64, y: f64, pressure: u32, time_us: i64) {
         if pressure == 0 {
             return;
         }
-        self.points.push((x, y, pressure));
+        self.points.push((x, y, pressure, time_us));
     }
 
     /// Returns the number of points written, or 0 when there was nothing to write -- an empty
@@ -824,17 +827,24 @@ impl Recorder {
         if self.spans_sessions {
             let _ = writeln!(
                 f,
-                "# WARNING: the pen API changed while this was recording. The values above                  describe the session the first points came from; later points came from                  another. Do not normalise pressure from this file."
+                "# WARNING: the pen API changed while this was recording. The values above                  describe the session the first points came from; later points came from                  another. Do not normalise pressure from this file, and do not read the time                  column across the change -- the two sessions count from different origins,                  so a gap that spans them measures nothing."
             );
         }
         let _ = writeln!(f, "# Captured: {} points", self.points.len());
-        let _ = writeln!(f, "desktopX,desktopY,pressure");
+
+        // The time column is relative to the first point, so the file needs no epoch and
+        // carries no machine uptime. What it does need is the clock, because that sets what a
+        // gap of zero means.
+        let _ = writeln!(f, "# Timestamp: {}", self.timestamp.name());
+        let _ = writeln!(f, "desktopX,desktopY,pressure,timeUs");
 
         // Round-trip precision, deliberately: a recorder that quantized its own output would
         // report every session as quantized. Rust's default float formatting is already the
         // shortest representation that round-trips, so no precision is specified.
-        for (x, y, p) in &self.points {
-            let _ = writeln!(f, "{},{},{}", x, y, p);
+        let origin = self.points[0].3;
+        for (x, y, p, t) in &self.points {
+            let dt = if self.timestamp == PenTimestampSource::None { 0 } else { t - origin };
+            let _ = writeln!(f, "{},{},{},{}", x, y, p, dt);
         }
 
         self.points.len()

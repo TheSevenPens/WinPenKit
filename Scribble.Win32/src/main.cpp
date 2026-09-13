@@ -46,7 +46,18 @@ static std::string        g_record_path;
 // implementations of one API can disagree, and the API name does not say which is running.
 static PenConventions g_conventions = { PEN_RAW_NONE,
                                         PEN_BUTTONS_WINTAB_EVENT,
-                                        PEN_CURSOR_DEVICE_ASSIGNED };
+                                        PEN_CURSOR_DEVICE_ASSIGNED,
+                                        PEN_TS_NONE };
+
+// selftest.h declares its own copy of this enum so that Scribble.Qt can share the recorder
+// without including a WinPenKit header. Two declarations of one set of values drift silently,
+// and the recording header would then name the wrong clock. This file includes both, so it is
+// where that cannot happen.
+static_assert(static_cast<int>(selftest::TimestampSource::None) == PEN_TS_NONE);
+static_assert(static_cast<int>(selftest::TimestampSource::PerformanceCounter)
+              == PEN_TS_PERFORMANCE_COUNTER);
+static_assert(static_cast<int>(selftest::TimestampSource::SystemTicks) == PEN_TS_SYSTEM_TICKS);
+static_assert(static_cast<int>(selftest::TimestampSource::DeviceTicks) == PEN_TS_DEVICE_TICKS);
 
 // raw_x is a different quantity on each backend, so the readout carries its unit. Printing
 // the pair alone invited reading it as a position in the same space as Screen, which on
@@ -188,6 +199,33 @@ static void start_session() {
     g_session = pen_session_create(api);
     if (!g_session) return;
 
+    // Before draining anything. pen_session_drain_points memcpys an array, so a DLL whose
+    // PenPoint is a different size does not corrupt one field: every point after the first is
+    // read from the wrong offset and comes back as numbers that still look like pen data.
+    // Scribble.Rust has refused to start on this since the field was added; this sample links
+    // the same ABI and was not checking it.
+    // Both structs. pen_session_get_conventions writes through a caller-provided pointer, so
+    // a PenConventions that is too small here is written past -- and it is a stack local, so
+    // the damage lands on whatever sits beside it rather than in the struct being read. It
+    // has already grown once, 12 bytes to 16, alongside PenPoint 96 to 104.
+    struct SizeCheck { const wchar_t* name; int ours; int dll; };
+    const SizeCheck sizes[] = {
+        { L"PenPoint",       static_cast<int>(sizeof(PenPoint)),       pen_session_get_point_size() },
+        { L"PenConventions", static_cast<int>(sizeof(PenConventions)), pen_session_get_conventions_size() },
+    };
+    for (const auto& sc : sizes) {
+        if (sc.ours == sc.dll) continue;
+        wchar_t msg[320];
+        swprintf_s(msg, L"%s is %d bytes in this executable and %d bytes in "
+                        L"WinPenKit.Native.dll.\n\nThe DLL beside it was built from a "
+                        L"different pen_session.h; rebuild one against the other.",
+                   sc.name, sc.ours, sc.dll);
+        MessageBoxW(nullptr, msg, L"Scribble.Win32", MB_OK | MB_ICONERROR);
+        pen_session_destroy(g_session);
+        g_session = nullptr;
+        return;
+    }
+
     const char* error = pen_session_start(g_session, g_main_hwnd);
     if (error) {
         pen_session_destroy(g_session);
@@ -208,7 +246,8 @@ static void start_session() {
             case PEN_API_WM_POINTER:       api_name = "WmPointerSession (native)"; break;
             default:                       api_name = "unknown"; break;
         }
-        g_recorder.describe(api_name, g_max_pressure);
+        g_recorder.describe(api_name, g_max_pressure,
+                            static_cast<selftest::TimestampSource>(g_conventions.timestamp));
     }
     g_has_last = false;
     g_has_pen_data = false;
@@ -264,7 +303,7 @@ static void process_points(HWND hwnd) {
         if (pt.buttons != 0) g_last_raw_buttons = pt.buttons;
 
         if (!g_record_path.empty())
-            g_recorder.add(pt.desktop_x, pt.desktop_y, pt.pressure);
+            g_recorder.add(pt.desktop_x, pt.desktop_y, pt.pressure, pt.timestamp_us);
 
         // Converted by hand rather than through ScreenToClient, which takes a POINT and so
         // forces the position onto the whole-pixel grid on the way in. The client origin is

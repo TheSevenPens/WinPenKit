@@ -15,7 +15,8 @@ internal sealed class WintabSystemSession : WintabSessionBase
     public override PenConventions Conventions => new(
         PenRawUnits.ScreenPixels,
         PenButtonEncoding.WintabEvent,
-        PenCursorNumbering.DeviceAssigned);
+        PenCursorNumbering.DeviceAssigned,
+        PenTimestampSource.DeviceTicks);
 
     public override PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt | PenCapabilities.Twist |

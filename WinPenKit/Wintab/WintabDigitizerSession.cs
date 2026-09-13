@@ -23,7 +23,8 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
     public override PenConventions Conventions => new(
         _useScaleAxis ? PenRawUnits.TabletNative : PenRawUnits.ScreenPixels,
         PenButtonEncoding.WintabEvent,
-        PenCursorNumbering.DeviceAssigned);
+        PenCursorNumbering.DeviceAssigned,
+        PenTimestampSource.DeviceTicks);
 
     public override PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt | PenCapabilities.Twist |

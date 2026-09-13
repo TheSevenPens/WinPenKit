@@ -8,6 +8,14 @@ use pen_session_ffi::{
 use tiny_skia::{Color, LineCap, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 fn main() -> eframe::Result {
+    // Before anything opens a session. A PenPoint that is not the size the DLL writes turns
+    // every drained point into plausible-looking rubbish, and nothing downstream can tell.
+    // Better to refuse to start and say which two sizes disagree.
+    if let Err(e) = PenSession::check_point_layout() {
+        eprintln!("[fatal] {e}");
+        std::process::exit(2);
+    }
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             // Points, so this is multiplied by the display scale. At 2.25x, 700 points is
@@ -167,7 +175,8 @@ impl ScribbleApp {
                 PenInputApi::WmPointer => "WmPointerSession (native)",
                 _ => "unknown",
             };
-            self.recorder.describe(name, self.max_pressure);
+            self.recorder
+                .describe(name, self.max_pressure, self.conventions.timestamp);
         }
         self.session = Some(session);
         self.tip_down = false;
@@ -254,7 +263,8 @@ impl ScribbleApp {
             // recording is of what the session produced, not of what this window chose to
             // draw. Scribble.Win32 records at the same place for the same reason.
             if self.record_path.is_some() {
-                self.recorder.add(pt.desktop_x, pt.desktop_y, pt.pressure);
+                self.recorder
+                    .add(pt.desktop_x, pt.desktop_y, pt.pressure, pt.timestamp_us);
             }
 
             // Wintab gives physical desktop pixels, and the pixmap is in physical pixels too.

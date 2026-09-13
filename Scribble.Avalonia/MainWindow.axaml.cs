@@ -324,7 +324,7 @@ public partial class MainWindow : Window
 
         // Described at start, not at save: this sample switches pen API while a recording is
         // running, and the header has to name the session the points actually came from.
-        _recorder?.Describe(_session.GetType().Name, _session.MaxPressure);
+        _recorder?.Describe(_session.GetType().Name, _session.MaxPressure, _session.Conventions.Timestamp);
 
         Title = "Scribble Avalonia - WinPenKit";
         _renderTimer.Start();

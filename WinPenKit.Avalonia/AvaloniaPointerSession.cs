@@ -28,7 +28,8 @@ public sealed class AvaloniaPointerSession : IPenSession
     public PenConventions Conventions => new(
         PenRawUnits.None,
         PenButtonEncoding.PointerFlags,
-        PenCursorNumbering.Normalised);
+        PenCursorNumbering.Normalised,
+        PenTimestampSource.SystemTicks);
 
     public PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt |
@@ -186,7 +187,16 @@ public sealed class AvaloniaPointerSession : IPenSession
             Status: 0,
             Buttons: buttons,
             Cursor: cursor,
-            Source: InputApi.AvaloniaPointer));
+            Source: InputApi.AvaloniaPointer,
+            // Avalonia documents this only as "the time when the input occurred" and states
+            // no unit. Measured against GetTickCount64 and found to track it within a
+            // millisecond, so it is milliseconds on that epoch.
+            //
+            // FromSystemTicks, not FromMilliseconds, even though the property is a ulong. On
+            // Windows Avalonia fills it from GetMessageTime, which is 32 bits, and widens the
+            // result -- so the value has already wrapped by the time it is a ulong and the
+            // width of the property says nothing about the width of the clock.
+            TimestampMicroseconds: PenTimestamp.FromSystemTicks((long)e.Timestamp)));
 
         _hasNewData = true;
     }

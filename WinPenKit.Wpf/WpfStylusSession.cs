@@ -36,7 +36,8 @@ public sealed class WpfStylusSession : IPenSession
     public PenConventions Conventions => new(
         PenRawUnits.None,
         PenButtonEncoding.PointerFlags,
-        PenCursorNumbering.Normalised);
+        PenCursorNumbering.Normalised,
+        PenTimestampSource.SystemTicks);
 
     public PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt |
@@ -204,7 +205,11 @@ public sealed class WpfStylusSession : IPenSession
                 Status: 0,
                 Buttons: buttons,
                 Cursor: cursor,
-                Source: InputApi.WpfStylus));
+                Source: InputApi.WpfStylus,
+                // Milliseconds on the GetTickCount epoch, measured on 12 Sep 2026 -- WPF
+                // documents no unit either. The coarsest of the six: consecutive points
+                // repeated a value, so the real step is about 15.6ms whatever the unit says.
+                TimestampMicroseconds: PenTimestamp.FromSystemTicks(e.Timestamp)));
 
             _hasNewData = true;
         }

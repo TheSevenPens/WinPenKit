@@ -53,7 +53,8 @@ public sealed class WinUiPointerSession : IPenSession
     public PenConventions Conventions => new(
         PenRawUnits.None,
         PenButtonEncoding.PointerFlags,
-        PenCursorNumbering.Normalised);
+        PenCursorNumbering.Normalised,
+        PenTimestampSource.SystemTicks);
 
     public PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt |
@@ -185,7 +186,19 @@ public sealed class WinUiPointerSession : IPenSession
             Status: 0,
             Buttons: buttons,
             Cursor: cursor,
-            Source: InputApi.WinUiPointer));
+            Source: InputApi.WinUiPointer,
+            // Already microseconds, so no conversion. The unit overstates it: every reading
+            // in a run ends in the same sub-millisecond remainder -- 171us in one run, 622us in
+            // another -- so the value moves in whole milliseconds and the tail is a per-run
+            // constant.
+            //
+            // Not anchored the way the millisecond backends are. Anchoring needs the source's
+            // width, and whether this microsecond value comes from a 32-bit millisecond clock
+            // underneath is NOT established: Avalonia's and Qt's do, and this one was not
+            // traced. If it does, it wraps after about 49.7 days like theirs. Tracked rather
+            // than guessed, because anchoring a clock that is genuinely 64-bit and on another
+            // epoch would corrupt every reading rather than fix a rare one.
+            TimestampMicroseconds: (long)point.Timestamp));
 
         _hasNewData = true;
     }

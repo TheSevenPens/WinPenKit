@@ -79,7 +79,33 @@ public readonly record struct PenPoint(
     uint Cursor,
 
     /// <summary>Which input API produced this point.</summary>
-    InputApi Source)
+    InputApi Source,
+
+    /// <summary>
+    /// When the point was produced, in microseconds. Subtract two of these; do not read one
+    /// on its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>The origin is deliberately unstated. Every backend counts from a different
+    /// place, and no two of them are comparable, so the only contract this field offers is
+    /// that values from one running session never decrease and their difference is elapsed
+    /// microseconds. Never decrease, not increase: a backend whose clock is coarser than its
+    /// report rate gives consecutive points the same value, so a difference of zero is a
+    /// normal reading and any consumer dividing by one has to expect it. That is what sampling rate, velocity and any time-based smoothing
+    /// actually need.</para>
+    /// <para>It is not a high-resolution clock. The unit is microseconds everywhere so that
+    /// arithmetic is uniform, and on every backend measured so far the value moves in whole
+    /// milliseconds -- WM_POINTER included, whose field is counted in 100ns QPC ticks and
+    /// still arrived as exact millisecond multiples. WPF is coarser again, giving a whole batch
+    /// of points one timestamp. <see cref="PenConventions.Timestamp"/> names the clock and
+    /// carries the measured resolution per backend, with the caveat that synthetic injection
+    /// may be setting the floor those measurements found.</para>
+    /// <para>Zero when <see cref="PenConventions.Timestamp"/> is
+    /// <see cref="PenTimestampSource.None"/>. Zero is not a time; it means the backend
+    /// supplied nothing. The session does not substitute its own clock, because that would
+    /// measure when this library got around to reading the packet.</para>
+    /// </remarks>
+    long TimestampMicroseconds)
 {
     // These five decode the Wintab encoding -- (action << 16) | buttonNumber -- and nothing
     // here knows whether that is the encoding in hand. The five pointer backends set only

@@ -151,6 +151,20 @@ private:
     std::atomic<bool> has_new_data_{false};
 
     // Button/cursor change tracking for logging
+    // pkTime is a uint32 of milliseconds, wrapping to zero after about 49.7 days of uptime.
+    // Left alone, a stroke drawn across that boundary yields a difference wrong by the whole
+    // range, silently, which is worse than no timestamp at all.
+    //
+    // Detected rather than derived. The managed framework backends anchor against
+    // GetTickCount64 instead, which is stateless and survives any idle; that is not available
+    // here because Wintab states no origin for pkTime and none has been measured.
+    //
+    // The cost of detecting: this sees only the packets it is given, so a wrap that happens
+    // while the session is stopped, or across a gap where every packet was discarded by the
+    // capture region, is missed and the difference across that gap is wrong by 49.7 days.
+    int64_t  pk_time_high_ = 0;
+    int64_t  pk_time_last_ = -1;
+
     uint32_t last_buttons_ = 0;
     uint32_t last_cursor_ = 0;
 

@@ -39,7 +39,7 @@ WinPenKit is a layered pen input SDK. The core abstraction (`IPenSession`) sits 
 - `PenSessionFactory` — discovers available APIs, creates sessions
 - `InputApi` enum — identifies each backend
 - `PenCapabilities` flags — advertises what a backend *supports* (incl. `GlobalCapture`, `Proximity`)
-- `PenConventions` — states which *convention* a backend's points follow: raw units, button encoding, cursor numbering. A required `IPenSession` member with no default implementation; see design decision 10
+- `PenConventions` — states which *convention* a backend's points follow: raw units, button encoding, cursor numbering, timestamp clock. A required `IPenSession` member with no default implementation; see design decision 10
 - `IPenCaptureRegion` + `PenCaptureRegion` — screen-space spatial scope (`Unbounded` / `Window` / `Rect`); see design decision 9
 
 **Backends (internal):**

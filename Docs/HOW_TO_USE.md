@@ -128,6 +128,214 @@ Every `PenPoint` contains:
 | `Buttons` | `uint` | Button state, in one of two encodings named by `session.Conventions.Buttons`. Wintab: `(action << 16) \| buttonNumber`. Pointer backends: a flag bitmask, bit 0 barrel, bit 1 eraser. Read it through `PenButtonTracker`. |
 | `Cursor` | `uint` | Cursor type, numbered as `session.Conventions.Cursor` says. Pointer backends normalise to 13 tip / 14 eraser; Wintab passes the driver's own number through. |
 | `Source` | `InputApi` | Which backend produced this point. |
+| `TimestampMicroseconds` | `long` | When the point was produced. **Subtract two of these; do not read one.** The clock is named by `session.Conventions.Timestamp`. See below. |
+
+### What `MaxPressure` is, and is not
+
+It is the largest value the device will report, and dividing by it gives correct relative
+pressure. That is all it claims and all it does.
+
+It is **not** a count of distinguishable levels. A Wacom DTH246 over Wintab reports 32767 and
+resolves **8192**, in steps of 4 — measured from `testdata/wintab-digitizer-stroke-1.75x.csv`,
+where 99.8% of the gaps between consecutive distinct pressures are multiples of 4. Anyone
+reasoning "32767 levels to work with" is wrong by a factor of 4 on that device, having read a
+true sentence.
+
+Nothing here reports granularity, because no driver declares it. Wintab's `AXIS` carries
+`axUnits` and `axResolution`; for `DVC_NPRESSURE` the driver returns `TU_NONE` and `0`, while
+populating both meaningfully for X and Y. Granularity can only be observed from a captured
+stream.
+
+Where the number comes from varies, and the number alone does not say which:
+
+| backend | `MaxPressure` | what it is |
+| --- | --- | --- |
+| Wintab system, Wintab digitizer | queried | `WTInfoA(WTI_DEVICES, DVC_NPRESSURE).axMax` |
+| WM_POINTER, WPF, WinUI, Avalonia, WinForms | 1024 | the API's fixed range, not the device's |
+
+See issue 94.
+
+### What `TimestampMicroseconds` is for
+
+Differences. Two of them subtracted give elapsed microseconds, which is what sampling rate,
+velocity and any time-based smoothing need. One on its own gives nothing: the origin is
+unstated, every backend counts from somewhere different, and no two of them are comparable.
+
+**How far the backends agree.** Three things hold everywhere, and one does not:
+
+| | consistent? | |
+| --- | --- | --- |
+| unit | **yes** | microseconds on every backend, always |
+| contract | **yes** | subtract two, get elapsed microseconds; never decreasing within a session |
+| wrapping | **yes** | handled in the session, not left to the caller — see below |
+| **resolution** | **no** | 1 ms on four backends, 15.6 ms on WPF, unknown on Wintab |
+| **one timestamp per point** | **no** | WPF stamps events, so a batch of points shares one |
+
+The last two rows reach your code. A velocity or smoothing routine tuned against WM_POINTER
+will meet **zero deltas** on WPF, and not occasionally: in a measured run, 196 points carried 6
+distinct timestamps. Guard the division. A zero difference means two points the backend could
+not separate in time, which is not a claim that no time passed.
+
+### The exact shape of the value
+
+| | |
+| --- | --- |
+| type | `long` (C# `Int64`, C `int64_t`, Rust `i64`) |
+| unit | microseconds, on every backend, always |
+| magnitude | microseconds since the machine booted — about 2.6 × 10¹² after 30 days up |
+| may be negative? | **yes, on WPF only**, if the session starts after ~24.9 days of uptime |
+| overflow | never: `long.MaxValue` µs is about 292,000 years |
+| origin | **unspecified.** Differences are the contract; absolute values are not |
+| ordering | never decreasing within one session. A difference of zero is a normal reading |
+
+### Per-backend: what it is made of
+
+| backend | clock | source field | source type | conversion |
+| --- | --- | --- | --- | --- |
+| WM_POINTER, WinForms | `PerformanceCounter` | `POINTER_INFO.PerformanceCount` | `ulong` QPC ticks | `ticks × 10⁶ / QPF`, split to avoid overflow |
+| WinUI 3 | `SystemTicks` | `PointerPoint.Timestamp` | `ulong` µs | cast only |
+| Avalonia | `SystemTicks` | `PointerEventArgs.Timestamp` | `ulong` ms | `× 1000` |
+| WPF | `SystemTicks` | `StylusEventArgs.Timestamp` | **`int`** ms | wrap-extend, then `× 1000` |
+| Qt (Scribble.Qt) | `SystemTicks` | `QInputEvent::timestamp` | `quint64` ms | `× 1000` |
+| Wintab | `DeviceTicks` | `PACKET.pkTime` | **`uint`** ms | wrap-extend, then `× 1000` |
+
+**What each conversion costs.**
+
+- **`× 1000` (Avalonia, WPF, Qt, Wintab) is exact and adds nothing.** The last three digits are
+  always `000`. Four of the six backends produce a number that looks microsecond-precise and
+  carries milliseconds.
+- **Do not try to infer resolution from the value.** An earlier draft of this page said a
+  non-zero remainder mod 1000 meant WM_POINTER or WinUI. That is wrong twice over: WinUI's
+  remainder is a per-run constant that cancels out of every difference, so the test flags a
+  millisecond clock as fine; and WM_POINTER's measured values all ended in `000`, so it flags
+  the finest clock available as coarse. Read `Conventions.Timestamp` and the table below.
+- **The QPC division truncates below a microsecond.** Integer division toward zero, so the error
+  is under 1 µs and slightly downward. At a 200 Hz report rate that is 0.02% of one interval.
+- **The WinUI cast is lossless but the source is not what it claims.** Every reading in a run
+  ends in the same sub-millisecond remainder — 171 µs in one run, 622 µs in another. The last
+  three digits are a per-run constant, not measurement. It cancels out of every difference.
+- **No backend loses anything to the wrap extension.** It only adds a multiple of 2³² ms.
+
+### Measured resolution, and why one row is an upper bound
+
+Burst-injected 400 points with no pacing, so that many land inside one clock tick — the
+earlier 20 ms-per-step injection was coarser than the clocks and could not have distinguished
+1 ms from 15.6 ms.
+
+| backend | points delivered | distinct timestamps | step |
+| --- | --- | --- | --- |
+| Avalonia | 172 | 113 | 1 ms |
+| WinUI 3 | 13 | 11 | 1 ms |
+| WM_POINTER (WinForms) | 17 | 8 | **1 ms observed** |
+| WPF | 196 | **6** | 15.6 ms, in 6 events |
+| Qt (`Scribble.Qt`, not WinPenKit) | 127 | **10** | **15.6 ms** |
+| Wintab | — | — | not established |
+
+Qt is in the table because `Scribble.Qt` exists to be compared against, not because WinPenKit
+produces it. Its gaps were 15, 16, 16, 47, 63, 93, 109, 563 and 750 ms — every one a multiple
+of 15.625 ms to within 0.75 ms across a 750 ms span. `QInputEvent::timestamp` is as coarse as
+WPF's clock, which is worth knowing before treating Qt as the reference implementation.
+
+**The WM_POINTER row is an upper bound, not a measurement of the hardware path.**
+`PerformanceCount` is counted in QPC ticks of 100 ns, but every value arrived as an exact
+multiple of a millisecond and matched `dwTime` one for one. 100 ns is the *tick size* — the
+unit — and saying it is the resolution is the same error as reading `MaxPressure` 32767 as a
+level count. Synthetic injection stamps its own events, so a backend cannot be shown to resolve
+finer than the source feeding it. Whether real pen hardware fills this field more finely is
+**unmeasured and needs a tablet.**
+
+### WPF is different in kind, not degree
+
+WPF's `StylusEventArgs` carries a whole `StylusPointCollection`, and the timestamp belongs to
+the **event**, not the point. Every point in a batch gets the same one. In the run above, 196
+points arrived in 6 events — one carrying 68 points — for **6 distinct timestamps across 196
+points**.
+
+The clock's 15.6 ms granularity is the smaller of the two effects, and the one that would
+disappear on a finer clock. The batching would not. WPF exposes no per-point time at all, so
+this is a ceiling of the framework rather than a choice made here.
+
+### Two more things worth stating
+
+- **`dwTime` and `PerformanceCount` are not two readings of one clock.** Both are populated on
+  every `POINTER_INFO`. `dwTime` is milliseconds on the `GetTickCount64` epoch, `PerformanceCount`
+  is QPC, and they sat 27.08 ms apart — identically — across every sample. These backends use
+  `PerformanceCount`.
+- **None of this establishes latency or sampling rate.** The gaps between injected points are
+  the injection script's, not a device's.
+
+### Reading it as wall-clock time
+
+You cannot, through the API. The origin is unspecified on purpose, because it differs per
+backend and only one machine has been measured.
+
+If you need wall clock anyway — lining a stroke up against a log, say — calibrate it yourself.
+At the moment a point arrives, read the wall clock too:
+
+```csharp
+long offsetUs = long.MaxValue;   // keep the smallest seen
+
+// in your point handler, per point:
+long nowUs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000;
+offsetUs = Math.Min(offsetUs, nowUs - pt.TimestampMicroseconds);
+
+// then, for any point:
+DateTimeOffset wall = DateTimeOffset.FromUnixTimeMilliseconds(
+    (pt.TimestampMicroseconds + offsetUs) / 1000);
+```
+
+The **minimum** matters. An event happens at T and your handler runs at T + latency, so every
+sample overestimates the offset by that run's latency and never underestimates it. The smallest
+difference over many points is the closest you get to the true offset. Measured handler latency
+in one run was 0.372 ms to 26.6 ms, the largest on the first point after startup — calibrating
+on a single sample would have been 26 ms out.
+
+Recalibrate per session. The offset is not valid across a backend switch, and on WPF the
+calibration is no better than the 15.6 ms clock it is reading.
+
+
+Wintab's `pkTime` is requested on every packet — `lcPktData` is `PK_PKTBITS_ALL` — and Wintab
+documents it as milliseconds with no origin. Neither that origin nor its real granularity has
+been measured here, because Wintab ignores synthetic pen input and measuring it takes a
+tablet. Treat its differences as usable and everything else about it as unknown.
+
+Where `Conventions.Timestamp` is `None`, the field is zero. Zero is not a time; it means the
+backend supplied none. No session substitutes its own clock, which would measure when this
+library got round to reading the packet rather than when the pen moved.
+
+### Counters that wrap
+
+Two backends count milliseconds in fewer than 64 bits:
+
+| backend | raw type | wraps after | what it does |
+| --- | --- | --- | --- |
+| WPF | `int` | ~24.9 days of uptime | passes `int.MaxValue` and **continues negative** |
+| Wintab | `uint` | ~49.7 days of uptime | returns to 0 |
+
+The other four are 64-bit and do not wrap in any relevant timeframe.
+
+Left alone, a stroke drawn across either boundary would produce a difference wrong by the
+entire range — about −49.7 days, from two points a millisecond apart. `MillisecondCounter`
+extends both inside the session, so `TimestampMicroseconds` stays continuous and the caller
+never sees it. Detection is a backward jump of more than half the range; pen packets arrive
+milliseconds apart, so nothing legitimate moves backward, and half a range leaves 12 days of
+margin.
+
+It cannot recover a wrap that happened while the session was not running, which the
+differences-only contract does not promise anyway.
+
+Neither wrap can be reached by ordinary testing, so there is a check that does not need to
+wait for one:
+
+```bash
+dotnet run --project WinPenKit.TestConsole -- --selftest-clock
+```
+
+Six cases, no tablet and no window. Two of them are the wraps; two more are ordinary input and
+a repeated value, present because a wrap detector that fires on normal packets would corrupt
+every stroke rather than one every few weeks. Verified in both directions: with the extension
+removed, the two wrap cases fail by exactly −4,294,967,295,000 µs and the other four still
+pass.
 
 ### What `MaxPressure` is, and is not
 
@@ -179,6 +387,7 @@ var c = session.Conventions;
 c.RawUnits   // what RawX/Y are measured in, or None
 c.Buttons    // WintabEvent or PointerFlags
 c.Cursor     // Normalised or DeviceAssigned
+c.Timestamp  // which clock TimestampMicroseconds counts on, or None
 ```
 
 `PenCapabilities` answers a different question -- *supported or not*, like `Proximity` and `ZHeight`. `Conventions` answers *which convention*. Asking one flag to answer both is how a hi-res capability once survived a fallback that had turned hi-res off.

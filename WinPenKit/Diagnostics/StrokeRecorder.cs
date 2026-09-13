@@ -19,9 +19,10 @@ namespace WinPenKit.Diagnostics;
 /// </remarks>
 public sealed class StrokeRecorder
 {
-    private readonly List<(double X, double Y, uint Pressure)> _points = [];
+    private readonly List<(double X, double Y, uint Pressure, long TimeUs)> _points = [];
     private string? _source;
     private int _maxPressure;
+    private PenTimestampSource _timestampSource;
     private bool _spansSessions;
 
     /// <summary>
@@ -38,9 +39,16 @@ public sealed class StrokeRecorder
     /// is kept -- those points belong to it -- and the file says the stream spans more than
     /// one session, because one maximum cannot describe both halves.</para>
     /// </remarks>
-    public void Describe(string source, int maxPressure)
+    public void Describe(string source, int maxPressure,
+                         PenTimestampSource timestampSource = PenTimestampSource.None)
     {
-        if (_points.Count > 0 && (source != _source || maxPressure != _maxPressure))
+        // The clock counts as part of the identity, not just the name and the range. Two
+        // sessions on the same backend with the same pressure range are still two origins, and
+        // treating them as one session saves a subtraction across them with no warning
+        // attached. Restarting a WPF session is exactly that case.
+        if (_points.Count > 0 && (source != _source
+                                  || maxPressure != _maxPressure
+                                  || timestampSource != _timestampSource))
         {
             _spansSessions = true;
             return;
@@ -48,6 +56,7 @@ public sealed class StrokeRecorder
 
         _source = source;
         _maxPressure = maxPressure;
+        _timestampSource = timestampSource;
     }
 
     /// <summary>Points captured so far.</summary>
@@ -78,7 +87,7 @@ public sealed class StrokeRecorder
     public void Add(in PenPoint pt)
     {
         if (pt.Pressure == 0) return;
-        _points.Add((pt.DesktopX, pt.DesktopY, pt.Pressure));
+        _points.Add((pt.DesktopX, pt.DesktopY, pt.Pressure, pt.TimestampMicroseconds));
     }
 
     /// <summary>
@@ -101,16 +110,29 @@ public sealed class StrokeRecorder
         if (_spansSessions)
             sb.AppendLine("# WARNING: the pen API changed while this was recording. The values " +
                           "above describe the session the first points came from; later points " +
-                          "came from another. Do not normalise pressure from this file.");
+                          "came from another. Do not normalise pressure from this file, and " +
+                          "do not read the time column across the change -- the two sessions " +
+                          "count from different origins, so a gap that spans them measures " +
+                          "nothing.");
         sb.AppendLine(CultureInfo.InvariantCulture,
             $"# Captured: {DateTime.Now:yyyy-MM-dd HH:mm:ss}, {_points.Count} points");
-        sb.AppendLine("desktopX,desktopY,pressure");
+        // The time column is relative to the first point, so the file needs no epoch and
+        // carries no machine uptime. What it does need is the clock, because that sets what a
+        // gap of zero means: on WPF it means two points the clock could not tell apart, and on
+        // WM_POINTER it means two points that genuinely arrived together.
+        sb.AppendLine(CultureInfo.InvariantCulture, $"# Timestamp: {_timestampSource}");
+        sb.AppendLine("desktopX,desktopY,pressure,timeUs");
 
-        foreach (var (x, y, p) in _points)
+        long origin = _points[0].TimeUs;
+        foreach (var (x, y, p, t) in _points)
         {
             sb.Append(x.ToString("R", CultureInfo.InvariantCulture)).Append(',');
             sb.Append(y.ToString("R", CultureInfo.InvariantCulture)).Append(',');
-            sb.Append(p.ToString(CultureInfo.InvariantCulture)).Append('\n');
+            sb.Append(p.ToString(CultureInfo.InvariantCulture)).Append(',');
+            // Zero throughout when the backend supplies no time, which is what
+            // PenTimestampSource.None in the header above says to expect.
+            sb.Append((_timestampSource == PenTimestampSource.None ? 0 : t - origin)
+                .ToString(CultureInfo.InvariantCulture)).Append('\n');
         }
 
         string? dir = Path.GetDirectoryName(Path.GetFullPath(path));

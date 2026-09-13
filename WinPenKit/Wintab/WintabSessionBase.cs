@@ -15,6 +15,12 @@ internal abstract class WintabSessionBase : IPenSession
     private IntPtr _hCtx;
     private readonly ConcurrentQueue<PenPoint> _points = new();
     private volatile bool _hasNewData;
+    // pkTime is a uint of milliseconds, wrapping to zero after about 49.7 days of uptime.
+    // Detected rather than anchored, because Wintab states no origin for pkTime and none has
+    // been measured, so there is nothing to anchor against. See DeviceTickCounter for what
+    // that costs.
+    private readonly DeviceTickCounter _clock = new();
+
     private uint _lastButtons;
     private uint _lastCursor;
     private string _debugInfo = "";
@@ -251,7 +257,12 @@ internal abstract class WintabSessionBase : IPenSession
                 Status: pkt.pkStatus,
                 Buttons: pkt.pkButtons,
                 Cursor: pkt.pkCursor,
-                Source: Api));
+                // lcPktData asks for PK_PKTBITS_ALL, so pkTime is filled in on every packet.
+                // Wintab calls it milliseconds and says nothing about its origin, and neither
+                // that nor its real granularity has been measured -- Wintab ignores synthetic
+                // pen injection, so it takes a tablet.
+                Source: Api,
+                TimestampMicroseconds: _clock.Next(pkt.pkTime)));
 
             _hasNewData = true;
         }
