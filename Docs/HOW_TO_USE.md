@@ -7,7 +7,8 @@ A guide for developers building pen-enabled applications with the WinPenKit libr
 ```csharp
 using WinPenKit;
 
-// 1. Discover available APIs.
+// 1. Discover available APIs. In a framework application, ask that framework's package
+//    instead -- see "Filling an API dropdown" below.
 var apis = PenSessionFactory.GetAvailableApis();
 
 // 2. Create and start a session.
@@ -44,6 +45,7 @@ newSession.Start();
 // Discover and create.
 PenInputApi apis[8];
 int count = pen_session_get_available_apis(apis, 8);
+const char* name = pen_session_get_api_label(apis[0]);   // "Wintab", for a dropdown
 PenSessionHandle session = pen_session_create(apis[0]);
 
 // Start (pass HWND for WM_POINTER, NULL for Wintab).
@@ -76,6 +78,36 @@ IPenSession session = new AvaloniaPointerSession(control);
 ```
 
 All implement `IPenSession` — the polling code is identical regardless of backend.
+
+## Filling an API dropdown
+
+`PenSessionFactory.GetAvailableApis()` answers for any application, which is why it cannot
+answer for yours. It does not know your UI framework, and the framework settles two things it
+has no view of: whether the framework's own API can be offered, and whether `WmPointer` can
+reach you at all.
+
+So each framework package answers for itself:
+
+| Your application | Call | From package |
+|---|---|---|
+| WPF | `WpfPenApis.GetAvailable()` | `WinPenKit.Wpf` |
+| WinForms | `WinFormsPenApis.GetAvailable()` | `WinPenKit.WinForms` |
+| Avalonia | `AvaloniaPenApis.GetAvailable()` | `WinPenKit.Avalonia` |
+| WinUI 3 | `WinUiPenApis.GetAvailable()` | `WinPenKit.WinUI` |
+
+```csharp
+foreach (var api in WpfPenApis.GetAvailable())
+    ApiCombo.Items.Add(api.Label());
+```
+
+`WmPointer` is absent from all four lists. It subclasses the window procedure, and WPF,
+WinForms, WinUI and Avalonia each consume pointer messages before a subclass sees them. The
+API is present on the system and a raw Win32 process could use it; it simply cannot reach a
+framework application. Offering it would put a dead entry in the dropdown.
+
+`InputApi.Label()` gives the name to show — `"Wintab (high-res)"`, not `"WintabDigitizer"`.
+The C ABI has the same thing in `pen_session_get_api_label`, so a native or Rust application
+spells an API the same way a C# one does.
 
 ## PenPoint Fields
 

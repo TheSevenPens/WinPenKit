@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -75,23 +75,10 @@ public partial class MainWindow : Window
             WinPenKit.WindowPlacement.ClampToWorkArea(
                 TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
 
-            // WM_POINTER subclassing doesn't receive events in Avalonia.
-            var apiList = PenSessionFactory.GetAvailableApis()
-                .Where(a => a != InputApi.WmPointer).ToList();
-            apiList.Add(InputApi.AvaloniaPointer);
-            _apis = apiList;
+            _apis = AvaloniaPenApis.GetAvailable();
 
             foreach (var api in _apis)
-            {
-                string name = api switch
-                {
-                    InputApi.WintabSystem => "Wintab",
-                    InputApi.WintabDigitizer => "Wintab (high-res)",
-                    InputApi.AvaloniaPointer => "Avalonia Pointer",
-                    _ => api.ToString()
-                };
-                ApiCombo.Items.Add(name);
-            }
+                ApiCombo.Items.Add(api.Label());
 
             ApiCombo.SelectionChanged += ApiCombo_SelectionChanged;
 

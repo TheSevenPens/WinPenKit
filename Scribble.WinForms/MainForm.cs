@@ -1,4 +1,4 @@
-using WinPenKit;
+﻿using WinPenKit;
 using WinPenKit.Diagnostics;
 using WinPenKit.WinForms;
 using SkiaSharp;
@@ -134,23 +134,9 @@ public sealed class MainForm : Form
             // aimed at the part hanging off is discarded with no error.
             WinPenKit.WindowPlacement.ClampToWorkArea(Handle);
 
-            // WM_POINTER via DLL subclassing doesn't work in WinForms.
-            // Use WinFormsPointer (NativeWindow WndProc override) instead.
-            var allApis = PenSessionFactory.GetAvailableApis();
-            var apiList = allApis.Where(a => a != InputApi.WmPointer).ToList();
-            apiList.Add(InputApi.WinFormsPointer);
-            _apis = apiList;
+            _apis = WinFormsPenApis.GetAvailable();
             foreach (var api in _apis)
-            {
-                string name = api switch
-                {
-                    InputApi.WintabSystem => "Wintab",
-                    InputApi.WintabDigitizer => "Wintab (high-res)",
-                    InputApi.WinFormsPointer => "WinForms Pointer",
-                    _ => api.ToString()
-                };
-                _apiCombo.Items.Add(name);
-            }
+                _apiCombo.Items.Add(api.Label());
             if (_apiCombo.Items.Count > 0)
                 _apiCombo.SelectedIndex = 0;
         };

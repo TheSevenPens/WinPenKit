@@ -1,10 +1,11 @@
-using Microsoft.UI;
+﻿using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using WinPenKit;
 using WinPenKit.Diagnostics;
+using WinPenKit.WinUI;
 using System.Linq;
 
 namespace Scribble.WinUI;
@@ -32,12 +33,7 @@ public sealed partial class MainWindow : Window
         WinPenKit.WindowPlacement.ClampToWorkArea(
             WinRT.Interop.WindowNative.GetWindowHandle(this));
 
-        // Populate the toolbar dropdown with discovered APIs + WinUI Pointer.
-        // WM_POINTER subclassing doesn't receive events in WinUI 3.
-        var apis = PenSessionFactory.GetAvailableApis()
-            .Where(a => a != InputApi.WmPointer).ToList();
-        apis.Add(InputApi.WinUiPointer);
-        Toolbar.SetAvailableApis(apis);
+        Toolbar.SetAvailableApis(WinUiPenApis.GetAvailable());
 
         Toolbar.ContextModeChanged += (_, _) =>
         {

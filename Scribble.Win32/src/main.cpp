@@ -723,12 +723,12 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             GetModuleHandleW(nullptr), nullptr);
 
         for (int i = 0; i < g_api_count; i++) {
-            const wchar_t* name = L"Unknown";
-            switch (g_apis[i]) {
-                case PEN_API_WINTAB_SYSTEM:    name = L"Wintab"; break;
-                case PEN_API_WINTAB_DIGITIZER: name = L"Wintab (high-res)"; break;
-                case PEN_API_WM_POINTER:       name = L"WM_Pointer"; break;
-            }
+            // The label comes from the library, so this sample cannot drift from the managed
+            // ones over how an API is spelled. Widened here because COMBOBOX takes wide text;
+            // the labels are ASCII, so the conversion cannot lose anything.
+            const char* label = pen_session_get_api_label(g_apis[i]);
+            wchar_t name[64] = L"Unknown";
+            MultiByteToWideChar(CP_UTF8, 0, label, -1, name, 64);
             SendMessageW(g_combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name));
         }
         SendMessageW(g_combo, CB_SETCURSEL, 0, 0);

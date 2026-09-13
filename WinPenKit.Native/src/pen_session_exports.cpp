@@ -52,6 +52,21 @@ int pen_session_get_available_apis(PenInputApi* buffer, int max_count) {
     return count;
 }
 
+const char* pen_session_get_api_label(PenInputApi api) {
+    // Covers the managed-only values too. This binding cannot create one, but a PenPoint's
+    // source field can carry one, and a caller displaying that field needs a name for it.
+    switch (api) {
+        case PEN_API_WINTAB_SYSTEM:    return "Wintab";
+        case PEN_API_WINTAB_DIGITIZER: return "Wintab (high-res)";
+        case PEN_API_WM_POINTER:       return "WM_Pointer";
+        case PEN_API_WINUI_POINTER:    return "WinUI Pointer";
+        case PEN_API_WPF_STYLUS:       return "WPF Stylus";
+        case PEN_API_AVALONIA_POINTER: return "Avalonia Pointer";
+        case PEN_API_WINFORMS_POINTER: return "WinForms Pointer";
+    }
+    return "Unknown";
+}
+
 // ── Factory ─────────────────────────────────────────────────────
 
 PenSessionHandle pen_session_create(PenInputApi api) {

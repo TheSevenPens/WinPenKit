@@ -1,4 +1,4 @@
-using Microsoft.UI;
+﻿using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -52,16 +52,7 @@ public sealed partial class ScribbleRibbon : UserControl
         _availableApis = apis;
         ContextModeCombo.Items.Clear();
         foreach (var api in apis)
-        {
-            string name = api switch
-            {
-                InputApi.WintabSystem => "Wintab",
-                InputApi.WintabDigitizer => "Wintab (high-res)",
-                InputApi.WinUiPointer => "WinUI Pointer",
-                _ => api.ToString()
-            };
-            ContextModeCombo.Items.Add(name);
-        }
+            ContextModeCombo.Items.Add(api.Label());
         if (ContextModeCombo.Items.Count > 0)
             ContextModeCombo.SelectedIndex = 0;
     }

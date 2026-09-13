@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -164,23 +164,10 @@ public partial class MainWindow : Window
             // aimed at the part hanging off is discarded with no error.
             WinPenKit.WindowPlacement.ClampToWorkArea(_hwnd);
 
-            // WM_POINTER subclassing doesn't receive events in WPF.
-            var apiList = PenSessionFactory.GetAvailableApis()
-                .Where(a => a != InputApi.WmPointer).ToList();
-            apiList.Add(InputApi.WpfStylus);
-            _apis = apiList;
+            _apis = WpfPenApis.GetAvailable();
 
             foreach (var api in _apis)
-            {
-                string name = api switch
-                {
-                    InputApi.WintabSystem => "Wintab",
-                    InputApi.WintabDigitizer => "Wintab (high-res)",
-                    InputApi.WpfStylus => "WPF Stylus",
-                    _ => api.ToString()
-                };
-                ApiCombo.Items.Add(name);
-            }
+                ApiCombo.Items.Add(api.Label());
 
             if (ApiCombo.Items.Count > 0)
                 ApiCombo.SelectedIndex = 0;
