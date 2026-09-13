@@ -97,8 +97,23 @@ markers is what says the frame landed, and two consecutive readings that agree i
 nothing is still moving — Windows animates a window open by compositing it scaled up to its
 final size, and a capture taken during that reads a few per cent small.
 
-Not implemented in `Scribble.Win32` or `Scribble.Rust`, which have their own self test and no
-access to the managed one.
+All six samples have it. `Scribble.Win32` and `Scribble.Rust` reimplement the measurement
+rather than binding to the managed one, for the same reason the rest of their self test is a
+reimplementation: neither has a .NET runtime under it. The check id and the line format match,
+so one script still reads all six.
+
+The three differ only in how the application waits for the frame, because that is the one part
+each framework owns:
+
+| sample | how it waits |
+| --- | --- |
+| WPF, WinForms, WinUI, Avalonia | `await`, which yields the UI thread |
+| `Scribble.Win32` | pumps its own message queue; its checks run before the message loop exists |
+| `Scribble.Rust` | polls once per egui frame and asks for a repaint |
+
+A stretch introduced deliberately into each reports the factor it was given: 2.25x in Avalonia,
+1.25x in `Scribble.Win32` (`StretchBlt` at 80%), 1.30x in `Scribble.Rust` (a host 1.3x the
+pixmap). In all three `L1.presentation-1to1` passed on the same build.
 
 `L1.surface-alignment` reports both axes separately, because the error is routinely one-dimensional. One real instance was aligned in x and 0.64px out in y — which is how a check that scanned across a near-vertical stroke reported it clean.
 
