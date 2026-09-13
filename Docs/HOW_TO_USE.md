@@ -117,7 +117,7 @@ Every `PenPoint` contains:
 |---|---|---|
 | `DesktopX/Y` | `double` | Physical screen pixels. Sub-pixel precision in digitizer mode. |
 | `RawX/Y` | `int` | Device-native position, in units given by `session.Conventions.RawUnits`. Zero when that is `None`. See below. |
-| `Pressure` | `uint` | Raw tip pressure. 0 = hovering. Normalize: `(float)pt.Pressure / session.MaxPressure` |
+| `Pressure` | `uint` | Raw tip pressure. 0 = hovering. Normalize: `(float)pt.Pressure / session.MaxPressure`. That maximum is a **range, not a level count** — see below. |
 | `Azimuth` | `double` | Spherical: compass direction in degrees (0.0–360.0). |
 | `Altitude` | `double` | Spherical: angle from surface in degrees (0.0–90.0). 90 = perpendicular. |
 | `TiltX` | `double` | Planar: tilt right/left in degrees (-90.0 to +90.0). |
@@ -128,6 +128,31 @@ Every `PenPoint` contains:
 | `Buttons` | `uint` | Button state, in one of two encodings named by `session.Conventions.Buttons`. Wintab: `(action << 16) \| buttonNumber`. Pointer backends: a flag bitmask, bit 0 barrel, bit 1 eraser. Read it through `PenButtonTracker`. |
 | `Cursor` | `uint` | Cursor type, numbered as `session.Conventions.Cursor` says. Pointer backends normalise to 13 tip / 14 eraser; Wintab passes the driver's own number through. |
 | `Source` | `InputApi` | Which backend produced this point. |
+
+### What `MaxPressure` is, and is not
+
+It is the largest value the device will report, and dividing by it gives correct relative
+pressure. That is all it claims and all it does.
+
+It is **not** a count of distinguishable levels. A Wacom DTH246 over Wintab reports 32767 and
+resolves **8192**, in steps of 4 — measured from `testdata/wintab-digitizer-stroke-1.75x.csv`,
+where 99.8% of the gaps between consecutive distinct pressures are multiples of 4. Anyone
+reasoning "32767 levels to work with" is wrong by a factor of 4 on that device, having read a
+true sentence.
+
+Nothing here reports granularity, because no driver declares it. Wintab's `AXIS` carries
+`axUnits` and `axResolution`; for `DVC_NPRESSURE` the driver returns `TU_NONE` and `0`, while
+populating both meaningfully for X and Y. Granularity can only be observed from a captured
+stream.
+
+Where the number comes from varies, and the number alone does not say which:
+
+| backend | `MaxPressure` | what it is |
+| --- | --- | --- |
+| Wintab system, Wintab digitizer | queried | `WTInfoA(WTI_DEVICES, DVC_NPRESSURE).axMax` |
+| WM_POINTER, WPF, WinUI, Avalonia, WinForms | 1024 | the API's fixed range, not the device's |
+
+See issue 94.
 
 ### What `RawX/Y` holds
 
