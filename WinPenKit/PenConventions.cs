@@ -71,15 +71,12 @@ public enum PenCursorNumbering
 /// Measured 12 Sep 2026, one machine, <b>synthetic pen input</b> -- see the caveat below,
 /// which is load-bearing for the first row.</para>
 /// <list type="table">
-/// <item><term>WM_POINTER, WinForms</term><description><b>1 ms observed.</b>
-/// <c>POINTER_INFO.PerformanceCount</c> is counted in QPC ticks, 100 ns each on this machine,
-/// but the values arrived as exact multiples of a millisecond and matched <c>dwTime</c>
-/// one for one. 100 ns is the tick size, which is the unit; it is not the granularity of what
-/// the field carries</description></item>
-/// <item><term>WinUI 3</term><description>1 ms. <c>PointerPoint.Timestamp</c> is declared in
-/// microseconds and every reading in a run ends in the same sub-millisecond remainder -- 171 µs
-/// in one run, 622 µs in another -- so the last three digits are a per-run constant rather
-/// than measurement</description></item>
+/// <item><term>WM_POINTER, WinForms</term><description><b>1 µs, on hardware.</b> 2070 points,
+/// 2070 distinct timestamps, greatest common divisor of the gaps exactly 1 µs. The finest
+/// clock of any backend here</description></item>
+/// <item><term>WinUI 3</term><description><b>1 µs, on hardware.</b> 1878 points, 1878 distinct
+/// timestamps, gcd of the gaps exactly 1 µs. Under injection it looked like a millisecond clock
+/// with a fixed sub-millisecond offset; the offset was the injector's</description></item>
 /// <item><term>Avalonia</term><description>1 ms. 172 points carried 113 distinct values,
 /// stepping by 1 ms</description></item>
 /// <item><term>WPF</term><description>about 15.6 ms, and that is the smaller problem. See
@@ -87,12 +84,12 @@ public enum PenCursorNumbering
 /// <item><term>Wintab</term><description>not established; see
 /// <see cref="DeviceTicks"/></description></item>
 /// </list>
-/// <para><b>Synthetic injection may set the floor it appears to measure.</b> Every row above
-/// was produced by <c>InjectSyntheticPointerInput</c>, which stamps its own events. A backend
-/// cannot be shown to resolve finer than the source feeding it, so the 1 ms figures are upper
-/// bounds on granularity and not proof that the hardware path is no better. The WM_POINTER row
-/// is the one this matters to: it is the only backend whose field could carry more, and
-/// settling it needs a tablet.</para>
+/// <para><b>Synthetic injection sets the floor it appears to measure</b>, which is no longer a
+/// caution but an observed fact. <c>InjectSyntheticPointerInput</c> stamps its own events, so a
+/// backend cannot be shown to resolve finer than the thing feeding it. WM_POINTER and WinUI
+/// both measured 1 ms through it and both turned out to be a thousand times finer when drawn on
+/// by hand. The Avalonia, WPF and Qt rows are still injection figures: read them as "no better
+/// than", not as measurements.</para>
 /// </remarks>
 public enum PenTimestampSource
 {
@@ -108,11 +105,11 @@ public enum PenTimestampSource
     /// <c>QueryPerformanceCounter</c>, divided down to microseconds.
     /// </summary>
     /// <remarks>
-    /// The counter ticks every 100ns on a typical machine, and that is its unit rather than
-    /// the granularity of what arrives in it. Measured under synthetic injection, every value
-    /// was an exact millisecond multiple and matched <c>dwTime</c> one for one. Whether real
-    /// pen hardware fills the field more finely is unmeasured and needs a tablet, so treat this
-    /// as the clock's name and not as a resolution claim.
+    /// The counter ticks every 100ns on a typical machine. Drawn on by hand, the field carries
+    /// that fineness through: 2070 points, 2070 distinct timestamps, gaps whose greatest common
+    /// divisor is 1 µs. Under synthetic injection the same field delivered exact millisecond
+    /// multiples matching <c>dwTime</c>, which was the injector stamping its own events rather
+    /// than anything about this clock.
     /// </remarks>
     PerformanceCounter,
 

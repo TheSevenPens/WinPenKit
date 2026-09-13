@@ -196,11 +196,16 @@ not separate in time, which is not a claim that no time passed.
 | backend | clock | source field | source type | conversion |
 | --- | --- | --- | --- | --- |
 | WM_POINTER, WinForms | `PerformanceCounter` | `POINTER_INFO.PerformanceCount` | `ulong` QPC ticks | `ticks × 10⁶ / QPF`, split to avoid overflow |
-| WinUI 3 | `SystemTicks` | `PointerPoint.Timestamp` | `ulong` µs | cast only |
+| WinUI 3 | `SystemTicks`¹ | `PointerPoint.Timestamp` | `ulong` µs | cast only |
 | Avalonia | `SystemTicks` | `PointerEventArgs.Timestamp` | `ulong` ms | `× 1000` |
 | WPF | `SystemTicks` | `StylusEventArgs.Timestamp` | **`int`** ms | wrap-extend, then `× 1000` |
 | Qt (Scribble.Qt) | `SystemTicks` | `QInputEvent::timestamp` | `quint64` ms | `× 1000` |
 | Wintab | `DeviceTicks` | `PACKET.pkTime` | **`uint`** ms | wrap-extend, then `× 1000` |
+
+¹ `SystemTicks` names the epoch, which `PointerPoint.Timestamp` was measured to track, and not
+the granularity — this clock resolves to the microsecond, well past the millisecond that
+`GetTickCount64` itself advances in. It is the one backend where the enum's name is coarser
+than the thing it names.
 
 **What each conversion costs.**
 
@@ -214,25 +219,29 @@ not separate in time, which is not a claim that no time passed.
   the finest clock available as coarse. Read `Conventions.Timestamp` and the table below.
 - **The QPC division truncates below a microsecond.** Integer division toward zero, so the error
   is under 1 µs and slightly downward. At a 200 Hz report rate that is 0.02% of one interval.
-- **The WinUI cast is lossless but the source is not what it claims.** Every reading in a run
-  ends in the same sub-millisecond remainder — 171 µs in one run, 622 µs in another. The last
-  three digits are a per-run constant, not measurement. It cancels out of every difference.
+- **The WinUI cast is lossless, and the source is finer than it first appeared.** Under
+  synthetic injection every reading ended in the same sub-millisecond remainder, which reads as
+  a millisecond clock with a fixed offset. On real hardware the readings are microsecond-
+  resolved and the constant tail is gone; it belonged to the injector.
 - **No backend loses anything to the wrap extension.** It only adds a multiple of 2³² ms.
 
-### Measured resolution, and why one row is an upper bound
+### Measured resolution, and why injection could not measure it
 
-Burst-injected 400 points with no pacing, so that many land inside one clock tick — the
-earlier 20 ms-per-step injection was coarser than the clocks and could not have distinguished
-1 ms from 15.6 ms.
+Three backends have now been measured on a Wacom DTH246 by hand. **Two of them overturned the
+figure synthetic injection had produced**, in the same direction and for the same reason.
 
-| backend | points delivered | distinct timestamps | step |
-| --- | --- | --- | --- |
-| Avalonia | 172 | 113 | 1 ms |
-| WinUI 3 | 13 | 11 | 1 ms |
-| WM_POINTER (WinForms) | 17 | 8 | **1 ms observed** |
-| WPF | 196 | **6** | 15.6 ms, in 6 events |
-| Qt (`Scribble.Qt`, not WinPenKit) | 127 | **10** | **15.6 ms** |
-| **Wintab (high-res)** | **1683** | **1683** | **1 ms** |
+| backend | source | points | distinct timestamps | step |
+| --- | --- | --- | --- | --- |
+| **WM_POINTER (WinForms)** | **hardware** | **2070** | **2070** | **1 µs** |
+| **WinUI 3** | **hardware** | **1878** | **1878** | **1 µs** |
+| **Wintab (high-res)** | **hardware** | **1683** | **1683** | **1 ms** |
+| Avalonia | injection | 172 | 113 | 1 ms |
+| WPF | injection | 196 | **6** | 15.6 ms, in 6 events |
+| Qt (`Scribble.Qt`, not WinPenKit) | injection | 127 | **10** | **15.6 ms** |
+
+The injected rows are still upper bounds. Two of the three that have since been drawn on turned
+out to be a thousand times finer than injection suggested, so treat the remaining three as
+"no better than", not as measurements.
 
 The Wintab row is the only one measured on real hardware — a Wacom DTH246 over the hi-res
 digitizer context, 13 Sep 2026 — and it is the best of the set by a wide margin. **Every one of
@@ -249,13 +258,26 @@ produces it. Its gaps were 15, 16, 16, 47, 63, 93, 109, 563 and 750 ms — every
 of 15.625 ms to within 0.75 ms across a 750 ms span. `QInputEvent::timestamp` is as coarse as
 WPF's clock, which is worth knowing before treating Qt as the reference implementation.
 
-**The WM_POINTER row is an upper bound, not a measurement of the hardware path.**
-`PerformanceCount` is counted in QPC ticks of 100 ns, but every value arrived as an exact
-multiple of a millisecond and matched `dwTime` one for one. 100 ns is the *tick size* — the
-unit — and saying it is the resolution is the same error as reading `MaxPressure` 32767 as a
-level count. Synthetic injection stamps its own events, so a backend cannot be shown to resolve
-finer than the source feeding it. Whether real pen hardware fills this field more finely is
-**unmeasured and needs a tablet.**
+**Injection was setting the floor it appeared to measure, and this is the proof.**
+
+Under injection, WM_POINTER's `PerformanceCount` arrived as exact millisecond multiples and
+matched `dwTime` one for one; this page recorded 1 ms and warned the figure was an upper bound.
+Drawn on by hand, the greatest common divisor of all 2069 gaps is **1 µs**, every one of 2070
+points carries a distinct timestamp, and consecutive gaps read 5001, 4943, 4999, 4946. It is
+the finest clock of any backend here.
+
+WinUI told the same story. Under injection every reading ended in the same sub-millisecond
+remainder — 171 µs in one run, 622 µs in another — which is exactly what a millisecond clock
+with a fixed offset looks like. On hardware the gcd is **1 µs** across 1877 gaps with 1878
+distinct timestamps. The constant tail was the injector's, not WinUI's.
+
+The general lesson is worth more than either number: `InjectSyntheticPointerInput` stamps its
+own events, so a backend cannot be shown to resolve finer than the thing feeding it. A
+measurement taken through it can only ever bound a clock from above. Recorded in
+`testdata/wmpointer-hardware-stroke.csv` and `testdata/winui-hardware-stroke.csv`.
+
+One thing all three hardware rows agree on: gaps averaging **5559 µs**, a 180 Hz device, through
+three unrelated code paths — the native C ABI, WinForms, and WinUI.
 
 ### WPF is different in kind, not degree
 
