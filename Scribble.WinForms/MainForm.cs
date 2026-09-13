@@ -157,6 +157,14 @@ public sealed class MainForm : Form
 
         FormClosing += (_, _) =>
         {
+            // Saved before the session is torn down, so the header still names the session the
+            // points came from.
+            if (_recorder != null && _recordPath != null)
+            {
+                int written = _recorder.Save(_recordPath);
+                Console.Error.WriteLine($"[record] {written} points -> {_recordPath}");
+            }
+
             _renderTimer.Stop();
             _session?.Stop();
             _session?.Dispose();
@@ -380,6 +388,21 @@ public sealed class MainForm : Form
 
     private bool _starting;
 
+    private StrokeRecorder? _recorder;
+    private string? _recordPath;
+
+    /// <summary>Starts capturing the pen stream, written to <paramref name="path"/> on close.</summary>
+    /// <remarks>
+    /// This backend drains the coalesced pointer history and the Avalonia one does not, so a
+    /// recording from each of the same stroke is what turns that difference into two point
+    /// counts instead of a judgement about how angular the ink looks. Issue 43.
+    /// </remarks>
+    internal void RecordTo(string path)
+    {
+        _recordPath = path;
+        _recorder = new StrokeRecorder();
+    }
+
     private void StartSession()
     {
         if (_starting) return; // Prevent re-entrant calls from combo events.
@@ -414,6 +437,11 @@ public sealed class MainForm : Form
             }
 
             System.Diagnostics.Debug.WriteLine($"[Scribble.WinForms] Session started OK");
+
+            // Described at start, not at save: this sample switches pen API while a recording
+            // is running, and the header has to name the session the points came from.
+            _recorder?.Describe(_session.GetType().Name, _session.MaxPressure);
+
             Text = "Scribble WinForms - WinPenKit";
             _renderTimer.Start();
         }
@@ -443,6 +471,7 @@ public sealed class MainForm : Form
         foreach (var pt in points)
         {
             _buttons.Update(pt);
+            _recorder?.Add(pt);
 
             // Converted by hand rather than through PointToClient, which takes an integer Point
             // and so forces the position onto the whole-pixel grid on the way in. The panel's own

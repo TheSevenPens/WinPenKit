@@ -11,6 +11,9 @@ static class Program
 
         var form = new MainForm();
 
+        if (StrokeRecorder.Requested(args, out string? recordPath))
+            form.RecordTo(recordPath!);
+
         bool replay = StrokeReplay.Requested(args, out string? replayPath);
         if (!SelfTest.Requested(args) && !replay)
         {
