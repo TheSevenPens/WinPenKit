@@ -14,6 +14,11 @@ static class Program
         if (StrokeRecorder.Requested(args, out string? recordPath))
             form.RecordTo(recordPath!);
 
+        int e = Array.FindIndex(args, a =>
+            string.Equals(a, "--probe-wintab-epoch", StringComparison.OrdinalIgnoreCase));
+        if (e >= 0 && e + 1 < args.Length)
+            form.ProbeEpochTo(args[e + 1]);
+
         bool replay = StrokeReplay.Requested(args, out string? replayPath);
         if (!SelfTest.Requested(args) && !replay)
         {

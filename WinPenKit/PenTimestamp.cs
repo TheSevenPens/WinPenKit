@@ -71,8 +71,10 @@ public static class PenTimestamp
     /// more than half the range, which a stroke drawn across the boundary produces and a
     /// session resuming after an idle does not: fed two WPF packets 25 days apart, it returned
     /// a difference of about minus 24.7 days.</para>
-    /// <para>Valid only for a clock on the <c>GetTickCount</c> epoch. A driver clock with an
-    /// unstated origin cannot be anchored this way -- see <see cref="DeviceTickCounter"/>.</para>
+    /// <para>Valid only for a clock on the <c>GetTickCount</c> epoch. Wintab's <c>pkTime</c>
+    /// was measured to be on it on 13 Sep 2026, so every backend in this library now anchors;
+    /// a driver clock whose origin is genuinely unstated still cannot, which is what
+    /// <see cref="DeviceTickCounter"/> is for.</para>
     /// </remarks>
     public static long FromSystemTicks(long rawMilliseconds) =>
         FromSystemTicks(rawMilliseconds, Environment.TickCount64);
@@ -101,11 +103,12 @@ public static class PenTimestamp
 /// cannot be anchored against the system's.
 /// </summary>
 /// <remarks>
-/// <para>Wintab's <c>pkTime</c> is a <c>uint</c> and wraps to zero after about 49.7 days.
-/// Wintab documents no origin for it and none has been measured, because Wintab ignores
-/// synthetic pen input and settling it needs a tablet. Without an origin there is nothing to
-/// anchor to, so this detects the wrap rather than deriving it, the way
-/// <see cref="PenTimestamp.FromSystemTicks"/> can for the framework clocks.</para>
+/// <para><b>Nothing in this library uses it any more.</b> It was written for Wintab's
+/// <c>pkTime</c>, whose origin Wintab documents nowhere; that origin was measured on
+/// 13 Sep 2026 and turned out to be the <c>GetTickCount64</c> epoch, so both Wintab sessions
+/// now anchor with <see cref="PenTimestamp.FromSystemTicks"/> like everything else. It is kept
+/// for a device clock that genuinely has no knowable origin, and because the reasoning below is
+/// worth having written down if one turns up.</para>
 /// <para>Detection is a backward jump of more than half the range. Pen packets arrive
 /// milliseconds apart, so nothing legitimate moves backward, and half a range is 24.9 days of
 /// margin.</para>

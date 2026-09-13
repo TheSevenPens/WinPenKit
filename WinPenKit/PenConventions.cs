@@ -153,9 +153,17 @@ public enum PenTimestampSource
     /// <c>pkTime</c>.
     /// </summary>
     /// <remarks>
-    /// Its origin and its resolution were not measured -- Wintab does not respond to
-    /// synthetic pen injection, so establishing either needs a tablet. Treat deltas as usable
-    /// and everything else as unknown until that measurement exists.
+    /// <para>Both were unmeasured for a long time, because Wintab ignores synthetic pen
+    /// injection and settling either needed a tablet. Both are now measured.</para>
+    /// <para><b>Resolution: 1 ms</b>, one timestamp per point with no repeats across 1683
+    /// points -- the most usable clock of any backend here.</para>
+    /// <para><b>Origin: the <c>GetTickCount64</c> epoch</b>, measured on 13 Sep 2026 over 6217
+    /// packets spanning 41.7s including a deliberate pause. That is why this name is kept even
+    /// though the epoch turns out to be the same as <see cref="SystemTicks"/>: the name says
+    /// which field the value came from, and <c>pkTime</c> is still the driver's, still a
+    /// <c>uint</c>, and still wraps every 49.7 days where the system clock does not.</para>
+    /// <para>Knowing the origin is what lets both Wintab sessions anchor their clock rather
+    /// than watch for a backward jump. See <c>WintabEpochProbe</c>.</para>
     /// </remarks>
     DeviceTicks,
 }

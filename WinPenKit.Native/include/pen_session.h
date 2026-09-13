@@ -196,9 +196,10 @@ typedef enum {
     PEN_TS_PERFORMANCE_COUNTER = 1,
     // The millisecond counter GetTickCount64 reads, multiplied up to microseconds.
     PEN_TS_SYSTEM_TICKS        = 2,
-    // The driver's own millisecond counter -- Wintab pkTime. Its origin and its real
-    // granularity have not been measured; Wintab ignores synthetic pen input, so it takes a
-    // tablet. Deltas are usable; nothing else about it is established.
+    // The driver's own millisecond counter -- Wintab pkTime. Both unknowns are now measured on
+    // real hardware: the granularity is 1ms with one timestamp per point, and the origin is the
+    // GetTickCount64 epoch. The name still says DEVICE because it names the field, which is the
+    // driver's and wraps every 49.7 days where the system clock does not.
     PEN_TS_DEVICE_TICKS        = 3
 } PenTimestampSource;
 

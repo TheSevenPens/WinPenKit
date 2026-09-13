@@ -378,11 +378,17 @@ documents it as milliseconds with no origin. Its **granularity is now measured**
 one timestamp per point and no repeats, which makes it the most usable clock of any backend
 here.
 
-Its **origin is still unknown**, and that is why this backend detects a wrap rather than
-anchoring against the system clock the way the framework backends do — anchoring needs an
-origin to anchor to. The recording that settled the granularity could not settle the origin,
-because `StrokeRecorder` writes times relative to the first point by design. Differences are
-sound; absolute values are not.
+Its **origin is now measured too**: it is the `GetTickCount64` epoch. No stroke recording could
+have answered that — `StrokeRecorder` writes times relative to the first point by design, so it
+carries no machine uptime at all — so it took a separate probe reading raw `pkTime` against the
+system clock. Over 6217 packets spanning 41.7 s, `pkTime` advanced 41703 ms against 41703 ms of
+wall clock, with the offset between them staying inside a 40 ms band. The run contained a
+deliberate five-second pause: a counter advancing only while packets arrived would have fallen
+five seconds behind across it.
+
+That is why **this backend now anchors** rather than detecting a backward jump, like every other
+backend here. Readings are in `testdata/wintab-epoch-probe.csv`. Absolute values are still not
+part of the contract — the origin is documented, not promised.
 
 Where `Conventions.Timestamp` is `None`, the field is zero. Zero is not a time; it means the
 backend supplied none. No session substitutes its own clock, which would measure when this
@@ -400,14 +406,20 @@ Two backends count milliseconds in fewer than 64 bits:
 The other four are 64-bit and do not wrap in any relevant timeframe.
 
 Left alone, a stroke drawn across either boundary would produce a difference wrong by the
-entire range — about −49.7 days, from two points a millisecond apart. `MillisecondCounter`
-extends both inside the session, so `TimestampMicroseconds` stays continuous and the caller
-never sees it. Detection is a backward jump of more than half the range; pen packets arrive
-milliseconds apart, so nothing legitimate moves backward, and half a range leaves 12 days of
-margin.
+entire range — about −49.7 days, from two points a millisecond apart. Both are extended inside
+the session, so `TimestampMicroseconds` stays continuous and the caller never sees it.
 
-It cannot recover a wrap that happened while the session was not running, which the
-differences-only contract does not promise anyway.
+**Both now anchor rather than detect**, which is the stronger of the two methods and became
+available to Wintab only once its epoch was measured. Anchoring derives the wrap count from the
+reading itself: the true value is the nearest multiple of 2³² ms that agrees with the system
+clock. It carries no state between packets, so an idle session, a first packet after a wrap, and
+a session restarted across one all come back correct.
+
+Detection — a backward step of more than half the range — was what Wintab used while its origin
+was unknown, and it has a blind spot that anchoring does not: it sees only the packets it is
+given. A wrap that happened while the session was stopped, or across a gap where the capture
+region discarded every packet, was missed, and the difference across that gap was wrong by
+49.7 days. That gap is now closed.
 
 Neither wrap can be reached by ordinary testing, so there is a check that does not need to
 wait for one:
@@ -416,11 +428,18 @@ wait for one:
 dotnet run --project WinPenKit.TestConsole -- --selftest-clock
 ```
 
-Six cases, no tablet and no window. Two of them are the wraps; two more are ordinary input and
-a repeated value, present because a wrap detector that fires on normal packets would corrupt
-every stroke rather than one every few weeks. Verified in both directions: with the extension
-removed, the two wrap cases fail by exactly −4,294,967,295,000 µs and the other four still
-pass.
+Nineteen cases, no tablet and no window. Two are the wraps themselves; two more are ordinary
+input and a repeated value, present because a wrap detector that fires on normal packets would
+corrupt every stroke rather than one every few weeks. Five exercise the epoch probe's analysis
+against synthetic readings shaped like a foreign epoch, a counter that stalls when idle, and a
+clock the tick count lags — the probe needs a tablet and a person, so its verdict would
+otherwise only ever have been produced once, on one machine, with no evidence it could produce
+the other answer.
+
+Verified in both directions, which is the only claim worth making about a suite like this. With
+the extension removed, the two wrap cases fail by exactly −4,294,967,295,000 µs. With the epoch
+analysis reverted to the unsigned subtraction it originally used, `probe/tick-lags-pktime` fails
+with the same `2/3 passed` the first real hardware run produced.
 
 ### What `RawX/Y` holds
 
