@@ -35,6 +35,25 @@ static constexpr int IDC_CLEAR_BTN    = 1003;
 // ── Globals ─────────────────────────────────────────────────────
 
 static PenSessionHandle g_session = nullptr;
+
+// What this session's points mean. Read once at start rather than inferred per packet from
+// pen_session_get_api, which is the inference pen_session_get_conventions replaces: two
+// implementations of one API can disagree, and the API name does not say which is running.
+static PenConventions g_conventions = { PEN_RAW_NONE,
+                                        PEN_BUTTONS_WINTAB_EVENT,
+                                        PEN_CURSOR_DEVICE_ASSIGNED };
+
+// raw_x is a different quantity on each backend, so the readout carries its unit. Printing
+// the pair alone invited reading it as a position in the same space as Screen, which on
+// WM_POINTER is out by a factor of roughly 26 at 96 dpi.
+static const char* raw_units_label(PenRawUnits units) {
+    switch (units) {
+    case PEN_RAW_TABLET_NATIVE: return "tablet";
+    case PEN_RAW_SCREEN_PIXELS: return "px";
+    case PEN_RAW_HIMETRIC:      return "0.01mm";
+    default:                    return "";
+    }
+}
 static HWND    g_slider   = nullptr;
 static HWND    g_combo    = nullptr;
 static HWND    g_clear_btn = nullptr;
@@ -171,6 +190,7 @@ static void start_session() {
         return;
     }
 
+    pen_session_get_conventions(g_session, &g_conventions);
     g_max_pressure = pen_session_get_max_pressure(g_session);
     g_has_last = false;
     g_has_pen_data = false;
@@ -198,9 +218,7 @@ static void process_points(HWND hwnd) {
         //   Pointer: absolute bitmask, 0x0001 = barrel, 0x0002 = eraser flag
         // Pointer APIs only know "the barrel button" — no per-button identity,
         // so B2/B3 cannot light up on those backends.
-        bool is_wintab = (pt.source == PEN_API_WINTAB_SYSTEM ||
-                          pt.source == PEN_API_WINTAB_DIGITIZER);
-        if (is_wintab) {
+        if (g_conventions.buttons == PEN_BUTTONS_WINTAB_EVENT) {
             uint32_t btn_action = (pt.buttons >> 16) & 0xFFFF;
             uint32_t btn_number = pt.buttons & 0xFFFF;
             if (btn_action == 2) { // pressed
@@ -576,8 +594,13 @@ static void paint_ribbon(HDC hdc) {
     rp.draw_header(pos_x, "POSITION");
 
     if (g_has_pen_data) {
-        char raw_buf[32];
-        snprintf(raw_buf, sizeof(raw_buf), "%d,%d", g_last_pen.raw_x, g_last_pen.raw_y);
+        char raw_buf[48];
+        if (g_conventions.raw_units == PEN_RAW_NONE)
+            snprintf(raw_buf, sizeof(raw_buf), "--");
+        else
+            snprintf(raw_buf, sizeof(raw_buf), "%d,%d (%s)",
+                     g_last_pen.raw_x, g_last_pen.raw_y,
+                     raw_units_label(g_conventions.raw_units));
         rp.draw_label_value(pos_x, 0, "Raw: ", raw_buf);
 
         char screen_buf[32];

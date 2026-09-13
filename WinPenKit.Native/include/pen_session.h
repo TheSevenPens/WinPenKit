@@ -74,10 +74,10 @@ typedef enum {
 typedef struct {
     double   desktop_x;
     double   desktop_y;
-    // Raw position in whatever units the input API reports natively. The unit differs per
-    // backend and no field says which one you have: tablet units from a Wintab digitizer
-    // context, screen pixels from a Wintab system context, hundredths of a millimetre from
-    // WM_POINTER (ptHimetricLocationRaw). A diagnostic, not a position.
+    // Raw position in the units pen_session_get_conventions reports: tablet units from a
+    // Wintab digitizer context, screen pixels from a Wintab system context or a digitizer
+    // that fell back, hundredths of a millimetre from WM_POINTER (ptHimetricLocationRaw).
+    // A diagnostic, not a position.
     int32_t  raw_x;
     int32_t  raw_y;
     uint32_t pressure;
@@ -130,6 +130,50 @@ PEN_API const char* pen_session_start(PenSessionHandle handle, void* app_hwnd);
 
 // Stops the session (closes context, stops producing points).
 PEN_API void pen_session_stop(PenSessionHandle handle);
+
+// ── Conventions ─────────────────────────────────────────────────
+//
+// Some PenPoint fields mean different things depending on which backend filled
+// them in. These say which convention is in force, so a consumer does not have
+// to infer it from pen_session_get_api.
+//
+// Values match the managed WinPenKit enums one for one, so a number means the
+// same thing on both surfaces.
+
+typedef enum {
+    PEN_RAW_NONE          = 0,  // no device-native position; raw_x and raw_y are 0
+    PEN_RAW_TABLET_NATIVE = 1,  // the tablet's own coordinate space
+    PEN_RAW_SCREEN_PIXELS = 2,  // physical screen pixels, mapped by the driver
+    PEN_RAW_HIMETRIC      = 3   // hundredths of a millimetre
+} PenRawUnits;
+
+typedef enum {
+    // One event per packet, (action << 16) | buttonNumber. Packets with no event
+    // carry 0 and state is held between them.
+    PEN_BUTTONS_WINTAB_EVENT  = 0,
+    // A bitmask replaced every packet: bit 0 barrel, bit 1 eraser. No per-button
+    // identity.
+    PEN_BUTTONS_POINTER_FLAGS = 1
+} PenButtonEncoding;
+
+typedef enum {
+    PEN_CURSOR_NORMALISED      = 0,  // 13 tip, 14 eraser, written by the session
+    PEN_CURSOR_DEVICE_ASSIGNED = 1   // the driver's own number, passed through
+} PenCursorNumbering;
+
+typedef struct {
+    PenRawUnits        raw_units;
+    PenButtonEncoding  buttons;
+    PenCursorNumbering cursor;
+} PenConventions;
+
+// Fills out with what this session's points mean. A null handle yields
+// PEN_RAW_NONE and the Wintab encodings, which is what an unusable session
+// reports rather than a claim about a device.
+//
+// Call after pen_session_start: a digitizer whose hi-res context failed reports
+// PEN_RAW_SCREEN_PIXELS, and that is not known until the context is opened.
+PEN_API void pen_session_get_conventions(PenSessionHandle handle, PenConventions* out);
 
 // ── Capture region (Wintab only) ────────────────────────────────
 //

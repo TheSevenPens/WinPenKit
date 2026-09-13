@@ -226,6 +226,36 @@ void pen_session_on_activated(PenSessionHandle handle) {
     if (s->pointer) s->pointer->on_activated();
 }
 
+// ── Conventions ─────────────────────────────────────────────────
+
+void pen_session_get_conventions(PenSessionHandle handle, PenConventions* out) {
+    if (!out) return;
+
+    out->raw_units = PEN_RAW_NONE;
+    out->buttons   = PEN_BUTTONS_WINTAB_EVENT;
+    out->cursor    = PEN_CURSOR_DEVICE_ASSIGNED;
+
+    if (!handle) return;
+    auto* s = reinterpret_cast<PenSessionOpaque*>(handle);
+
+    if (s->wintab) {
+        // Tablet units while the hi-res context is open, screen pixels once it has fallen
+        // back -- the same condition PEN_CAP_HIRES reports, read from the same state.
+        out->raw_units = s->wintab->is_digitizer_mode()
+            ? PEN_RAW_TABLET_NATIVE
+            : PEN_RAW_SCREEN_PIXELS;
+        out->buttons = PEN_BUTTONS_WINTAB_EVENT;
+        out->cursor  = PEN_CURSOR_DEVICE_ASSIGNED;
+        return;
+    }
+
+    if (s->pointer) {
+        out->raw_units = PEN_RAW_HIMETRIC;
+        out->buttons   = PEN_BUTTONS_POINTER_FLAGS;
+        out->cursor    = PEN_CURSOR_NORMALISED;
+    }
+}
+
 // ── Capture region ──────────────────────────────────────────────
 
 void pen_session_set_capture_window(PenSessionHandle handle, void* hwnd) {
