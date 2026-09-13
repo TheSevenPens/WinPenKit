@@ -25,6 +25,56 @@ Eight demo apps. Seven prove the WinPenKit SDK end-to-end, with bitmap-backed re
 | WinPenKit.TestConsole | Console | (headless) | C# | System, Digitizer |
 | Scribble.Qt | Qt 6 Widgets | QPainter / QImage | C++ | **no WinPenKit** — Qt WM_Pointer or Qt WinTab |
 
+## How these samples lay down ink, and why it bounds a Krita comparison
+
+Every app here draws a straight line between consecutive pen events, with width scaled by that
+event's pressure. One event pair, one line segment. That is what they were built to do and it is
+not a defect, but it is worth knowing before reading them as a rendering reference.
+
+Krita does not work that way. Its paint operation carries a `KisDistanceInformation` **across**
+events. `KisPaintOpUtils::paintLine` loops while `getNextPointPosition` returns a non-negative
+value, painting one dab per iteration, so **one event segment produces zero, one or many dabs**,
+and the next event inherits whatever distance was left over.
+
+The isotropic spacing rule is `max(0.5, s) - a`, where `s` is the current spacing, `a` is the
+distance accumulated since the last dab, and the 0.5 is `MIN_DISTANCE_SPACING`. If that remainder
+fits inside the segment, a dab is painted there and the accumulator resets. If the segment is
+shorter, its length is added to the accumulator and the call returns −1, painting nothing. The
+accumulator is a member of the distance object and is reset only when a dab is actually painted.
+
+Spacing is brush-dependent rather than a fixed pixel count — for the Pixel Brush, pressure
+changes dab size and spacing together. There is also an anisotropic path solving against an
+ellipse, and a timed path for stationary airbrush work; `getNextPointPosition` computes a
+distance factor and a time factor and takes the minimum of whichever are valid.
+
+**The property is segmentation invariance.** One 10-unit segment and ten 1-unit segments produce
+dabs in the same places — 2.5, 5, 7.5, 10. Per-event painting does not have that property, and a
+deliberately broken control that resets the accumulator on every event produces no dabs at all.
+
+**No Krita setting draws the way these samples draw.** `NO_SMOOTHING` still goes through the
+spacing loop: it calls `paintLine` directly on consecutive points, skipping the Bezier
+interpolation and tangent work the other modes do. Smoothing selects *which* points reach the
+painter, not whether spacing applies.
+
+### What this bounds
+
+Comparing coordinates in against coordinates out is unaffected — that is what issue #92 does. But
+the moment anyone compares how the **ink looks**, against Krita or anything else, they are
+measuring this renderer's naivety rather than the pen stack. That is a confound worth knowing
+before the comparison rather than after.
+
+It also explains something that would otherwise puzzle. At high pen speed these samples produce
+visibly sparser, more angular ink than Krita from the same input, because one fast event pair
+yields a single long thin segment where Krita yields a run of evenly spaced dabs.
+
+A dab-spacing renderer is a drawing application's job rather than a pen input library's, so
+WinPenKit is unlikely to grow one.
+
+> Verified against `KDE/krita` at commit `1e6586cb`, the generic Pixel Brush path — the Pixel
+> Brush has a sharpness-enabled 1×1 branch that draws a DDA line instead, and other paint engines
+> can override painting, so this is the ordinary path rather than every preset. Research origin:
+> `TheSevenPens/devnotes#23`, issue #103.
+
 ## Scribble.Win32
 
 Minimal C++ Win32/GDI scribble app. Zero framework dependencies — just the Windows API and `WinPenKit.Native.dll`.
