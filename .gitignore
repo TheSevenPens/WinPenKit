@@ -34,3 +34,7 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 .DS_Store
+
+# CMake build tree for Scribble.Qt. Only Debug/ and Release/ were ignored before, which
+# left the generated solution, the cache and the moc output behind.
+Scribble.Qt/build/

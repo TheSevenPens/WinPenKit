@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -600,6 +601,14 @@ public:
         fill(dc, second_);
     }
 
+    // For a caller that does not paint through a device context. Scribble.Qt draws into a
+    // QImage with QPainter, so it takes the rectangles and fills them itself.
+    void draw_with(const std::function<void(int x, int y, int size,
+                                            int r, int g, int b)>& fill_rect) const {
+        fill_rect(first_.x, first_.y, first_.size, first_.r, first_.g, first_.b);
+        fill_rect(second_.x, second_.y, second_.size, second_.r, second_.g, second_.b);
+    }
+
     // Watches the window until both markers appear and two consecutive readings agree, then
     // records L1.presentation-sampling.
     //
@@ -607,7 +616,13 @@ public:
     // The managed samples await instead; this one runs its checks before the message loop
     // exists, so the pump has to live here. Either way the window keeps painting, which is
     // the part that matters.
-    void measure(Report& rep, HWND hwnd, int timeout_ms = 5000) const {
+    // `drive_frame` is called between captures and must let the window paint. It defaults
+    // to pumping the Win32 queue, which is right for a plain Win32 application. A toolkit
+    // with its own event loop should pass that loop's equivalent instead -- Scribble.Qt
+    // passes QCoreApplication::processEvents, so Qt's queued events are delivered rather
+    // than only the messages this pump happens to see.
+    void measure(Report& rep, HWND hwnd, int timeout_ms = 5000,
+                 const std::function<void()>& drive_frame = pump) const {
         const char* id = "L1.presentation-sampling";
 
         if (!hwnd) { rep.skip(id, "no window handle"); return; }
@@ -649,7 +664,7 @@ public:
                     prev_dx = dx; prev_dy = dy;
                 }
             }
-            pump();
+            drive_frame();
             Sleep(50);
         }
 
@@ -808,5 +823,42 @@ private:
     int surface_w_, surface_h_;
     PresentationMarker first_{}, second_{};
 };
+
+
+// ---- Window placement -----------------------------------------
+
+// Moves the window inside its monitor's work area, shrinking it first if it does not fit.
+// A maximized window already occupies exactly the work area and its window rect overhangs by
+// the invisible resize border on purpose, so leave one alone.
+inline void clamp_to_work_area(HWND hwnd) {
+    if (!hwnd || IsZoomed(hwnd) || IsIconic(hwnd)) return;
+
+    RECT win{};
+    if (!GetWindowRect(hwnd, &win)) return;
+
+    HMONITOR mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{ sizeof(MONITORINFO) };
+    if (!GetMonitorInfoW(mon, &mi)) return;
+
+    const RECT& wa = mi.rcWork;
+    int w = static_cast<int>(win.right - win.left);
+    int h = static_cast<int>(win.bottom - win.top);
+    int wa_left = static_cast<int>(wa.left),   wa_top    = static_cast<int>(wa.top);
+    int wa_right = static_cast<int>(wa.right), wa_bottom = static_cast<int>(wa.bottom);
+    int win_left = static_cast<int>(win.left), win_top   = static_cast<int>(win.top);
+
+    // Shrink first: moving a window larger than the work area can never bring it inside.
+    int new_w = std::min(w, wa_right - wa_left);
+    int new_h = std::min(h, wa_bottom - wa_top);
+
+    int new_x = std::clamp(win_left, wa_left, std::max(wa_left, wa_right - new_w));
+    int new_y = std::clamp(win_top,  wa_top,  std::max(wa_top,  wa_bottom - new_h));
+
+    if (new_x == win_left && new_y == win_top && new_w == w && new_h == h) return;
+
+    UINT flags = SWP_NOZORDER | SWP_NOACTIVATE;
+    if (new_w == w && new_h == h) flags |= SWP_NOSIZE;
+    SetWindowPos(hwnd, nullptr, new_x, new_y, new_w, new_h, flags);
+}
 
 }  // namespace selftest

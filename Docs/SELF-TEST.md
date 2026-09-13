@@ -97,10 +97,11 @@ markers is what says the frame landed, and two consecutive readings that agree i
 nothing is still moving — Windows animates a window open by compositing it scaled up to its
 final size, and a capture taken during that reads a few per cent small.
 
-All six samples have it. `Scribble.Win32` and `Scribble.Rust` reimplement the measurement
-rather than binding to the managed one, for the same reason the rest of their self test is a
-reimplementation: neither has a .NET runtime under it. The check id and the line format match,
-so one script still reads all six.
+All six WinPenKit samples have it, and so does `Scribble.Qt`. `Scribble.Win32` and
+`Scribble.Rust` reimplement the measurement rather than binding to the managed one, for the same
+reason the rest of their self test is a reimplementation: neither has a .NET runtime under it.
+`Scribble.Qt` shares the C++ one directly. The check id and the line format match, so one script
+still reads all seven.
 
 The three differ only in how the application waits for the frame, because that is the one part
 each framework owns:
@@ -110,6 +111,7 @@ each framework owns:
 | WPF, WinForms, WinUI, Avalonia | `await`, which yields the UI thread |
 | `Scribble.Win32` | pumps its own message queue; its checks run before the message loop exists |
 | `Scribble.Rust` | polls once per egui frame and asks for a repaint |
+| `Scribble.Qt` | passes `QCoreApplication::processEvents` to the shared C++ probe |
 
 A stretch introduced deliberately into each reports the factor it was given: 2.25x in Avalonia,
 1.25x in `Scribble.Win32` (`StretchBlt` at 80%), 1.30x in `Scribble.Rust` (a host 1.3x the
@@ -172,9 +174,14 @@ Two orders of magnitude between signal and noise, and the synthetic quantized fi
 
 ### Capturing one
 
-`--record <path>` writes the session's stream to that format. Five of the six samples
-implement it: `Scribble.Wpf`, `Scribble.Avalonia`, `Scribble.WinForms`, `Scribble.WinUI`
-and `Scribble.Win32`. `Scribble.Rust` does not.
+`--record <path>` writes the session's stream to that format. Six of the seven applications
+implement it: `Scribble.Wpf`, `Scribble.Avalonia`, `Scribble.WinForms`, `Scribble.WinUI`,
+`Scribble.Win32` and `Scribble.Qt`. `Scribble.Rust` does not.
+
+`Scribble.Qt` is the one whose recordings are worth singling out. It reaches the pen through Qt
+rather than through WinPenKit, so a stroke captured there and compared against one captured from
+a WinPenKit sample is the only comparison in this repository where the two sides do not share an
+implementation.
 
 The path is required. A recorder that picked its own filename would overwrite the previous
 capture, which is the one thing a person drawing a comparison pair cannot afford.
