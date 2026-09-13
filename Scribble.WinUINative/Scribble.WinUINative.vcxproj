@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!--
+    WinUI 3 through C++/WinRT, unpackaged, drawing with Skia's C API.
+
+    The seventh sample is Scribble.Qt; this is the eighth, and the only one that reaches WinUI
+    without a managed runtime. It shares Scribble.Win32's view of WinPenKit - the C ABI in
+    WinPenKit.Native - and Scribble.Win32's selftest.h, which needs nothing but <windows.h>
+    and the standard library.
+
+    Unpackaged (WindowsPackageType None, AppxPackage false) to match Scribble.WinUI and every
+    other sample: a plain exe you can launch from a path, with no MSIX identity. The Windows
+    App SDK bootstrapper is auto-initialized for that.
+  -->
+
+  <PropertyGroup Label="Globals">
+    <CppWinRTOptimized>true</CppWinRTOptimized>
+    <CppWinRTRootNamespaceAutoMerge>true</CppWinRTRootNamespaceAutoMerge>
+    <CppWinRTGenerateWindowsMetadata>true</CppWinRTGenerateWindowsMetadata>
+    <MinimalCoreWin>true</MinimalCoreWin>
+    <ProjectGuid>{6B2D4C1E-9F3A-4E8B-A7D5-2C4F8E1B6A93}</ProjectGuid>
+    <ProjectName>Scribble.WinUINative</ProjectName>
+    <RootNamespace>ScribbleWinUINative</RootNamespace>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <AppxPackage>false</AppxPackage>
+    <AppContainerApplication>false</AppContainerApplication>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <WindowsAppSdkBootstrapInitialize>true</WindowsAppSdkBootstrapInitialize>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
+    <WholeProgramOptimization Condition="'$(Configuration)'=='Release'">true</WholeProgramOptimization>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <PropertyGroup>
+    <OutDir>$(MSBuildThisFileDirectory)bin\$(Configuration)\$(Platform)\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)obj\$(Configuration)\$(Platform)\</IntDir>
+    <GenerateManifest>true</GenerateManifest>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <WarningLevel>Level4</WarningLevel>
+      <!--
+        The vendored Skia headers include each other as "include/c/sk_types.h", relative to a
+        Skia root, so the search path is the directory holding include/ rather than include/c
+        itself.
+      -->
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)external\skia-c-api;$(MSBuildThisFileDirectory)src;$(MSBuildThisFileDirectory)..\WinPenKit.Native\include;$(MSBuildThisFileDirectory)..\Scribble.Win32\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;_UNICODE;UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)external\skia-c-api\lib\$(Platform)\libSkiaSharp.lib;$(MSBuildThisFileDirectory)..\WinPenKit.Native\bin\$(Configuration)\$(Platform)\WinPenKit.Native.lib;windowsapp.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ClCompile Include="src\pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\skia_raii.cpp" />
+    <ClCompile Include="src\canvas.cpp" />
+    <ClInclude Include="src\pch.h" />
+    <ClInclude Include="src\skia_raii.h" />
+    <ClInclude Include="src\canvas.h" />
+    <Manifest Include="app.manifest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CppWinRT" Version="2.0.240405.15">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250310001" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+  <!--
+    A no-op, because the Windows App SDK leaves this hook unsatisfiable in any C++ project.
+
+    Microsoft.Build.Msix.Pri.targets adds AddProcessedXamlFilesToCopyLocal to
+    GetCopyToOutputDirectoryItemsDependsOn whenever DefaultXamlRuntime is WinUI, which
+    UseWinUI sets. The target itself is only defined by Microsoft.WinUI.NET.Markup.Compiler
+    .targets, which is imported under "UsingMicrosoftNETSdk == true", a condition a vcxproj
+    never meets. The native markup compiler targets do not define it either, checked in
+    1.7.250310001, so this shadows nothing.
+
+    The link succeeds and the executable is produced before this fires; without it the build
+    still reports failure, which is the worst kind of green-then-red.
+  -->
+  <Target Name="AddProcessedXamlFilesToCopyLocal" />
+
+  <!--
+    The import library is generated rather than committed: the SkiaSharp NuGet package ships a
+    DLL and a PDB and no .lib, so without this there is nothing to link against. Built from the
+    committed .def, which lists all 924 exports.
+
+    Inputs and Outputs so a clean build makes it once and an incremental build skips it.
+  -->
+  <Target Name="BuildSkiaImportLib"
+          BeforeTargets="ClCompile"
+          Inputs="$(MSBuildThisFileDirectory)external\skia-c-api\libSkiaSharp.def"
+          Outputs="$(MSBuildThisFileDirectory)external\skia-c-api\lib\$(Platform)\libSkiaSharp.lib">
+    <MakeDir Directories="$(MSBuildThisFileDirectory)external\skia-c-api\lib\$(Platform)" />
+    <Exec Command="lib.exe /NOLOGO /DEF:&quot;$(MSBuildThisFileDirectory)external\skia-c-api\libSkiaSharp.def&quot; /MACHINE:$(Platform) /OUT:&quot;$(MSBuildThisFileDirectory)external\skia-c-api\lib\$(Platform)\libSkiaSharp.lib&quot;" />
+  </Target>
+
+  <!--
+    libSkiaSharp.dll is not in the package's native lib folder for a C++ project to pick up
+    automatically, so it is copied from the restored NuGet package beside the executable.
+    Pinned to the same version Directory.Build.props gives the managed samples: a different
+    Skia here would mean a stroke drawn in this sample is not comparable with one drawn in
+    Scribble.WinUI, which is most of the reason this sample uses that DLL at all.
+  -->
+  <PropertyGroup>
+    <SkiaSharpVersion Condition="'$(SkiaSharpVersion)'==''">3.119.4</SkiaSharpVersion>
+    <LibSkiaSharpDll>$(NuGetPackageRoot)skiasharp.nativeassets.win32\$(SkiaSharpVersion)\runtimes\win-x64\native\libSkiaSharp.dll</LibSkiaSharpDll>
+  </PropertyGroup>
+
+  <Target Name="CopyLibSkiaSharp" AfterTargets="Build">
+    <Error Condition="!Exists('$(LibSkiaSharpDll)')"
+           Text="libSkiaSharp.dll not found at $(LibSkiaSharpDll). Build a managed sample first so NuGet restores SkiaSharp.NativeAssets.Win32 $(SkiaSharpVersion), or correct SkiaSharpVersion." />
+    <Copy SourceFiles="$(LibSkiaSharpDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyWinPenKitNative" AfterTargets="Build">
+    <ItemGroup>
+      <WinPenKitNativeDll Include="$(MSBuildThisFileDirectory)..\WinPenKit.Native\bin\$(Configuration)\$(Platform)\WinPenKit.Native.dll" />
+    </ItemGroup>
+    <Error Condition="!Exists('@(WinPenKitNativeDll)')"
+           Text="WinPenKit.Native.dll not found. Build WinPenKitNative.sln for $(Configuration)|$(Platform) first." />
+    <Copy SourceFiles="@(WinPenKitNativeDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>
