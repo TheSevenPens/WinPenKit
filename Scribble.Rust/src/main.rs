@@ -348,12 +348,7 @@ impl eframe::App for ScribbleApp {
                     let api_names: Vec<&str> = self
                         .available_apis
                         .iter()
-                        .map(|a| match a {
-                            PenInputApi::WintabSystem => "Wintab",
-                            PenInputApi::WintabDigitizer => "Wintab (high-res)",
-                            PenInputApi::WmPointer => "WM_Pointer",
-                            _ => "Unknown",
-                        })
+                        .map(|a| PenSession::api_label(*a))
                         .collect();
 
                     let old = self.selected_api_index;

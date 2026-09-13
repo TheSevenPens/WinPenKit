@@ -33,3 +33,46 @@ public enum InputApi
     /// Works in WinForms apps only.</summary>
     WinFormsPointer,
 }
+
+/// <summary>
+/// The short name an application shows for an <see cref="InputApi"/>, and whether the API
+/// depends on the host's UI framework.
+/// </summary>
+/// <remarks>
+/// Six copies of the same switch statement spelled these names before this existed -- four in
+/// C#, one in C++, one in Rust -- so "Wintab (high-res)" was six independent spellings of one
+/// string. This follows <see cref="PenRawUnitsExtensions.Label"/>, which exists for the same
+/// reason.
+/// </remarks>
+public static class InputApiExtensions
+{
+    /// <summary>
+    /// The name to show in a dropdown. Short enough for a toolbar, and it names the API
+    /// rather than the implementation: a person choosing one is choosing an input path.
+    /// </summary>
+    public static string Label(this InputApi api) => api switch
+    {
+        InputApi.WintabSystem => "Wintab",
+        InputApi.WintabDigitizer => "Wintab (high-res)",
+        InputApi.WmPointer => "WM_Pointer",
+        InputApi.WinUiPointer => "WinUI Pointer",
+        InputApi.WpfStylus => "WPF Stylus",
+        InputApi.AvaloniaPointer => "Avalonia Pointer",
+        InputApi.WinFormsPointer => "WinForms Pointer",
+        _ => api.ToString(),
+    };
+
+    /// <summary>
+    /// True when the API works in any application whatever its UI framework, so
+    /// <see cref="PenSessionFactory"/> can both discover and create it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="InputApi.WmPointer"/> is agnostic by this definition and still absent from
+    /// every framework application's dropdown: it subclasses the window procedure, and WPF,
+    /// WinForms, WinUI and Avalonia each consume pointer messages before a subclass sees
+    /// them. That exclusion is a fact about the host, not about the API, so it lives in each
+    /// framework package's own discovery rather than here.
+    /// </remarks>
+    public static bool IsFrameworkAgnostic(this InputApi api) => api is
+        InputApi.WintabSystem or InputApi.WintabDigitizer or InputApi.WmPointer;
+}

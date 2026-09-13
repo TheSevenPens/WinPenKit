@@ -111,6 +111,7 @@ pub type PenSessionHandle = *mut c_void;
 #[link(name = "WinPenKit.Native")]
 unsafe extern "C" {
     pub fn pen_session_get_available_apis(buffer: *mut PenInputApi, max_count: i32) -> i32;
+    pub fn pen_session_get_api_label(api: PenInputApi) -> *const c_char;
     pub fn pen_session_create(api: PenInputApi) -> PenSessionHandle;
     pub fn pen_session_create_default() -> PenSessionHandle;
     pub fn pen_session_start(handle: PenSessionHandle, app_hwnd: *mut c_void) -> *const c_char;
@@ -139,6 +140,17 @@ impl PenSession {
         let mut apis = [PenInputApi::WintabSystem; 8];
         let count = unsafe { pen_session_get_available_apis(apis.as_mut_ptr(), 8) };
         apis[..count as usize].to_vec()
+    }
+
+    /// The short name to show for an API in a dropdown.
+    ///
+    /// Taken from the library rather than spelled here, so this sample cannot drift from the
+    /// others over how an API is named. The returned pointer is a static ASCII string owned
+    /// by the library and is never null.
+    pub fn api_label(api: PenInputApi) -> &'static str {
+        unsafe { std::ffi::CStr::from_ptr(pen_session_get_api_label(api)) }
+            .to_str()
+            .unwrap_or("Unknown")
     }
 
     pub fn create(api: PenInputApi) -> Option<Self> {

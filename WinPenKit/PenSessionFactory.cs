@@ -1,4 +1,4 @@
-namespace WinPenKit;
+﻿namespace WinPenKit;
 
 /// <summary>
 /// Factory for creating <see cref="IPenSession"/> instances.
@@ -6,13 +6,15 @@ namespace WinPenKit;
 ///
 /// <para><b>Framework-agnostic only.</b> This factory creates sessions that
 /// work in any app type (Wintab, WM_POINTER). Framework-specific sessions
-/// (WinUI Pointer, WPF Stylus, Avalonia Pointer) require UI elements in
-/// their constructors and must be created directly by the app:</para>
+/// (WinUI Pointer, WPF Stylus, Avalonia Pointer, WinForms Pointer) require
+/// UI elements in their constructors and must be created directly by the
+/// app:</para>
 ///
 /// <list type="bullet">
 ///   <item><c>new WinUiPointerSession(element, hwnd)</c> — from WinPenKit.WinUI</item>
 ///   <item><c>new WpfStylusSession(element)</c> — from WinPenKit.Wpf</item>
 ///   <item><c>new AvaloniaPointerSession(control)</c> — from WinPenKit.Avalonia</item>
+///   <item><c>new WinFormsPointerSession(form)</c> — from WinPenKit.WinForms</item>
 /// </list>
 ///
 /// <para>All sessions implement <see cref="IPenSession"/> and can be used
@@ -21,18 +23,20 @@ namespace WinPenKit;
 public static class PenSessionFactory
 {
     /// <summary>
-    /// Probes the system and returns which framework-agnostic input APIs
-    /// are available. Checks for driver presence (e.g., Wintab32.dll on
-    /// disk), not just OS version.
-    ///
-    /// <para>Does not include framework-specific APIs (WinUiPointer,
-    /// WpfStylus, AvaloniaPointer). Apps should add those to the list
-    /// manually if they want to offer them in a dropdown:</para>
-    /// <code>
-    /// var apis = new List&lt;InputApi&gt;(PenSessionFactory.GetAvailableApis());
-    /// apis.Add(InputApi.WinUiPointer); // always available in WinUI 3
-    /// </code>
+    /// Probes the system and returns which framework-agnostic input APIs are available.
+    /// Calls into each driver rather than reading an OS version: Wintab through
+    /// <c>WTInfoA</c>, the pointer API through <c>GetPointerType</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>Returns only the APIs that work in any application. It cannot answer for a
+    /// particular one, because a UI framework decides both whether its own API can be offered
+    /// and whether <see cref="InputApi.WmPointer"/> can reach the application at all.</para>
+    /// <para>An application built on a framework should call that framework package's
+    /// discovery instead -- <c>WpfPenApis.GetAvailable</c>,
+    /// <c>WinFormsPenApis.GetAvailable</c>, <c>AvaloniaPenApis.GetAvailable</c> or
+    /// <c>WinUiPenApis.GetAvailable</c> -- each of which answers the whole question for that
+    /// framework.</para>
+    /// </remarks>
     public static IReadOnlyList<InputApi> GetAvailableApis()
     {
         var apis = new List<InputApi>();

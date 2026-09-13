@@ -7,8 +7,8 @@
 // then poll for PenPoints — same interface regardless of backend.
 //
 // Usage:
-//   int count = 0;
-//   PenInputApi* apis = pen_session_get_available_apis(&count);
+//   PenInputApi apis[8];
+//   int count = pen_session_get_available_apis(apis, 8);
 //   PenSessionHandle session = pen_session_create(apis[0]);
 //   pen_session_start(session, NULL);
 //   PenPoint points[64];
@@ -97,7 +97,19 @@ typedef struct {
 
 // Returns the number of available APIs and fills the provided buffer.
 // Pass NULL to just get the count.
+//
+// Only the framework-agnostic APIs are ever reported. The four managed-only values
+// exist in PenInputApi because a PenPoint's source field can carry them, not because
+// this binding can create one.
 PEN_API int pen_session_get_available_apis(PenInputApi* buffer, int max_count);
+
+// The short name to show for an API in a dropdown, as a static ASCII string that the
+// caller does not free. Never NULL: an unrecognised value returns "Unknown".
+//
+// Here so that one spelling of "Wintab (high-res)" serves every binding. It was six
+// independent spellings across C#, C++ and Rust before this existed, which is the same
+// fault pen_session_get_conventions fixed for units.
+PEN_API const char* pen_session_get_api_label(PenInputApi api);
 
 // ── Factory ─────────────────────────────────────────────────────
 
