@@ -2,16 +2,14 @@
 
 #include <QApplication>
 #include <QGuiApplication>
-#include <QHBoxLayout>
-#include <QLabel>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QResizeEvent>
-#include <QScreen>
+#include <QShowEvent>
 #include <QTabletEvent>
 #include <QVBoxLayout>
-#include <QWindow>
 
+#include <algorithm>
 #include <cmath>
 
 // After the Qt headers, deliberately. <windows.h> defines macros that break them, and the
@@ -26,13 +24,23 @@
 
 namespace {
 
-/// Qt reports position in device independent pixels and pressure normalised to 0..1. Every
-/// other sample in this repository reports physical desktop pixels and raw pressure against a
-/// stated maximum, so both are converted here rather than at each use.
+/// Qt reports pressure normalised to 0..1 and never says what the device's own range was, so
+/// the raw column is reconstructed against this. The recording header states it for the same
+/// reason: a number with no stated scale is not a measurement.
 constexpr int kAssumedMaxPressure = 1024;
 
-const char* backendName(PenBackend b) {
-    return b == PenBackend::WinTab ? "Qt WinTab (tablet-native)" : "Qt WM_Pointer";
+/// The same conversion WinPenKit applies, so the two report comparable numbers rather than two
+/// defensible ones. A linear fall-off from 90 degrees, not the trigonometric form.
+void tiltToSpherical(double tiltX, double tiltY, double& azimuth, double& altitude) {
+    const double mag = std::sqrt(tiltX * tiltX + tiltY * tiltY);
+    altitude = std::clamp(90.0 - mag, 0.0, 90.0);
+
+    if (mag > 0.5) {
+        const double deg = std::atan2(-tiltX, tiltY) * 180.0 / 3.14159265358979323846;
+        azimuth = std::fmod(std::fmod(deg, 360.0) + 360.0, 360.0);
+    } else {
+        azimuth = 0.0;
+    }
 }
 
 } // namespace
@@ -83,6 +91,18 @@ void CanvasWidget::clear() {
     m_image.fill(QColor(0xF0, 0xF0, 0xF0));
     m_lastCanvasPx.reset();
     update();
+}
+
+void CanvasWidget::setInProximity(bool in) {
+    m_inProximity = in;
+    m_readout.inProximity = in;
+    if (!in) {
+        // Leaving proximity ends the stroke. Without this a pen lifted off and set down
+        // elsewhere draws a line across the gap.
+        m_inContact = false;
+        m_lastCanvasPx.reset();
+    }
+    if (m_readout.hasData) Q_EMIT readoutChanged(m_readout);
 }
 
 void CanvasWidget::fillSurfaceRect(int x, int y, int size, int r, int g, int b) {
@@ -165,18 +185,53 @@ void CanvasWidget::tabletEvent(QTabletEvent* event) {
                               std::round(pressure * kAssumedMaxPressure)});
     }
 
-    const char* cursor =
-        event->pointerType() == QPointingDevice::PointerType::Eraser ? "eraser" : "pen";
+    // The window origin, read per event rather than cached: a window that moves must not keep
+    // reporting where it used to be, which is the fault L3.origin-tracks-window exists for.
+    const QPointF windowOriginLogical = window()->mapToGlobal(QPointF(0.0, 0.0));
 
-    Q_EMIT telemetryChanged(
-        QStringLiteral("Screen: %1, %2   Canvas: %3, %4   Pressure: %5 / %6   "
-                       "Tilt: %7, %8   Twist: %9   Cursor: %10")
-            .arg(desktopPx.x(), 0, 'f', 2).arg(desktopPx.y(), 0, 'f', 2)
-            .arg(canvasPx.x(), 0, 'f', 2).arg(canvasPx.y(), 0, 'f', 2)
-            .arg(std::round(pressure * kAssumedMaxPressure)).arg(kAssumedMaxPressure)
-            .arg(event->xTilt()).arg(event->yTilt())
-            .arg(event->rotation(), 0, 'f', 1)
-            .arg(QString::fromLatin1(cursor)));
+    PenReadout r;
+    r.hasData = true;
+    r.inProximity = m_inProximity || pressure > 0.0;
+
+    r.screenX = desktopPx.x();
+    r.screenY = desktopPx.y();
+    r.appX = desktopPx.x() - windowOriginLogical.x() * dpr;
+    r.appY = desktopPx.y() - windowOriginLogical.y() * dpr;
+    r.canvasX = canvasPx.x();
+    r.canvasY = canvasPx.y();
+
+    // Zero once the pen is off the surface, rather than Qt's 0.5. The release event carries a
+    // default pressure, so reporting it leaves every finished stroke reading half pressure --
+    // a value the pen never applied, and one the other samples never show, since their APIs
+    // report 0 on release. Same reason the recorder above gates on contact.
+    const double reported = m_inContact ? pressure : 0.0;
+    r.normalisedPressure = reported;
+    r.rawPressure = int(std::round(reported * kAssumedMaxPressure));
+    r.maxPressure = kAssumedMaxPressure;
+
+    r.tiltX = event->xTilt();
+    r.tiltY = event->yTilt();
+    tiltToSpherical(r.tiltX, r.tiltY, r.azimuth, r.altitude);
+    r.twist = event->rotation();
+
+    const bool eraserTip = event->pointerType() == QPointingDevice::PointerType::Eraser;
+    r.cursor = eraserTip ? QStringLiteral("Eraser") : QStringLiteral("Pen");
+
+    // Qt reports a mouse-button mask rather than the driver's own encoding. The tip is the
+    // left button and the barrel switches follow as right and middle. There is no third: a pen
+    // with three barrel switches reports only two through this API, so B3 can never light
+    // here while it can on the Wintab samples. Shown anyway, because a dot that never lights
+    // is a fact about Qt worth seeing next to the samples where it does.
+    const Qt::MouseButtons b = event->buttons();
+    r.tip = b.testFlag(Qt::LeftButton) || m_inContact;
+    r.eraser = eraserTip && m_inContact;
+    r.barrel1 = b.testFlag(Qt::RightButton);
+    r.barrel2 = b.testFlag(Qt::MiddleButton);
+    r.barrel3 = false;
+    r.rawButtons = unsigned(b.toInt());
+
+    m_readout = r;
+    Q_EMIT readoutChanged(r);
 }
 
 void CanvasWidget::paintEvent(QPaintEvent* event) {
@@ -195,9 +250,9 @@ void CanvasWidget::resizeEvent(QResizeEvent*) {
 
 // ── ScribbleWindow ──────────────────────────────────────────────
 
-ScribbleWindow::ScribbleWindow(PenBackend backend, QWidget* parent)
-    : QMainWindow(parent), m_backend(backend) {
-    setWindowTitle(QStringLiteral("Scribble Qt - no WinPenKit"));
+ScribbleWindow::ScribbleWindow(PenApi active, QWidget* parent)
+    : QMainWindow(parent), m_api(active) {
+    setWindowTitle(QStringLiteral("Scribble Qt - WinPenKit comparison"));
     resize(1200, 700);
 
     auto* central = new QWidget(this);
@@ -205,28 +260,66 @@ ScribbleWindow::ScribbleWindow(PenBackend backend, QWidget* parent)
     column->setContentsMargins(0, 0, 0, 0);
     column->setSpacing(0);
 
-    auto* ribbon = new QWidget(central);
-    auto* row = new QHBoxLayout(ribbon);
-    row->setContentsMargins(12, 8, 12, 8);
-
-    // Stated rather than discovered. Qt settles the backend during platform plugin
-    // initialisation and offers the application no way to ask afterwards, so the only honest
-    // thing to show is what this process asked for at startup.
-    m_backendLabel = new QLabel(QStringLiteral("PEN API: %1  (fixed at startup)")
-                                    .arg(QString::fromLatin1(backendName(backend))), ribbon);
-    row->addWidget(m_backendLabel);
-    row->addStretch();
-
-    m_telemetry = new QLabel(QStringLiteral("Screen: --   Canvas: --   Pressure: --"), ribbon);
-    row->addWidget(m_telemetry);
-
+    m_ribbon = new ScribbleRibbon(active, central);
     m_canvas = new CanvasWidget(central);
-    connect(m_canvas, &CanvasWidget::telemetryChanged,
-            m_telemetry, &QLabel::setText);
+    m_canvas->setBrushWidth(m_ribbon->brushSize());
 
-    column->addWidget(ribbon);
+    connect(m_canvas, &CanvasWidget::readoutChanged,
+            m_ribbon, &ScribbleRibbon::setReadout);
+    connect(m_ribbon, &ScribbleRibbon::clearClicked,
+            m_canvas, &CanvasWidget::clear);
+    connect(m_ribbon, &ScribbleRibbon::brushSizeChanged,
+            m_canvas, &CanvasWidget::setBrushWidth);
+
+    column->addWidget(m_ribbon);
     column->addWidget(m_canvas, 1);
     setCentralWidget(central);
+
+    // Proximity is delivered to the application, not to a widget, so it is caught here.
+    qApp->installEventFilter(this);
+}
+
+void ScribbleWindow::snapRibbonHeight() {
+    // Qt lays widgets out in whole device independent pixels, and at a fractional device pixel
+    // ratio a whole logical height is not a whole device height: the ribbon wanted 211 logical
+    // px, which at 2.25 put the canvas origin at y=475.25 and made the framework resample the
+    // entire surface to draw it between pixel rows. L1.surface-alignment caught it.
+    //
+    // So the ribbon is grown to the next logical height whose product with the ratio is whole
+    // -- a multiple of 4 at 2.25, of 2 at 1.5, any integer at 2. Growing rather than shrinking,
+    // because shrinking would clip what the ribbon needs to show.
+    const double dpr = devicePixelRatioF();
+    const int needed = m_ribbon->sizeHint().height();
+
+    for (int h = needed; h < needed + 32; h++) {
+        const double device = h * dpr;
+        if (std::abs(device - std::round(device)) < 1e-6) {
+            m_ribbon->setFixedHeight(h);
+            return;
+        }
+    }
+    m_ribbon->setFixedHeight(needed);   // no whole height nearby; leave it as it was
+}
+
+void ScribbleWindow::showEvent(QShowEvent* event) {
+    QMainWindow::showEvent(event);
+    snapRibbonHeight();
+}
+
+void ScribbleWindow::resizeEvent(QResizeEvent* event) {
+    QMainWindow::resizeEvent(event);
+    // Also covers a move to a monitor with a different scale, which changes the ratio the
+    // height was snapped against.
+    snapRibbonHeight();
+}
+
+bool ScribbleWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (event->type() == QEvent::TabletEnterProximity) {
+        m_canvas->setInProximity(true);
+    } else if (event->type() == QEvent::TabletLeaveProximity) {
+        m_canvas->setInProximity(false);
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void ScribbleWindow::saveRecording() {
@@ -234,8 +327,9 @@ void ScribbleWindow::saveRecording() {
 
     // Written through the same recorder Scribble.Win32 uses, so the header and the number
     // formatting are not a second implementation of the format that --replay reads.
+    const QByteArray source = penapi::description(m_api).toUtf8();
     selftest::Recorder rec;
-    rec.describe(backendName(m_backend), kAssumedMaxPressure);
+    rec.describe(("Qt " + source).constData(), kAssumedMaxPressure);
     for (const auto& p : m_canvas->recorded())
         rec.add(p[0], p[1], static_cast<uint32_t>(p[2]));
 
@@ -254,6 +348,15 @@ int ScribbleWindow::runSelfTest(const std::string& replayPath) {
     r.check_dpi_awareness();
     r.check_window_placement(hwnd);
     r.report_scale(dpr);
+
+    // Which pen API this run is on. Reported rather than checked, the same way the scale is:
+    // there is no wrong answer, but a report that does not say which input path produced it
+    // cannot be compared against another run. It matters more here than in the other samples
+    // because Qt fixes the choice at startup and offers no way to ask afterwards -- so this
+    // line is the only record of what a given run was actually using.
+    r.check("L0.pen-api", true,
+            (penapi::description(m_api) + QStringLiteral(", fixed at startup"))
+                .toUtf8().constData());
 
     // Qt lays out in device independent pixels, so the logical-to-physical ratio is the
     // device pixel ratio -- the same relationship WPF and Avalonia have, and not the 1.0 that

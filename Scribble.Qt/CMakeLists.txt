@@ -18,6 +18,9 @@ qt_standard_project_setup()
 
 qt_add_executable(ScribbleQt WIN32
     src/main.cpp
+    src/penapi.h
+    src/ribbon.cpp
+    src/ribbon.h
     src/scribblewindow.cpp
     src/scribblewindow.h
 )

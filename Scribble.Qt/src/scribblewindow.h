@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QImage>
-#include <QLabel>
 #include <QMainWindow>
 #include <QPointF>
 #include <QWidget>
@@ -10,14 +9,8 @@
 #include <optional>
 #include <vector>
 
-// The pen backend Qt was asked to start with. Qt settles this during platform plugin
-// initialisation, before QApplication is running, so it cannot change while the process lives
-// and the application has no way to ask afterwards which one it got. All this sample can
-// honestly report is what it requested, which is also all Krita can report.
-enum class PenBackend {
-    WmPointer,   // Qt's default on Windows
-    WinTab,      // selected with -platform windows:nowmpointer
-};
+#include "penapi.h"
+#include "ribbon.h"
 
 /// The drawing surface. A QImage in physical pixels, presented at a device pixel ratio so one
 /// image pixel covers one device pixel, and a QTabletEvent handler that never falls back to
@@ -40,7 +33,6 @@ public:
     /// so the replay and the origin-tracking check exercise it rather than a copy of it.
     QPointF desktopToCanvas(double x, double y) const;
 
-    double brushWidth() const { return m_brushWidth; }
     void setBrushWidth(double w) { m_brushWidth = w; }
 
     void clear();
@@ -56,8 +48,12 @@ public:
     /// The captured stream, in physical desktop pixels with pressure on a 0..1024 scale.
     const std::vector<std::array<double, 3>>& recorded() const { return m_recorded; }
 
+    /// Proximity arrives as an application-level event rather than a widget one, so the window
+    /// forwards it here.
+    void setInProximity(bool in);
+
 signals:
-    void telemetryChanged(const QString& text);
+    void readoutChanged(const PenReadout& readout);
 
 protected:
     void tabletEvent(QTabletEvent* event) override;
@@ -75,31 +71,44 @@ private:
     // test records one spurious point per stroke at the wrong pressure -- measured, not
     // assumed: a 62-point injected stroke came out 61 points at 700 and one at 512.
     bool m_inContact = false;
+    bool m_inProximity = false;
     double m_brushWidth = 6.0;
+
+    PenReadout m_readout;
 
     std::string m_recordPath;
     std::vector<std::array<double, 3>> m_recorded;
 };
 
-/// A readout above a canvas. Deliberately the same fields the other six samples show, because
-/// a number that cannot be compared against theirs is not worth displaying here.
+/// The standard Scribble window: ribbon above, canvas below.
 class ScribbleWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    explicit ScribbleWindow(PenBackend backend, QWidget* parent = nullptr);
+    explicit ScribbleWindow(PenApi active, QWidget* parent = nullptr);
 
     CanvasWidget* canvas() const { return m_canvas; }
-    PenBackend backend() const { return m_backend; }
+    PenApi penApi() const { return m_api; }
 
     /// Runs the launch-time acceptance checks and returns the process exit code.
     int runSelfTest(const std::string& replayPath);
 
     void saveRecording();
 
+protected:
+    /// Proximity enter and leave are delivered to the application, not to a widget, so they
+    /// are picked up here and handed to the canvas.
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
+    void showEvent(QShowEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
+
 private:
-    PenBackend m_backend;
+    /// Rounds the ribbon up to a height that is a whole number of device pixels, so the canvas
+    /// below it starts on the pixel grid.
+    void snapRibbonHeight();
+
+    PenApi m_api;
     CanvasWidget* m_canvas = nullptr;
-    QLabel* m_backendLabel = nullptr;
-    QLabel* m_telemetry = nullptr;
+    ScribbleRibbon* m_ribbon = nullptr;
 };

@@ -111,10 +111,13 @@ Headless console app for verifying Wintab backends without a GUI. Useful for deb
 Qt 6 Widgets, `QTabletEvent`, and no WinPenKit. Full notes in
 [Scribble.Qt/README.md](../Scribble.Qt/README.md); the parts that change how you read its output:
 
-- **The pen API is fixed at startup.** Qt decides between WM_POINTER and WinTab while the
-  Windows platform plugin initialises, so there is no dropdown — `--wintab` or `--pointer`, and
-  relaunch to change. The application cannot ask afterwards which one it got, so the ribbon
-  reports what it requested.
+- **The pen API is fixed at startup, so the dropdown saves rather than switches.** Qt decides
+  between WM_POINTER and WinTab while the Windows platform plugin initialises. Choosing one
+  stores it and shows *Restart to use Wintab, tablet-native. Still on WM_Pointer.* until the
+  next launch, which then comes up on the stored choice. `--wintab` and `--pointer` override it
+  for a single run without changing what is stored. Krita's UI works the same way.
+- **`L0.pen-api` is in the report**, because the application cannot ask Qt afterwards which
+  path it got, so a run that did not record it has no way to say.
 - **Qt's WinTab context is always tablet-native.** `--wintab` is comparable to `WintabDigitizer`
   and never to `WintabSystem`. There is no low-resolution option in Qt, and therefore none in
   Krita.

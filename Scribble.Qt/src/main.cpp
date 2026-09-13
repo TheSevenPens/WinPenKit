@@ -9,8 +9,10 @@
 // What Qt settles for the application, and cannot be changed afterwards:
 //
 //   * The backend is chosen during platform plugin initialisation, before QApplication is
-//     running. --wintab and --pointer therefore select it for the life of the process, and
-//     switching means relaunching. Krita's UI has the same restriction and says so.
+//     running, so it is fixed for the life of the process. The ribbon's dropdown therefore
+//     saves the choice and asks for a restart rather than switching. Krita's UI does the same
+//     thing for the same reason. --wintab and --pointer override the saved choice for one
+//     run without changing it.
 //   * Qt's WinTab context is always tablet-native resolution. There is no low-resolution
 //     option, so --wintab here is comparable to WinPenKit's WintabDigitizer and never to its
 //     WintabSystem.
@@ -26,6 +28,7 @@
 #include <string>
 #include <vector>
 
+#include "penapi.h"
 #include "scribblewindow.h"
 
 // After Qt, deliberately: see the note in scribblewindow.cpp.
@@ -48,7 +51,13 @@ bool hasFlag(int argc, char** argv, const char* flag) {
 } // namespace
 
 int main(int argc, char** argv) {
-    const bool wantWinTab = hasFlag(argc, argv, "--wintab");
+    // The saved choice, then the command line on top of it. A flag is for one run and does not
+    // overwrite what the dropdown last stored -- otherwise a single --wintab run would silently
+    // change what the next plain launch does.
+    PenApi api = penapi::load();
+    if (hasFlag(argc, argv, "--wintab"))  api = PenApi::WinTab;
+    if (hasFlag(argc, argv, "--pointer")) api = PenApi::WmPointer;
+    const bool wantWinTab = api == PenApi::WinTab;
 
     // Qt reads -platform out of argv inside the QApplication constructor, so the choice has to
     // be made here, in a copy of argv, before that constructor runs. There is no later moment:
@@ -71,7 +80,7 @@ int main(int argc, char** argv) {
 
     QApplication app(qtArgc, args.data());
 
-    ScribbleWindow window(wantWinTab ? PenBackend::WinTab : PenBackend::WmPointer);
+    ScribbleWindow window(api);
 
     std::string recordPath;
     if (selftest::record_requested(recordPath))
