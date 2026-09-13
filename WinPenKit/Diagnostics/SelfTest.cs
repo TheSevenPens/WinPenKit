@@ -206,10 +206,10 @@ public sealed class SelfTest
     /// <para>What it does catch is a surface whose host is the wrong size, which is the fault
     /// in issue 37: a canvas sized in logical units and magnified to fit. That is worth
     /// keeping. It is simply a narrower claim than the name suggests.</para>
-    /// <para>Measuring the sampling rate needs pixels, not layout: draw a marker into the
-    /// surface at known coordinates, capture the window, and measure what it became. A
-    /// 200-pixel square rendering 202 logical pixels where 1:1 is 89 settled issue 70 in one
-    /// run, after several wrong readings taken from the layout tree.</para>
+    /// <para>The sampling rate is measured by <see cref="PresentationProbe"/>, which reports
+    /// as <c>L1.presentation-sampling</c>. It works in pixels rather than layout, and the
+    /// application has to drive it across two frames, so it is a separate thing rather than a
+    /// wider version of this one.</para>
     /// </remarks>
     public void CheckPresentation1To1(int bitmapWidth, int bitmapHeight,
                                       double presentedPxWidth, double presentedPxHeight)

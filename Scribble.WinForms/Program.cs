@@ -24,9 +24,10 @@ static class Program
         // The form has to be shown: every level 1 check is about the drawing surface, and the
         // surface does not exist until the first layout pass.
         int code = 0;
-        form.Shown += (_, _) =>
+        form.Shown += async (_, _) =>
         {
-            code = form.RunSelfTest(replay ? replayPath : null).Emit();
+            var report = await form.RunSelfTest(replay ? replayPath : null);
+            code = report.Emit();
             form.Close();
         };
         Application.Run(form);
