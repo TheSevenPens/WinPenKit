@@ -68,19 +68,31 @@ public enum PenCursorNumbering
 /// them is always valid and reading one on its own is not. This says where the number came
 /// from, for a diagnostician who needs to line pen points up against something else.</para>
 /// <para>Resolution is a separate question from clock, and the two do not follow each other.
-/// Measured on 12 Sep 2026, one machine, synthetic pen input:</para>
+/// Measured 12 Sep 2026, one machine, <b>synthetic pen input</b> -- see the caveat below,
+/// which is load-bearing for the first row.</para>
 /// <list type="table">
-/// <item><term>WM_POINTER, WinForms</term><description>100 ns, from
-/// <c>POINTER_INFO.PerformanceCount</c></description></item>
+/// <item><term>WM_POINTER, WinForms</term><description><b>1 ms observed.</b>
+/// <c>POINTER_INFO.PerformanceCount</c> is counted in QPC ticks, 100 ns each on this machine,
+/// but the values arrived as exact multiples of a millisecond and matched <c>dwTime</c>
+/// one for one. 100 ns is the tick size, which is the unit; it is not the granularity of what
+/// the field carries</description></item>
 /// <item><term>WinUI 3</term><description>1 ms. <c>PointerPoint.Timestamp</c> is declared in
-/// microseconds and every reading ended in the same 171 µs, so the sub-millisecond digits are
-/// a fixed offset rather than measurement</description></item>
-/// <item><term>Avalonia</term><description>1 ms</description></item>
-/// <item><term>WPF</term><description>about 15.6 ms -- consecutive points repeat a
-/// value</description></item>
+/// microseconds and every reading in a run ends in the same sub-millisecond remainder -- 171 µs
+/// in one run, 622 µs in another -- so the last three digits are a per-run constant rather
+/// than measurement</description></item>
+/// <item><term>Avalonia</term><description>1 ms. 172 points carried 113 distinct values,
+/// stepping by 1 ms</description></item>
+/// <item><term>WPF</term><description>about 15.6 ms, and that is the smaller problem. See
+/// <see cref="SystemTicks"/></description></item>
 /// <item><term>Wintab</term><description>not established; see
 /// <see cref="DeviceTicks"/></description></item>
 /// </list>
+/// <para><b>Synthetic injection may set the floor it appears to measure.</b> Every row above
+/// was produced by <c>InjectSyntheticPointerInput</c>, which stamps its own events. A backend
+/// cannot be shown to resolve finer than the source feeding it, so the 1 ms figures are upper
+/// bounds on granularity and not proof that the hardware path is no better. The WM_POINTER row
+/// is the one this matters to: it is the only backend whose field could carry more, and
+/// settling it needs a tablet.</para>
 /// </remarks>
 public enum PenTimestampSource
 {
@@ -100,8 +112,24 @@ public enum PenTimestampSource
 
     /// <summary>
     /// The millisecond counter <c>GetTickCount64</c> reads, multiplied up to microseconds.
-    /// Measured against that clock on the three managed frameworks and found to track it.
+    /// Measured against that clock on WPF, WinUI and Avalonia, and found to track it.
     /// </summary>
+    /// <remarks>
+    /// <para>One clock, two very different streams, which is why this value alone does not
+    /// tell a consumer what it is holding.</para>
+    /// <para><b>Avalonia and WinUI</b> deliver one point per event, each with its own
+    /// timestamp: 172 Avalonia points carried 113 distinct values.</para>
+    /// <para><b>WPF does not.</b> <c>StylusEventArgs</c> carries a whole
+    /// <c>StylusPointCollection</c> and the timestamp belongs to the event, so every point in
+    /// the batch gets the same one. Measured in the same run: 196 points arrived in 6 events,
+    /// one of them carrying 68 points, giving <b>6 distinct timestamps for 196 points</b>. The
+    /// clock's 15.6 ms granularity is the smaller of the two effects and the one that would go
+    /// away on a finer clock; the batching would not.</para>
+    /// <para>WPF exposes no per-point time, so this is a ceiling of the framework rather than
+    /// a choice made here. Anything that needs per-point timing -- velocity, time-based
+    /// smoothing -- has to treat a WPF batch as points sharing one instant, or interpolate
+    /// across the batch and know it is inventing the values.</para>
+    /// </remarks>
     SystemTicks,
 
     /// <summary>

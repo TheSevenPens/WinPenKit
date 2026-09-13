@@ -168,41 +168,121 @@ unstated, every backend counts from somewhere different, and no two of them are 
 | unit | **yes** | microseconds on every backend, always |
 | contract | **yes** | subtract two, get elapsed microseconds; never decreasing within a session |
 | wrapping | **yes** | handled in the session, not left to the caller — see below |
-| **resolution** | **no** | 100 ns to 15.6 ms, a factor of 156,000 |
+| **resolution** | **no** | 1 ms on four backends, 15.6 ms on WPF, unknown on Wintab |
+| **one timestamp per point** | **no** | WPF stamps events, so a batch of points shares one |
 
-The last row is the one that reaches your code. A velocity or smoothing routine written and
-tuned against WM_POINTER will meet **zero deltas** on WPF, where consecutive points repeat a
-timestamp. Guard the division. A zero difference means the clock could not separate two
-points, which is not a claim that no time passed.
+The last two rows reach your code. A velocity or smoothing routine tuned against WM_POINTER
+will meet **zero deltas** on WPF, and not occasionally: in a measured run, 196 points carried 6
+distinct timestamps. Guard the division. A zero difference means two points the backend could
+not separate in time, which is not a claim that no time passed.
 
-The unit is microseconds on every backend so that the arithmetic does not branch. That is
-finer than most of them measure, and the unit does not tell you which:
+### The exact shape of the value
 
-| backend | clock (`Conventions.Timestamp`) | field | measured resolution |
+| | |
+| --- | --- |
+| type | `long` (C# `Int64`, C `int64_t`, Rust `i64`) |
+| unit | microseconds, on every backend, always |
+| magnitude | microseconds since the machine booted — about 2.6 × 10¹² after 30 days up |
+| may be negative? | **yes, on WPF only**, if the session starts after ~24.9 days of uptime |
+| overflow | never: `long.MaxValue` µs is about 292,000 years |
+| origin | **unspecified.** Differences are the contract; absolute values are not |
+| ordering | never decreasing within one session. A difference of zero is a normal reading |
+
+### Per-backend: what it is made of
+
+| backend | clock | source field | source type | conversion |
+| --- | --- | --- | --- | --- |
+| WM_POINTER, WinForms | `PerformanceCounter` | `POINTER_INFO.PerformanceCount` | `ulong` QPC ticks | `ticks × 10⁶ / QPF`, split to avoid overflow |
+| WinUI 3 | `SystemTicks` | `PointerPoint.Timestamp` | `ulong` µs | cast only |
+| Avalonia | `SystemTicks` | `PointerEventArgs.Timestamp` | `ulong` ms | `× 1000` |
+| WPF | `SystemTicks` | `StylusEventArgs.Timestamp` | **`int`** ms | wrap-extend, then `× 1000` |
+| Qt (Scribble.Qt) | `SystemTicks` | `QInputEvent::timestamp` | `quint64` ms | `× 1000` |
+| Wintab | `DeviceTicks` | `PACKET.pkTime` | **`uint`** ms | wrap-extend, then `× 1000` |
+
+**What each conversion costs.**
+
+- **`× 1000` (Avalonia, WPF, Qt, Wintab) is exact and adds nothing.** The last three digits are
+  always `000`. Four of the six backends produce a number that looks microsecond-precise and
+  carries milliseconds. If you ever see a non-zero remainder mod 1000, you are on WM_POINTER or
+  WinUI.
+- **The QPC division truncates below a microsecond.** Integer division toward zero, so the error
+  is under 1 µs and slightly downward. At a 200 Hz report rate that is 0.02% of one interval.
+- **The WinUI cast is lossless but the source is not what it claims.** Every reading in a run
+  ends in the same sub-millisecond remainder — 171 µs in one run, 622 µs in another. The last
+  three digits are a per-run constant, not measurement. It cancels out of every difference.
+- **No backend loses anything to the wrap extension.** It only adds a multiple of 2³² ms.
+
+### Measured resolution, and why one row is an upper bound
+
+Burst-injected 400 points with no pacing, so that many land inside one clock tick — the
+earlier 20 ms-per-step injection was coarser than the clocks and could not have distinguished
+1 ms from 15.6 ms.
+
+| backend | points delivered | distinct timestamps | step |
 | --- | --- | --- | --- |
-| WM_POINTER, WinForms | `PerformanceCounter` | `POINTER_INFO.PerformanceCount` | 100 ns |
-| WinUI 3 | `SystemTicks` | `PointerPoint.Timestamp` | 1 ms |
-| Avalonia | `SystemTicks` | `PointerEventArgs.Timestamp` | 1 ms |
-| WPF | `SystemTicks` | `StylusEventArgs.Timestamp` | about 15.6 ms |
-| Wintab system, Wintab digitizer | `DeviceTicks` | `PACKET.pkTime` | **not established** |
+| Avalonia | 172 | 113 | 1 ms |
+| WinUI 3 | 13 | 11 | 1 ms |
+| WM_POINTER (WinForms) | 17 | 8 | **1 ms observed** |
+| WPF | 196 | **6** | 15.6 ms, in 6 events |
+| Wintab | — | — | not established |
 
-Measured on 12 Sep 2026, one machine, with synthetic pen input. What that run establishes is
-the unit, the epoch and the granularity of each clock. What it cannot establish is latency or
-sampling rate, because the gaps between injected points are the injection script's and not a
-device's.
+**The WM_POINTER row is an upper bound, not a measurement of the hardware path.**
+`PerformanceCount` is counted in QPC ticks of 100 ns, but every value arrived as an exact
+multiple of a millisecond and matched `dwTime` one for one. 100 ns is the *tick size* — the
+unit — and saying it is the resolution is the same error as reading `MaxPressure` 32767 as a
+level count. Synthetic injection stamps its own events, so a backend cannot be shown to resolve
+finer than the source feeding it. Whether real pen hardware fills this field more finely is
+**unmeasured and needs a tablet.**
 
-Three results are worth stating plainly, because each is a place where the declared type
-overstates what arrives:
+### WPF is different in kind, not degree
 
-- **WinUI declares microseconds and delivers milliseconds.** Every reading ended in the same
-  171 µs, so the sub-millisecond digits are a fixed offset, not measurement.
-- **WPF repeats values.** Consecutive points came back with identical timestamps. A gap of
-  zero there means the clock could not tell two points apart, which is not the same claim as
-  two points arriving together.
+WPF's `StylusEventArgs` carries a whole `StylusPointCollection`, and the timestamp belongs to
+the **event**, not the point. Every point in a batch gets the same one. In the run above, 196
+points arrived in 6 events — one carrying 68 points — for **6 distinct timestamps across 196
+points**.
+
+The clock's 15.6 ms granularity is the smaller of the two effects, and the one that would
+disappear on a finer clock. The batching would not. WPF exposes no per-point time at all, so
+this is a ceiling of the framework rather than a choice made here.
+
+### Two more things worth stating
+
 - **`dwTime` and `PerformanceCount` are not two readings of one clock.** Both are populated on
-  every `POINTER_INFO`. `dwTime` is milliseconds on the `GetTickCount64` epoch and
-  `PerformanceCount` is QPC; they sat 27.08 ms apart, identically, across every sample. These
-  backends use `PerformanceCount`, which is four orders of magnitude finer.
+  every `POINTER_INFO`. `dwTime` is milliseconds on the `GetTickCount64` epoch, `PerformanceCount`
+  is QPC, and they sat 27.08 ms apart — identically — across every sample. These backends use
+  `PerformanceCount`.
+- **None of this establishes latency or sampling rate.** The gaps between injected points are
+  the injection script's, not a device's.
+
+### Reading it as wall-clock time
+
+You cannot, through the API. The origin is unspecified on purpose, because it differs per
+backend and only one machine has been measured.
+
+If you need wall clock anyway — lining a stroke up against a log, say — calibrate it yourself.
+At the moment a point arrives, read the wall clock too:
+
+```csharp
+long offsetUs = long.MaxValue;   // keep the smallest seen
+
+// in your point handler, per point:
+long nowUs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000;
+offsetUs = Math.Min(offsetUs, nowUs - pt.TimestampMicroseconds);
+
+// then, for any point:
+DateTimeOffset wall = DateTimeOffset.FromUnixTimeMilliseconds(
+    (pt.TimestampMicroseconds + offsetUs) / 1000);
+```
+
+The **minimum** matters. An event happens at T and your handler runs at T + latency, so every
+sample overestimates the offset by that run's latency and never underestimates it. The smallest
+difference over many points is the closest you get to the true offset. Measured handler latency
+in one run was 0.372 ms to 26.6 ms, the largest on the first point after startup — calibrating
+on a single sample would have been 26 ms out.
+
+Recalibrate per session. The offset is not valid across a backend switch, and on WPF the
+calibration is no better than the 15.6 ms clock it is reading.
+
 
 Wintab's `pkTime` is requested on every packet — `lcPktData` is `PK_PKTBITS_ALL` — and Wintab
 documents it as milliseconds with no origin. Neither that origin nor its real granularity has
