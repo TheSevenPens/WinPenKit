@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using WinPenKit;
+using WinPenKit.Diagnostics;
 
 namespace WinPenKit.TestConsole;
 
@@ -31,6 +32,7 @@ public static class ClockSelfTest
         failed += SystemTicks();
         failed += DeviceTicks();
         failed += PerformanceCounter();
+        failed += EpochProbe();
 
         Console.WriteLine(failed == 0 ? "RESULT clock checks passed" : $"RESULT {failed} failed");
         return failed == 0 ? 0 : 1;
@@ -158,6 +160,106 @@ public static class ClockSelfTest
     }
 
     // ── Reporting ───────────────────────────────────────────────
+
+    // ── The epoch probe's verdict ───────────────────────────────
+
+    /// <summary>
+    /// <see cref="WintabEpochProbe.Report"/> reaches both of its verdicts.
+    /// </summary>
+    /// <remarks>
+    /// <para>The probe itself needs a tablet and a person to draw with it, so its verdict is
+    /// produced once per session at most and always against whatever that machine happens to
+    /// do. If pkTime turns out to sit on the GetTickCount epoch, every run of the probe will
+    /// pass forever, and a probe that can only pass has not been shown to be able to detect
+    /// anything -- which is the fault this repository has already found twice, in the surface
+    /// alignment check and in the clock fix that passed with the fix removed.</para>
+    /// <para>So the analysis is exercised here against synthetic sample sets built to be each
+    /// of the three shapes it has to tell apart. No tablet involved, and the failing cases are
+    /// the point: they are the evidence that a passing verdict on real hardware means
+    /// something.</para>
+    /// </remarks>
+    private static int EpochProbe()
+    {
+        int failed = 0;
+
+        // Shape 1: same epoch, free-running. pkTime is the tick count's low 32 bits, delayed by
+        // a delivery latency that varies per packet the way a real one does.
+        const uint baseRaw = 4_000_000_000;   // high enough that the (uint) cast is exercised
+        var same = new List<(uint, long)>();
+        for (int i = 0; i < 400; i++)
+        {
+            uint raw = baseRaw + (uint)(i * 6);
+            long latency = 2 + (i % 7);        // 2..8 ms, never negative
+            same.Add((raw, raw + latency));
+        }
+        failed += ExpectVerdict("probe/same-epoch", same, expectPass: true);
+
+        // Shape 1b: the same clock, but with pkTime occasionally a millisecond AHEAD of the tick
+        // count. This is not a corner case, it is what the hardware does: GetTickCount64 steps
+        // by about 15.6 ms while pkTime is finer, so a packet stamped just after a tick reads
+        // ahead of it. The first version of the analysis subtracted in unsigned arithmetic, so
+        // -1 ms came back as 4294967295 and the real run was declared unanchorable. Without this
+        // case the suite passed while the probe was wrong about the one machine it ran on.
+        var ahead = new List<(uint, long)>();
+        for (int i = 0; i < 400; i++)
+        {
+            uint raw = baseRaw + (uint)(i * 6);
+            long latency = (i % 5 == 0) ? -1 : 2 + (i % 7);
+            ahead.Add((raw, raw + latency));
+        }
+        failed += ExpectVerdict("probe/tick-lags-pktime", ahead, expectPass: true);
+
+        // Shape 2: a different origin. pkTime counts from context open, so it starts near zero
+        // while the machine has been up for days. Offsets are huge but perfectly stable, which
+        // is what makes this the case a stability check alone would wave through.
+        var other = new List<(uint, long)>();
+        for (int i = 0; i < 400; i++)
+        {
+            uint raw = (uint)(i * 6);
+            other.Add((raw, 500_000_000L + raw + 3));
+        }
+        failed += ExpectVerdict("probe/foreign-epoch", other, expectPass: false);
+
+        // Shape 3: same origin, but the counter only advances while packets arrive. Continuous
+        // stretches look identical to shape 1; the five-second pause is where it separates, and
+        // it is why the probe asks for one.
+        var stalled = new List<(uint, long)>();
+        long tick = baseRaw;
+        uint pk = baseRaw;
+        for (int i = 0; i < 400; i++)
+        {
+            if (i == 200) tick += 5000;        // the pause: wall clock moves, pkTime does not
+            pk += 6;
+            tick += 6;
+            stalled.Add((pk, tick + 3));
+        }
+        failed += ExpectVerdict("probe/stalls-when-idle", stalled, expectPass: false);
+
+        // Shape 4: too little data to say anything. A probe that renders a verdict on twelve
+        // packets would be worse than one that declines to.
+        failed += ExpectVerdict("probe/too-few-packets", [.. same.Take(12)], expectPass: false);
+
+        return failed;
+    }
+
+    private static int ExpectVerdict(string name, IReadOnlyList<(uint Raw, long Tick)> samples,
+                                     bool expectPass)
+    {
+        var sink = new StringWriter();
+        int code = WintabEpochProbe.Report(sink, samples);
+        bool passed = code == 0;
+
+        if (passed == expectPass)
+        {
+            Console.WriteLine($"[PASS] {name,-28} verdict {(passed ? "anchorable" : "not anchorable")}");
+            return 0;
+        }
+
+        Console.WriteLine($"[FAIL] {name,-28} expected {(expectPass ? "anchorable" : "not anchorable")}, got the other");
+        foreach (var line in sink.ToString().Split('\n'))
+            Console.WriteLine($"           | {line.TrimEnd()}");
+        return 1;
+    }
 
     private static int Expect(string name, long actual, long expected)
     {

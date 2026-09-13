@@ -77,10 +77,16 @@ public enum PenCursorNumbering
 /// <item><term>WinUI 3</term><description><b>1 µs, on hardware.</b> 1878 points, 1878 distinct
 /// timestamps, gcd of the gaps exactly 1 µs. Under injection it looked like a millisecond clock
 /// with a fixed sub-millisecond offset; the offset was the injector's</description></item>
-/// <item><term>Avalonia</term><description>1 ms. 172 points carried 113 distinct values,
-/// stepping by 1 ms</description></item>
-/// <item><term>WPF</term><description>about 15.6 ms, and that is the smaller problem. See
+/// <item><term>Avalonia</term><description><b>1 ms, on hardware, one stamp per point.</b> 2167
+/// points carried 2167 distinct timestamps with no repeats. The resolution comes from the source
+/// type -- <c>PointerEventArgs.Timestamp</c> counts milliseconds -- rather than from the
+/// recording, whose smallest gap is 3 ms</description></item>
+/// <item><term>WPF</term><description><b>1 ms clock, 15.6 ms batches, on hardware.</b> 2442
+/// points carried 885 distinct timestamps. The clock is not the problem and never was; see
 /// <see cref="SystemTicks"/></description></item>
+/// <item><term>Qt (<c>Scribble.Qt</c>, not WinPenKit)</term><description><b>15.6 ms, on
+/// hardware.</b> The one injected figure that survived contact with a tablet: across 809 gaps
+/// the smallest is 15 ms</description></item>
 /// <item><term>Wintab</term><description>not established; see
 /// <see cref="DeviceTicks"/></description></item>
 /// </list>
@@ -88,8 +94,10 @@ public enum PenCursorNumbering
 /// caution but an observed fact. <c>InjectSyntheticPointerInput</c> stamps its own events, so a
 /// backend cannot be shown to resolve finer than the thing feeding it. WM_POINTER and WinUI
 /// both measured 1 ms through it and both turned out to be a thousand times finer when drawn on
-/// by hand. The Avalonia, WPF and Qt rows are still injection figures: read them as "no better
-/// than", not as measurements.</para>
+/// by hand; WPF's clock turned out to be 15 times finer than its batch cadence had suggested;
+/// Avalonia looked like it repeated timestamps and does not. Every backend above has since been
+/// drawn on, and of the five that had an injected figure to compare against, <b>four were
+/// wrong</b>. Only Qt's survived.</para>
 /// </remarks>
 public enum PenTimestampSource
 {
@@ -121,13 +129,18 @@ public enum PenTimestampSource
     /// <para>One clock, two very different streams, which is why this value alone does not
     /// tell a consumer what it is holding.</para>
     /// <para><b>Avalonia and WinUI</b> deliver one point per event, each with its own
-    /// timestamp: 172 Avalonia points carried 113 distinct values.</para>
+    /// timestamp, and on hardware neither repeats a value: 2167 Avalonia points carried 2167
+    /// distinct timestamps, 1878 WinUI points 1878. An injected run suggested Avalonia repeated
+    /// them -- 113 values for 172 points -- which was the injector outrunning its own clock.</para>
     /// <para><b>WPF does not.</b> <c>StylusEventArgs</c> carries a whole
     /// <c>StylusPointCollection</c> and the timestamp belongs to the event, so every point in
-    /// the batch gets the same one. Measured in the same run: 196 points arrived in 6 events,
-    /// one of them carrying 68 points, giving <b>6 distinct timestamps for 196 points</b>. The
-    /// clock's 15.6 ms granularity is the smaller of the two effects and the one that would go
-    /// away on a finer clock; the batching would not.</para>
+    /// the batch gets the same one. Drawn on by hand: 2442 points, <b>885 distinct
+    /// timestamps</b>, about three points to a value.</para>
+    /// <para>The clock itself is a millisecond clock and was never the limitation. Sixteen gaps
+    /// of exactly 1000 µs appear in that recording, spread through the stroke, so the field does
+    /// express a millisecond. What steps by 15.6 ms is the delivery -- the Windows timer tick --
+    /// which a finer clock would not change. Earlier documentation called 15.6 ms the clock's
+    /// granularity; it was the batch cadence.</para>
     /// <para>WPF exposes no per-point time, so this is a ceiling of the framework rather than
     /// a choice made here. Anything that needs per-point timing -- velocity, time-based
     /// smoothing -- has to treat a WPF batch as points sharing one instant, or interpolate
@@ -140,9 +153,17 @@ public enum PenTimestampSource
     /// <c>pkTime</c>.
     /// </summary>
     /// <remarks>
-    /// Its origin and its resolution were not measured -- Wintab does not respond to
-    /// synthetic pen injection, so establishing either needs a tablet. Treat deltas as usable
-    /// and everything else as unknown until that measurement exists.
+    /// <para>Both were unmeasured for a long time, because Wintab ignores synthetic pen
+    /// injection and settling either needed a tablet. Both are now measured.</para>
+    /// <para><b>Resolution: 1 ms</b>, one timestamp per point with no repeats across 1683
+    /// points -- the most usable clock of any backend here.</para>
+    /// <para><b>Origin: the <c>GetTickCount64</c> epoch</b>, measured on 13 Sep 2026 over 6217
+    /// packets spanning 41.7s including a deliberate pause. That is why this name is kept even
+    /// though the epoch turns out to be the same as <see cref="SystemTicks"/>: the name says
+    /// which field the value came from, and <c>pkTime</c> is still the driver's, still a
+    /// <c>uint</c>, and still wraps every 49.7 days where the system clock does not.</para>
+    /// <para>Knowing the origin is what lets both Wintab sessions anchor their clock rather
+    /// than watch for a backward jump. See <c>WintabEpochProbe</c>.</para>
     /// </remarks>
     DeviceTicks,
 }

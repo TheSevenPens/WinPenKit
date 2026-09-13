@@ -429,15 +429,19 @@ void WintabSessionImpl::on_packet(WPARAM serial) {
     // asked for something they had not.
     pt.source    = requested_digitizer_ ? PEN_API_WINTAB_DIGITIZER : PEN_API_WINTAB_SYSTEM;
     // lcPktData asks for PK_PKTBITS_ALL, so pkTime is filled in on every packet. Wintab calls
-    // it milliseconds and says nothing about its origin; neither that nor its real granularity
-    // has been measured, because Wintab ignores synthetic pen input.
+    // it milliseconds and documents no origin; the origin was measured on 13 Sep 2026 and is
+    // the GetTickCount64 epoch. See the managed WintabSessionBase for the figures.
+    //
+    // Anchored, not detected: the full value is the nearest multiple of 2^32 ms that makes the
+    // reading agree with the system clock. Stateless, so an idle session, a stopped session or
+    // a gap where the capture region dropped every packet all come back correct -- none of
+    // which the backward-jump detector this replaced could see.
     {
         constexpr int64_t range = 1LL << 32;
         const int64_t raw = static_cast<int64_t>(pkt.pkTime);
-        if (pk_time_last_ >= 0 && raw < pk_time_last_ && pk_time_last_ - raw > range / 2)
-            pk_time_high_ += range;
-        pk_time_last_ = raw;
-        pt.timestamp_us = (pk_time_high_ + raw) * 1000LL;
+        const int64_t now = static_cast<int64_t>(::GetTickCount64());
+        const double k = std::floor((static_cast<double>(now - raw) + range / 2.0) / range);
+        pt.timestamp_us = (raw + static_cast<int64_t>(k) * range) * 1000LL;
     }
 
     {

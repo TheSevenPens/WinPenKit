@@ -153,30 +153,43 @@ Reading the declared width and concluding the clock is wide is the same error as
 `MaxPressure` 32767 as a level count, and it is why WinPenKit's framework backends anchor
 rather than trust the type.
 
-### Qt's clock is as coarse as WPF's
+### Qt has the coarsest clock of the seven samples
 
-127 points carried **10 distinct timestamps**. The gaps were 15, 16, 16, 47, 63, 93, 109, 563
-and 750 ms — every one a multiple of 15.625 ms to within 0.75 ms across a 750 ms span.
+Measured by hand on a Wacom DTH246, 13 Sep 2026: one stroke, 2280 points, **810 distinct
+timestamps**. Across 809 gaps the smallest is **15 ms** — 504 of 16 ms, 303 of 15 ms, one 31 and
+one 32. Nothing finer occurs at all.
 
-That matters for anyone treating Qt as the reference, Krita included. Measured on the same
-machine the same day:
+This was the only backend whose injected figure survived contact with a tablet. WM_POINTER and
+WinUI both measured 1 ms under `InjectSyntheticPointerInput` and both turned out to be
+microsecond-resolved when drawn on; Qt measured 15.6 ms and is 15.6 ms.
+
+That matters for anyone treating Qt as the reference, Krita included. Every row below is a
+hardware measurement taken on the same tablet on 13 Sep 2026:
 
 | | distinct timestamps / points | step |
 | --- | --- | --- |
-| Avalonia | 113 / 172 | 1 ms |
-| WinUI 3 | 11 / 13 | 1 ms |
-| WM_POINTER | 8 / 17 | 1 ms observed |
-| **Qt** | **10 / 127** | **15.6 ms** |
-| WPF | 6 / 196 | 15.6 ms |
+| WM_POINTER | 2070 / 2070 | **1 µs** |
+| WinUI 3 | 1878 / 1878 | **1 µs** |
+| Avalonia | 2167 / 2167 | 1 ms |
+| Wintab (high-res) | 1683 / 1683 | 1 ms |
+| WPF | 885 / 2442 | 1 ms clock, 15.6 ms batches |
+| **Qt** | **810 / 2280** | **15.6 ms** |
 
-Qt and WPF sit together at the coarse end, and two of WinPenKit's backends are finer than Qt.
-The reason differs: WPF is coarse because it stamps a whole `StylusPointCollection` at once,
-while Qt's `QTabletEvent` is a `QSinglePointEvent` and carries one point — Qt's coarseness is
-the clock alone.
+Qt and WPF land in a similar place by opposite routes, and the distinction is the useful part.
+WPF stamps a whole `StylusPointCollection` at once, so its **delivery** is coarse while its
+clock resolves to the millisecond. Qt's `QTabletEvent` is a `QSinglePointEvent` carrying one
+point, so all 2280 are separate events — **Qt's coarseness is the clock alone.** A finer clock
+would fix Qt and would do nothing for WPF.
 
-All of this is synthetic injection, which stamps its own events, so each figure is an upper
-bound on granularity rather than proof the hardware path is no better. It needs a tablet to
-settle.
+One caution about reading this file's numbers, or any timing file. The greatest common divisor
+of Qt's gaps is 1000 µs, and it means nothing: `gcd(15000, 16000)` is 1000, so alternating
+between the two ticks of a 15.625 ms timer produces that figure arithmetically. The same
+statistic was real evidence on the WM_POINTER recording, where gaps that small actually
+occurred. Quote the minimum gap alongside the gcd.
+
+Every figure in the table above was taken from a stroke drawn by hand. An earlier version of
+this section reported injected numbers and warned they were upper bounds; they were, and four of
+the five have since moved. Qt's did not.
 
 ## Two Qt-specific things found while building it
 

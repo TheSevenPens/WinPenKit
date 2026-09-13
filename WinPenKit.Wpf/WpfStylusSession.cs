@@ -207,8 +207,10 @@ public sealed class WpfStylusSession : IPenSession
                 Cursor: cursor,
                 Source: InputApi.WpfStylus,
                 // Milliseconds on the GetTickCount epoch, measured on 12 Sep 2026 -- WPF
-                // documents no unit either. The coarsest of the six: consecutive points
-                // repeated a value, so the real step is about 15.6ms whatever the unit says.
+                // documents no unit either. Drawn on by hand, the clock does resolve to the
+                // millisecond: sixteen gaps of exactly 1000us across one stroke. What repeats a
+                // value is the batching, not the clock -- one timestamp per StylusEventArgs, so
+                // 2442 points carried 885 of them. See PenTimestampSource.SystemTicks.
                 TimestampMicroseconds: PenTimestamp.FromSystemTicks(e.Timestamp)));
 
             _hasNewData = true;

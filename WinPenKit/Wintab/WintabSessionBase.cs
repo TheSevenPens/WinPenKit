@@ -15,11 +15,28 @@ internal abstract class WintabSessionBase : IPenSession
     private IntPtr _hCtx;
     private readonly ConcurrentQueue<PenPoint> _points = new();
     private volatile bool _hasNewData;
-    // pkTime is a uint of milliseconds, wrapping to zero after about 49.7 days of uptime.
-    // Detected rather than anchored, because Wintab states no origin for pkTime and none has
-    // been measured, so there is nothing to anchor against. See DeviceTickCounter for what
-    // that costs.
-    private readonly DeviceTickCounter _clock = new();
+    /// <summary>
+    /// Raw <c>pkTime</c> and the system tick count read at the same instant, one call per
+    /// packet, before any conversion. Diagnostics only.
+    /// </summary>
+    /// <remarks>
+    /// The conversion above is the thing under question, so a probe watching its output could
+    /// answer nothing about its input. <see cref="Diagnostics.WintabEpochProbe"/> uses this to
+    /// establish what origin <c>pkTime</c> is counted from, which decides whether this session
+    /// can anchor its clock the way the framework backends do instead of detecting wraps.
+    /// </remarks>
+    internal Action<uint, long>? RawTimeObserver { get; set; }
+
+    /// <summary>
+    /// The pump's hidden window, or zero before <see cref="Start"/>. Diagnostics only.
+    /// </summary>
+    /// <remarks>
+    /// Wintab delivers WT_PACKET to the foreground application, and this window is never shown,
+    /// so a host with no visible window of its own receives no packets at all -- which is
+    /// indistinguishable from nobody drawing. The samples are unaffected because their own
+    /// window holds the foreground. A console host has to borrow this one.
+    /// </remarks>
+    internal IntPtr PumpWindowHandle => _pump?.Hwnd ?? IntPtr.Zero;
 
     private uint _lastButtons;
     private uint _lastCursor;
@@ -225,6 +242,13 @@ internal abstract class WintabSessionBase : IPenSession
             var pkt = buf.MarshalOut<Packet>();
             if (pkt.pkContext == IntPtr.Zero) return;
 
+            // Before the capture region, deliberately. The blind spot this probe exists to
+            // investigate is a gap in which the region discarded every packet, so a clock
+            // diagnostic that could only see the packets the region kept would be blind to the
+            // same thing. The tick is read here because the question is what pkTime reads
+            // against the system clock at the moment the packet is in hand.
+            RawTimeObserver?.Invoke(pkt.pkTime, Environment.TickCount64);
+
             var (desktopX, desktopY) = ConvertCoordinates(pkt.pkX, pkt.pkY);
 
             // Spatial scope: drop points outside the capture region so Wintab
@@ -258,11 +282,20 @@ internal abstract class WintabSessionBase : IPenSession
                 Buttons: pkt.pkButtons,
                 Cursor: pkt.pkCursor,
                 // lcPktData asks for PK_PKTBITS_ALL, so pkTime is filled in on every packet.
-                // Wintab calls it milliseconds and says nothing about its origin, and neither
-                // that nor its real granularity has been measured -- Wintab ignores synthetic
-                // pen injection, so it takes a tablet.
+                // Wintab calls it milliseconds and documents no origin, but one was measured on
+                // 13 Sep 2026: it is the GetTickCount64 epoch. Over 6217 packets spanning 41.7s
+                // and a deliberate pause, pkTime advanced 41703ms against 41703ms of wall clock,
+                // with the offset between the two staying inside a 40ms band.
+                //
+                // So this anchors rather than detecting a backward jump. Anchoring is stateless:
+                // it recovers the wrap from the reading itself, so a wrap that happened while
+                // the session was stopped, or across a gap where the capture region discarded
+                // every packet, comes back correct. Detection could not see either.
+                //
+                // See WintabEpochProbe, and testdata/wintab-epoch-probe.csv for the readings.
                 Source: Api,
-                TimestampMicroseconds: _clock.Next(pkt.pkTime)));
+                TimestampMicroseconds: PenTimestamp.FromSystemTicks(
+                    pkt.pkTime, Environment.TickCount64)));
 
             _hasNewData = true;
         }

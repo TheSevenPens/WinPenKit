@@ -151,6 +151,28 @@ public sealed class MainForm : Form
                 Console.Error.WriteLine($"[record] {written} points -> {_recordPath}");
             }
 
+            if (_epochPath != null)
+            {
+                using var w = new StreamWriter(_epochPath);
+                w.WriteLine("WINTAB EPOCH PROBE");
+                w.WriteLine($"[INFO] session                {_session?.GetType().Name ?? "none"}");
+                if (_epochSampler == null)
+                {
+                    w.WriteLine("[SKIP] wintab/attached         not a Wintab session; pkTime does not exist here");
+                }
+                else
+                {
+                    _epochSampler.Report(w);
+
+                    // Beside the report, named after it. The readings cost a person and a tablet
+                    // to obtain, so an error in the analysis should not cost them again.
+                    string dump = Path.ChangeExtension(_epochPath, ".csv");
+                    using var d = new StreamWriter(dump);
+                    _epochSampler.Dump(d);
+                    w.WriteLine($"[INFO] raw readings            {dump}");
+                }
+            }
+
             _renderTimer.Stop();
             _session?.Stop();
             _session?.Dispose();
@@ -430,6 +452,22 @@ public sealed class MainForm : Form
         _recorder = new StrokeRecorder();
     }
 
+    /// <summary>
+    /// Collect raw Wintab <c>pkTime</c> against the system clock, and write the verdict to
+    /// <paramref name="path"/> when the window closes.
+    /// </summary>
+    /// <remarks>
+    /// This sample hosts the probe because it owns a window. Wintab delivers packets to the
+    /// foreground application, so a console host collects nothing -- it has no window to hold
+    /// the foreground, and pen contact gives the foreground to whatever is under the pen.
+    /// Drawing in a real window is the whole fix. Pick a Wintab entry in the dropdown: on any
+    /// other backend there is no pkTime and the report says so instead of guessing.
+    /// </remarks>
+    internal void ProbeEpochTo(string path) => _epochPath = path;
+
+    private string? _epochPath;
+    private WintabEpochSampler? _epochSampler;
+
     private void StartSession()
     {
         if (_starting) return; // Prevent re-entrant calls from combo events.
@@ -468,6 +506,12 @@ public sealed class MainForm : Form
             // Described at start, not at save: this sample switches pen API while a recording
             // is running, and the header has to name the session the points came from.
             _recorder?.Describe(_session.GetType().Name, _session.MaxPressure, _session.Conventions.Timestamp);
+
+            // Re-attached per session, not once at startup: this sample switches pen API while
+            // running, and a sampler bound to a disposed session collects nothing while looking
+            // like it is working.
+            if (_epochPath != null)
+                _epochSampler = WintabEpochSampler.TryAttach(_session);
 
             Text = "Scribble WinForms - WinPenKit";
             _renderTimer.Start();
