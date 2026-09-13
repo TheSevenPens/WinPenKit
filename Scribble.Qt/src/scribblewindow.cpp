@@ -148,6 +148,15 @@ void CanvasWidget::drawSegment(const QPointF& fromPx, const QPointF& toPx, doubl
 ///
 /// The same arithmetic as WinPenKit's PenTimestamp.FromSystemTicks. Duplicated rather than
 /// shared because this sample links no WinPenKit header, which is the point of it.
+///
+/// Resolution, measured on a Wacom DTH246 on 13 Sep 2026: 15.6ms, the coarsest of the seven
+/// samples. Across 809 gaps in one stroke the smallest is 15ms -- 504 of 16ms, 303 of 15ms --
+/// and nothing finer occurs.
+///
+/// So 2280 points carried 810 distinct timestamps. That is not WPF's batching: this handler
+/// records one point per event, and QTabletEvent is a QSinglePointEvent, so all 2280 are
+/// separate events. They repeat because the clock advances on the timer tick while the tablet
+/// reports at 180 Hz. Recorded in testdata/qt-hardware-stroke.csv.
 static int64_t anchorToSystemTicks(quint64 rawMs) {
     constexpr int64_t range = 1LL << 32;
     const int64_t raw = static_cast<int64_t>(rawMs);

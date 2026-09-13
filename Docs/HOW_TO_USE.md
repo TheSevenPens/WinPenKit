@@ -171,13 +171,14 @@ unstated, every backend counts from somewhere different, and no two of them are 
 | unit | **yes** | microseconds on every backend, always |
 | contract | **yes** | subtract two, get elapsed microseconds; never decreasing within a session |
 | wrapping | **yes** | handled in the session, not left to the caller — see below |
-| **resolution** | **no** | 1 ms on five backends including Wintab, 15.6 ms on WPF |
-| **one timestamp per point** | **no** | WPF stamps events, so a batch of points shares one |
+| **resolution** | **no** | 1 µs on WM_POINTER and WinUI; 1 ms on Wintab, Avalonia and WPF; 15.6 ms on Qt |
+| **one timestamp per point** | **no** | on WPF a batch shares one; on Qt a coarse clock repeats one |
 
 The last two rows reach your code. A velocity or smoothing routine tuned against WM_POINTER
-will meet **zero deltas** on WPF, and not occasionally: in a measured run, 196 points carried 6
-distinct timestamps. Guard the division. A zero difference means two points the backend could
-not separate in time, which is not a claim that no time passed.
+will meet **zero deltas** on WPF and Qt, and not occasionally: drawn on by hand, 2442 WPF points
+carried 885 distinct timestamps and 2280 Qt points carried 810 — about three points to a value,
+the whole stroke through. Guard the division. A zero difference means two points the backend
+could not separate in time, which is not a claim that no time passed.
 
 ### The exact shape of the value
 
@@ -227,21 +228,21 @@ than the thing it names.
 
 ### Measured resolution, and why injection could not measure it
 
-Three backends have now been measured on a Wacom DTH246 by hand. **Two of them overturned the
-figure synthetic injection had produced**, in the same direction and for the same reason.
+Five backends have now been measured on a Wacom DTH246 by hand. **Three of the five overturned
+the figure synthetic injection had produced.** Only Avalonia is still an injected number.
 
 | backend | source | points | distinct timestamps | step |
 | --- | --- | --- | --- | --- |
 | **WM_POINTER (WinForms)** | **hardware** | **2070** | **2070** | **1 µs** |
 | **WinUI 3** | **hardware** | **1878** | **1878** | **1 µs** |
 | **Wintab (high-res)** | **hardware** | **1683** | **1683** | **1 ms** |
+| **WPF Stylus** | **hardware** | **2442** | **885** | **1 ms clock, 15.6 ms batches** |
+| **Qt (`Scribble.Qt`, not WinPenKit)** | **hardware** | **2280** | **810** | **15.6 ms** |
 | Avalonia | injection | 172 | 113 | 1 ms |
-| WPF | injection | 196 | **6** | 15.6 ms, in 6 events |
-| Qt (`Scribble.Qt`, not WinPenKit) | injection | 127 | **10** | **15.6 ms** |
 
-The injected rows are still upper bounds. Two of the three that have since been drawn on turned
-out to be a thousand times finer than injection suggested, so treat the remaining three as
-"no better than", not as measurements.
+Read the Avalonia row as "no better than", not as a measurement. Three of the five that have
+since been drawn on came back different, so an injected figure has now been wrong more often
+than it has been right.
 
 The Wintab row is the only one measured on real hardware — a Wacom DTH246 over the hi-res
 digitizer context, 13 Sep 2026 — and it is the best of the set by a wide margin. **Every one of
@@ -254,9 +255,17 @@ It is also the one row synthetic injection did not shape, because Wintab ignores
 entirely. Recorded in `testdata/winuinative-wintab-hires-stroke.csv`.
 
 Qt is in the table because `Scribble.Qt` exists to be compared against, not because WinPenKit
-produces it. Its gaps were 15, 16, 16, 47, 63, 93, 109, 563 and 750 ms — every one a multiple
-of 15.625 ms to within 0.75 ms across a 750 ms span. `QInputEvent::timestamp` is as coarse as
-WPF's clock, which is worth knowing before treating Qt as the reference implementation.
+produces it. It is the one backend whose injected figure survived contact with hardware: across
+809 gaps the **smallest is 15 ms**, with 504 of 16 ms and 303 of 15 ms. Nothing finer occurs at
+all. `QInputEvent::timestamp` is the coarsest clock in the table, which is worth knowing before
+treating Qt as the reference implementation.
+
+**A greatest common divisor is evidence of resolution only when the smallest gap is near it.**
+The Qt recording has a gcd of 1000 µs and no gap under 15 ms, because `gcd(15000, 16000)` is
+1000: alternating between the two ticks of a 15.625 ms timer produces that number
+arithmetically, out of nothing. On the WM_POINTER and WinUI recordings the same statistic meant
+something, because gaps that small genuinely occurred. Quote the minimum alongside the gcd, or
+the statistic will manufacture a resolution the clock does not have.
 
 **Injection was setting the floor it appeared to measure, and this is the proof.**
 
@@ -276,19 +285,36 @@ own events, so a backend cannot be shown to resolve finer than the thing feeding
 measurement taken through it can only ever bound a clock from above. Recorded in
 `testdata/wmpointer-hardware-stroke.csv` and `testdata/winui-hardware-stroke.csv`.
 
-One thing all three hardware rows agree on: gaps averaging **5559 µs**, a 180 Hz device, through
-three unrelated code paths — the native C ABI, WinForms, and WinUI.
+One thing all five hardware recordings agree on, and the reason to trust them: a **180 Hz**
+device. The three per-point backends read it directly, as gaps averaging 5559 µs. WPF and Qt
+cannot — their timestamps step by the timer tick — but dividing points by elapsed span gives
+180.1 Hz and 179.9 Hz. Five unrelated code paths: the native C ABI, WinForms, WinUI, WPF, and
+Qt's own stack.
 
-### WPF is different in kind, not degree
+### WPF is different in kind, not degree — and its clock was never the problem
 
 WPF's `StylusEventArgs` carries a whole `StylusPointCollection`, and the timestamp belongs to
-the **event**, not the point. Every point in a batch gets the same one. In the run above, 196
-points arrived in 6 events — one carrying 68 points — for **6 distinct timestamps across 196
-points**.
+the **event**, not the point. Every point in a batch gets the same one. Drawn on by hand: 2442
+points, **885 distinct timestamps**, two to four points per value and three most of the time.
 
-The clock's 15.6 ms granularity is the smaller of the two effects, and the one that would
-disappear on a finer clock. The batching would not. WPF exposes no per-point time at all, so
+The hardware recording separates two things this page used to run together. **The clock is a
+millisecond clock.** Sixteen gaps of exactly 1000 µs appear, spread through the stroke rather
+than bunched at its start, so `StylusEventArgs.Timestamp` does express a millisecond when it is
+given the chance. What steps by 15.6 ms is the **delivery** — 531 gaps of 16 ms and 329 of 15 ms,
+which is the Windows timer tick, not a property of the clock. The old 15.6 ms figure described
+the batch cadence and was attributed to the clock.
+
+That distinction matters because it says which effect a better clock would remove: none of it.
+The batching is the whole of what reaches a caller, and WPF exposes no per-point time at all, so
 this is a ceiling of the framework rather than a choice made here.
+
+Qt reaches a similar-looking number — 2280 points, 810 timestamps — by the opposite route, and
+the two should not be run together. `QTabletEvent` is a `QSinglePointEvent`, so those 2280
+points are 2280 separate events, each with its own timestamp. They repeat because the *clock*
+only advances on the 15.6 ms timer tick. WPF has a fine clock and coarse delivery; Qt has fine
+delivery and a coarse clock. A finer clock would fix Qt and would do nothing for WPF.
+
+Recorded in `testdata/wpf-hardware-stroke.csv` and `testdata/qt-hardware-stroke.csv`.
 
 ### Two more things worth stating
 
@@ -325,8 +351,9 @@ difference over many points is the closest you get to the true offset. Measured 
 in one run was 0.372 ms to 26.6 ms, the largest on the first point after startup — calibrating
 on a single sample would have been 26 ms out.
 
-Recalibrate per session. The offset is not valid across a backend switch, and on WPF the
-calibration is no better than the 15.6 ms clock it is reading.
+Recalibrate per session. The offset is not valid across a backend switch. On WPF the clock
+being read is a millisecond clock, so the calibration is bounded by that rather than by the
+15.6 ms delivery cadence; on Qt the 15.6 ms *is* the clock, and no calibration beats it.
 
 
 Wintab's `pkTime` is requested on every packet — `lcPktData` is `PK_PKTBITS_ALL` — and Wintab

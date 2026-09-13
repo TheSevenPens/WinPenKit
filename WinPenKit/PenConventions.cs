@@ -79,8 +79,12 @@ public enum PenCursorNumbering
 /// with a fixed sub-millisecond offset; the offset was the injector's</description></item>
 /// <item><term>Avalonia</term><description>1 ms. 172 points carried 113 distinct values,
 /// stepping by 1 ms</description></item>
-/// <item><term>WPF</term><description>about 15.6 ms, and that is the smaller problem. See
+/// <item><term>WPF</term><description><b>1 ms clock, 15.6 ms batches, on hardware.</b> 2442
+/// points carried 885 distinct timestamps. The clock is not the problem and never was; see
 /// <see cref="SystemTicks"/></description></item>
+/// <item><term>Qt (<c>Scribble.Qt</c>, not WinPenKit)</term><description><b>15.6 ms, on
+/// hardware.</b> The one injected figure that survived contact with a tablet: across 809 gaps
+/// the smallest is 15 ms</description></item>
 /// <item><term>Wintab</term><description>not established; see
 /// <see cref="DeviceTicks"/></description></item>
 /// </list>
@@ -88,8 +92,9 @@ public enum PenCursorNumbering
 /// caution but an observed fact. <c>InjectSyntheticPointerInput</c> stamps its own events, so a
 /// backend cannot be shown to resolve finer than the thing feeding it. WM_POINTER and WinUI
 /// both measured 1 ms through it and both turned out to be a thousand times finer when drawn on
-/// by hand. The Avalonia, WPF and Qt rows are still injection figures: read them as "no better
-/// than", not as measurements.</para>
+/// by hand; WPF's clock turned out to be 15 times finer than its batch cadence had suggested.
+/// Only the Avalonia row is still an injected figure: read it as "no better than", not as a
+/// measurement.</para>
 /// </remarks>
 public enum PenTimestampSource
 {
@@ -124,10 +129,13 @@ public enum PenTimestampSource
     /// timestamp: 172 Avalonia points carried 113 distinct values.</para>
     /// <para><b>WPF does not.</b> <c>StylusEventArgs</c> carries a whole
     /// <c>StylusPointCollection</c> and the timestamp belongs to the event, so every point in
-    /// the batch gets the same one. Measured in the same run: 196 points arrived in 6 events,
-    /// one of them carrying 68 points, giving <b>6 distinct timestamps for 196 points</b>. The
-    /// clock's 15.6 ms granularity is the smaller of the two effects and the one that would go
-    /// away on a finer clock; the batching would not.</para>
+    /// the batch gets the same one. Drawn on by hand: 2442 points, <b>885 distinct
+    /// timestamps</b>, about three points to a value.</para>
+    /// <para>The clock itself is a millisecond clock and was never the limitation. Sixteen gaps
+    /// of exactly 1000 µs appear in that recording, spread through the stroke, so the field does
+    /// express a millisecond. What steps by 15.6 ms is the delivery -- the Windows timer tick --
+    /// which a finer clock would not change. Earlier documentation called 15.6 ms the clock's
+    /// granularity; it was the batch cadence.</para>
     /// <para>WPF exposes no per-point time, so this is a ceiling of the framework rather than
     /// a choice made here. Anything that needs per-point timing -- velocity, time-based
     /// smoothing -- has to treat a WPF batch as points sharing one instant, or interpolate
