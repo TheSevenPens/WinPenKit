@@ -1012,7 +1012,28 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
             }
         }
 
-        // Last: this one moves the window and puts it back.
+        // Last two, in this order: one measures what is on the screen, the other moves the
+        // window. Measuring first means the window has not just been moved back.
+        //
+        // Three steps, the same as the managed samples: draw the markers into the canvas,
+        // present a frame, then let the probe find them. The canvas is cleared first so
+        // nothing already on it can be mistaken for a marker, and the markers are left in
+        // place -- the process exits as soon as the report is emitted.
+        if (g_bitmap_dc) {
+            selftest::PresentationProbe probe(g_width, g_height);
+
+            RECT all{0, 0, g_width, g_height};
+            FillRect(g_bitmap_dc, &all, (HBRUSH)GetStockObject(WHITE_BRUSH));
+            probe.draw(g_bitmap_dc);
+
+            InvalidateRect(hwnd, nullptr, FALSE);
+            UpdateWindow(hwnd);
+
+            probe.measure(r, hwnd);
+        } else {
+            r.skip("L1.presentation-sampling", "no drawing surface");
+        }
+
         r.check_origin_tracks_window(hwnd, desktop_to_canvas, 1.0);
 
         int code = r.emit();

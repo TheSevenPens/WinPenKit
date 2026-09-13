@@ -472,3 +472,291 @@ unsafe extern "system" {
                     x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
     fn IsZoomed(hwnd: *mut c_void) -> i32;
 }
+
+// ── Presentation sampling ───────────────────────────────────────
+//
+// `check_presentation_1to1` compares the host's size against the surface's pixel count. Both
+// can be right while the framework draws part of the surface across the whole host. That was
+// issue 70 in the Avalonia sample: a 2700px bitmap, a host covering 2700 device pixels, and
+// the top-left 1200x600 pixels stretched across them. Strokes landed 2.25 times too far from
+// the canvas origin, and the check passed before the fix and after it.
+//
+// This measures pixels instead. Two markers a known distance apart in the surface must land
+// that same distance apart on the screen. Being a ratio of two distances, it needs neither the
+// canvas origin nor the display scale -- both cancel.
+
+/// One marker the application draws into its surface. Coordinates are surface pixels.
+#[derive(Clone, Copy)]
+pub struct PresentationMarker {
+    pub x: u32,
+    pub y: u32,
+    pub size: u32,
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
+impl PresentationMarker {
+    fn centre_x(&self) -> f64 { self.x as f64 + self.size as f64 / 2.0 }
+    fn centre_y(&self) -> f64 { self.y as f64 + self.size as f64 / 2.0 }
+}
+
+/// What `poll` decided, once it has decided anything.
+pub struct PresentationOutcome {
+    pub pass: bool,
+    pub detail: String,
+}
+
+/// Measures the rate the surface is sampled at, one frame at a time.
+///
+/// Polled rather than blocking, because this sample lives inside egui's frame loop: the frame
+/// carrying the markers is drawn by the same loop that would have to wait for it. The managed
+/// samples await for the same reason and the C++ one pumps its message queue; all three are
+/// the same three steps -- draw the markers, present, then look for them.
+pub struct PresentationProbe {
+    first: PresentationMarker,
+    second: PresentationMarker,
+    surface_w: u32,
+    surface_h: u32,
+    prev: Option<(f64, f64)>,
+    attempts: u32,
+    deadline: std::time::Instant,
+}
+
+impl PresentationProbe {
+    /// Markers at 8% and 33% along both axes. A quarter of the surface separates them, which
+    /// is a long enough baseline that centroid noise is nowhere near the tolerance, and close
+    /// enough to the origin that both still land inside the host when the surface is magnified
+    /// up to about 3x -- so a magnified surface reports its factor rather than "not found".
+    pub fn new(surface_w: u32, surface_h: u32) -> Self {
+        let size = (surface_w.min(surface_h) / 40).max(12);
+        Self {
+            first: PresentationMarker {
+                x: (surface_w as f64 * 0.08) as u32,
+                y: (surface_h as f64 * 0.08) as u32,
+                size, r: 255, g: 0, b: 255,
+            },
+            second: PresentationMarker {
+                x: (surface_w as f64 * 0.33) as u32,
+                y: (surface_h as f64 * 0.33) as u32,
+                size, r: 0, g: 255, b: 255,
+            },
+            surface_w,
+            surface_h,
+            prev: None,
+            attempts: 0,
+            deadline: std::time::Instant::now() + std::time::Duration::from_secs(5),
+        }
+    }
+
+    /// The two markers, for the application to draw into its own surface.
+    pub fn markers(&self) -> [PresentationMarker; 2] {
+        [self.first, self.second]
+    }
+
+    /// Captures the window and looks for the markers. `None` means keep polling; request
+    /// another repaint and call again next frame.
+    pub fn poll(&mut self, hwnd: *mut c_void) -> Option<PresentationOutcome> {
+        if hwnd.is_null() {
+            return Some(PresentationOutcome {
+                pass: false,
+                detail: "could not run: no window handle".to_string(),
+            });
+        }
+
+        let want_dx = self.second.centre_x() - self.first.centre_x();
+        let want_dy = self.second.centre_y() - self.first.centre_y();
+        if want_dx < 1.0 || want_dy < 1.0 {
+            return Some(PresentationOutcome {
+                pass: false,
+                detail: format!("could not run: surface {}x{} is too small to place markers in",
+                                self.surface_w, self.surface_h),
+            });
+        }
+
+        self.attempts += 1;
+        let shot = capture_window(hwnd);
+        let (a, b) = match &shot {
+            Some(s) => (find_colour(s, self.first.r, self.first.g, self.first.b),
+                        find_colour(s, self.second.r, self.second.g, self.second.b)),
+            None => (None, None),
+        };
+
+        let (found_a, found_b) = (a.is_some(), b.is_some());
+
+        if let (Some(a), Some(b)) = (&a, &b) {
+            // Both markers visible is not enough. Windows animates a window open by
+            // compositing it scaled up to its final size, so a capture taken during that
+            // reads a few per cent small. Two consecutive readings that agree mean nothing is
+            // still moving, which is a property of the measurement rather than a guess about
+            // how long an animation lasts.
+            let dx = b.x - a.x;
+            let dy = b.y - a.y;
+            let settled = matches!(self.prev, Some((px, py))
+                                   if (dx - px).abs() < 0.5 && (dy - py).abs() < 0.5);
+            self.prev = Some((dx, dy));
+
+            if settled {
+                let rx = dx / want_dx;
+                let ry = dy / want_dy;
+
+                // One per cent. The markers are tens of pixels across and their centroids land
+                // well inside a pixel, so this sits far above the measurement's noise and far
+                // below any scaling error worth reporting: the smallest one seen in practice
+                // was 2.25x.
+                let pass = (rx - 1.0).abs() < 0.01 && (ry - 1.0).abs() < 0.01;
+                let drawn = self.first.size * self.first.size;
+                let mut detail = format!(
+                    "markers {:.0}x{:.0} surface px apart appeared {:.1}x{:.1} device px apart \
+                     (x {:.3}, y {:.3}; {}/{} px matched, {} drawn)",
+                    want_dx, want_dy, dx, dy, rx, ry, a.n, b.n, drawn);
+                if !pass {
+                    detail.push_str(&format!(
+                        "  <- the surface is sampled at {:.2}x horizontally and {:.2}x \
+                         vertically, so ink lands that far from where the pen was", rx, ry));
+                }
+                return Some(PresentationOutcome { pass, detail });
+            }
+        }
+
+        if std::time::Instant::now() < self.deadline {
+            return None;
+        }
+
+        // Which marker is missing says what went wrong. Nothing at all means nothing was drawn
+        // where this could see it. The near marker alone means the surface is magnified far
+        // enough to have carried the far one outside its host.
+        let why = match (found_a, found_b) {
+            (false, false) => "neither marker reached the screen  <- the window is hidden or \
+                               obscured, or no frame was presented",
+            (false, true) => "only the far marker reached the screen  <- unexpected; the near \
+                              marker sits closer to the surface origin and should always be in view",
+            (true, false) => "only the near marker reached the screen  <- the surface is \
+                              magnified enough to carry the far marker outside its host, by \
+                              more than about 3x",
+            (true, true) => "the window never stopped moving  <- it is still animating, \
+                             resizing, or being redrawn, and no reading can be trusted while \
+                             that is true",
+        };
+        Some(PresentationOutcome {
+            pass: false,
+            detail: format!("{} (after {} captures)", why, self.attempts),
+        })
+    }
+}
+
+struct Centroid {
+    x: f64,
+    y: f64,
+    n: u64,
+}
+
+struct Shot {
+    w: i32,
+    h: i32,
+    bgra: Vec<u8>,
+}
+
+/// The centroid of every pixel close to the given colour. `None` when too few match to be a
+/// marker rather than a stray blend along some edge.
+fn find_colour(s: &Shot, r: u8, g: u8, b: u8) -> Option<Centroid> {
+    const TOLERANCE: i32 = 48;
+    let (mut sum_x, mut sum_y, mut n) = (0i64, 0i64, 0u64);
+
+    for y in 0..s.h {
+        let row = (y as usize) * (s.w as usize) * 4;
+        for x in 0..s.w {
+            let i = row + (x as usize) * 4;
+            if (s.bgra[i + 2] as i32 - r as i32).abs() > TOLERANCE { continue; }
+            if (s.bgra[i + 1] as i32 - g as i32).abs() > TOLERANCE { continue; }
+            if (s.bgra[i] as i32 - b as i32).abs() > TOLERANCE { continue; }
+            sum_x += x as i64;
+            sum_y += y as i64;
+            n += 1;
+        }
+    }
+
+    if n < 16 { return None; }
+    Some(Centroid { x: sum_x as f64 / n as f64, y: sum_y as f64 / n as f64, n })
+}
+
+/// From the screen rather than by asking the window to redraw. What this check is about is
+/// what the compositor put on the display, and a second render is a different measurement
+/// wearing the same name.
+fn capture_window(hwnd: *mut c_void) -> Option<Shot> {
+    const SRCCOPY: u32 = 0x00CC_0020;
+    const CAPTUREBLT: u32 = 0x4000_0000;
+    const BI_RGB: u32 = 0;
+    const DIB_RGB_COLORS: u32 = 0;
+
+    let mut wr = Rect { left: 0, top: 0, right: 0, bottom: 0 };
+    if unsafe { GetWindowRect(hwnd, &mut wr) } == 0 { return None; }
+    let (w, h) = (wr.right - wr.left, wr.bottom - wr.top);
+    if w <= 0 || h <= 0 { return None; }
+
+    unsafe {
+        let screen = GetDC(std::ptr::null_mut());
+        if screen.is_null() { return None; }
+
+        let mem = CreateCompatibleDC(screen);
+        let mut out = None;
+
+        if !mem.is_null() {
+            let mut bi: BitmapInfoHeader = std::mem::zeroed();
+            bi.size = std::mem::size_of::<BitmapInfoHeader>() as u32;
+            bi.width = w;
+            bi.height = -h; // top-down, so row 0 is the top of the window
+            bi.planes = 1;
+            bi.bit_count = 32;
+            bi.compression = BI_RGB;
+
+            let mut bits: *mut c_void = std::ptr::null_mut();
+            let dib = CreateDIBSection(mem, &bi, DIB_RGB_COLORS, &mut bits,
+                                       std::ptr::null_mut(), 0);
+            if !dib.is_null() && !bits.is_null() {
+                let old = SelectObject(mem, dib);
+                if BitBlt(mem, 0, 0, w, h, screen, wr.left, wr.top, SRCCOPY | CAPTUREBLT) != 0 {
+                    let len = (w as usize) * (h as usize) * 4;
+                    let mut bgra = vec![0u8; len];
+                    std::ptr::copy_nonoverlapping(bits as *const u8, bgra.as_mut_ptr(), len);
+                    out = Some(Shot { w, h, bgra });
+                }
+                SelectObject(mem, old);
+            }
+            if !dib.is_null() { DeleteObject(dib); }
+            DeleteDC(mem);
+        }
+
+        ReleaseDC(std::ptr::null_mut(), screen);
+        out
+    }
+}
+
+#[repr(C)]
+struct BitmapInfoHeader {
+    size: u32,
+    width: i32,
+    height: i32,
+    planes: u16,
+    bit_count: u16,
+    compression: u32,
+    size_image: u32,
+    x_pels_per_meter: i32,
+    y_pels_per_meter: i32,
+    clr_used: u32,
+    clr_important: u32,
+}
+
+unsafe extern "system" {
+    fn GetDC(hwnd: *mut c_void) -> *mut c_void;
+    fn ReleaseDC(hwnd: *mut c_void, dc: *mut c_void) -> i32;
+    fn CreateCompatibleDC(dc: *mut c_void) -> *mut c_void;
+    fn CreateDIBSection(dc: *mut c_void, bmi: *const BitmapInfoHeader, usage: u32,
+                        bits: *mut *mut c_void, section: *mut c_void, offset: u32)
+                        -> *mut c_void;
+    fn SelectObject(dc: *mut c_void, obj: *mut c_void) -> *mut c_void;
+    fn DeleteObject(obj: *mut c_void) -> i32;
+    fn DeleteDC(dc: *mut c_void) -> i32;
+    fn BitBlt(dc: *mut c_void, x: i32, y: i32, cx: i32, cy: i32,
+              src: *mut c_void, x1: i32, y1: i32, rop: u32) -> i32;
+}

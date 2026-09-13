@@ -21,7 +21,10 @@
 #include <array>
 #include <fstream>
 #include <iomanip>
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -543,6 +546,267 @@ struct Recorder {
 
         return static_cast<int>(points.size());
     }
+};
+
+// ── Presentation sampling ───────────────────────────────────────
+//
+// check_presentation_1to1 above compares the host's size against the surface's pixel count.
+// Both can be right while the framework draws part of the surface across the whole host.
+// That was issue 70 in the Avalonia sample: a 2700px bitmap, a host covering 2700 device
+// pixels, and the top-left 1200x600 pixels stretched across them. Strokes landed 2.25 times
+// too far from the canvas origin, and the check passed before the fix and after it.
+//
+// This measures pixels instead. Two markers a known distance apart in the surface must land
+// that same distance apart on the screen. Being a ratio of two distances, it needs neither
+// the canvas origin nor the display scale -- both cancel.
+//
+// The same measurement as WinPenKit.Diagnostics.PresentationProbe, reimplemented for the same
+// reason the rest of this header is: the native sample has no managed runtime under it. The
+// check id and the line format match, so one script reads all six samples.
+//
+// This sample presents with BitBlt and no stretch, so a failure here would mean Windows
+// itself scaled the window. Worth having anyway: the check that cannot fail today is the one
+// that catches the change that makes it possible.
+
+struct PresentationMarker {
+    int x, y, size;
+    BYTE r, g, b;
+
+    double centre_x() const { return x + size / 2.0; }
+    double centre_y() const { return y + size / 2.0; }
+};
+
+class PresentationProbe {
+public:
+    // Markers at 8% and 33% along both axes. A quarter of the surface separates them, which
+    // is a long enough baseline that centroid noise is nowhere near the tolerance, and close
+    // enough to the origin that both still land inside the host when the surface is magnified
+    // up to about 3x -- so a magnified surface reports its factor rather than "not found".
+    PresentationProbe(int surface_w, int surface_h)
+        : surface_w_(surface_w), surface_h_(surface_h) {
+        int size = (std::min)(surface_w, surface_h) / 40;
+        if (size < 12) size = 12;
+
+        first_  = {int(surface_w * 0.08), int(surface_h * 0.08), size, 255, 0, 255};
+        second_ = {int(surface_w * 0.33), int(surface_h * 0.33), size, 0, 255, 255};
+    }
+
+    const PresentationMarker& first() const { return first_; }
+    const PresentationMarker& second() const { return second_; }
+
+    // Fills both markers into a device context. The caller presents afterwards.
+    void draw(HDC dc) const {
+        fill(dc, first_);
+        fill(dc, second_);
+    }
+
+    // Watches the window until both markers appear and two consecutive readings agree, then
+    // records L1.presentation-sampling.
+    //
+    // Pumps the message queue between captures rather than returning to the caller's loop.
+    // The managed samples await instead; this one runs its checks before the message loop
+    // exists, so the pump has to live here. Either way the window keeps painting, which is
+    // the part that matters.
+    void measure(Report& rep, HWND hwnd, int timeout_ms = 5000) const {
+        const char* id = "L1.presentation-sampling";
+
+        if (!hwnd) { rep.skip(id, "no window handle"); return; }
+
+        double want_dx = second_.centre_x() - first_.centre_x();
+        double want_dy = second_.centre_y() - first_.centre_y();
+        if (want_dx < 1 || want_dy < 1) {
+            char b[128];
+            _snprintf_s(b, sizeof(b), _TRUNCATE,
+                "surface %dx%d is too small to place markers in", surface_w_, surface_h_);
+            rep.skip(id, b);
+            return;
+        }
+
+        Shot shot;
+        Centroid a{}, b{};
+        bool have_a = false, have_b = false, settled = false;
+        double prev_dx = 1e30, prev_dy = 1e30;
+        int attempts = 0;
+
+        DWORD deadline = GetTickCount() + DWORD(timeout_ms);
+        while (GetTickCount() < deadline) {
+            attempts++;
+            if (capture(hwnd, shot)) {
+                have_a = find(shot, first_.r, first_.g, first_.b, a);
+                have_b = find(shot, second_.r, second_.g, second_.b, b);
+
+                if (have_a && have_b) {
+                    // Both markers visible is not enough. Windows animates a window open by
+                    // compositing it scaled up to its final size, so a capture taken during
+                    // that reads a few per cent small. Two consecutive readings that agree
+                    // mean nothing is still moving, which is a property of the measurement
+                    // rather than a guess about how long an animation lasts.
+                    double dx = b.x - a.x, dy = b.y - a.y;
+                    if (std::fabs(dx - prev_dx) < 0.5 && std::fabs(dy - prev_dy) < 0.5) {
+                        settled = true;
+                        break;
+                    }
+                    prev_dx = dx; prev_dy = dy;
+                }
+            }
+            pump();
+            Sleep(50);
+        }
+
+        char buf[512];
+        if (!have_a || !have_b) {
+            // Which one is missing says what went wrong. Nothing at all means nothing was
+            // drawn where this could see it. The near marker alone means the surface is
+            // magnified far enough to have carried the far one outside its host.
+            const char* why =
+                (!have_a && !have_b)
+                    ? "neither marker reached the screen  <- the window is hidden or obscured,"
+                      " or no frame was presented"
+                    : !have_a
+                        ? "only the far marker reached the screen  <- unexpected; the near"
+                          " marker sits closer to the surface origin and should always be in view"
+                        : "only the near marker reached the screen  <- the surface is magnified"
+                          " enough to carry the far marker outside its host, by more than about 3x";
+            _snprintf_s(buf, sizeof(buf), _TRUNCATE, "%s (after %d captures)", why, attempts);
+            rep.check(id, false, buf);
+            return;
+        }
+
+        if (!settled) {
+            _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                "the window never stopped moving after %d captures  <- it is still animating,"
+                " resizing, or being redrawn, and no reading can be trusted while that is true",
+                attempts);
+            rep.check(id, false, buf);
+            return;
+        }
+
+        double got_dx = b.x - a.x, got_dy = b.y - a.y;
+        double rx = got_dx / want_dx, ry = got_dy / want_dy;
+
+        // One per cent. The markers are tens of pixels across and their centroids land well
+        // inside a pixel, so this sits far above the measurement's noise and far below any
+        // scaling error worth reporting: the smallest one seen in practice was 2.25x.
+        bool ok = std::fabs(rx - 1.0) < 0.01 && std::fabs(ry - 1.0) < 0.01;
+
+        if (ok) {
+            _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                "markers %.0fx%.0f surface px apart appeared %.1fx%.1f device px apart"
+                " (x %.3f, y %.3f; %lld/%lld px matched, %d drawn)",
+                want_dx, want_dy, got_dx, got_dy, rx, ry, a.n, b.n, first_.size * first_.size);
+        } else {
+            _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                "markers %.0fx%.0f surface px apart appeared %.1fx%.1f device px apart"
+                " (x %.3f, y %.3f; %lld/%lld px matched, %d drawn)"
+                "  <- the surface is sampled at %.2fx horizontally and %.2fx vertically, so"
+                " ink lands that far from where the pen was",
+                want_dx, want_dy, got_dx, got_dy, rx, ry, a.n, b.n,
+                first_.size * first_.size, rx, ry);
+        }
+        rep.check(id, ok, buf);
+    }
+
+private:
+    struct Shot {
+        int w = 0, h = 0;
+        std::vector<BYTE> bgra;
+    };
+
+    struct Centroid {
+        double x = 0, y = 0;
+        long long n = 0;
+    };
+
+    static void fill(HDC dc, const PresentationMarker& m) {
+        HBRUSH brush = CreateSolidBrush(RGB(m.r, m.g, m.b));
+        RECT rc{m.x, m.y, m.x + m.size, m.y + m.size};
+        FillRect(dc, &rc, brush);
+        DeleteObject(brush);
+    }
+
+    // Lets the window finish painting and finish any open animation. Without this the loop
+    // below captures the same stale frame until it times out.
+    static void pump() {
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+
+    // From the screen rather than through PrintWindow. PrintWindow asks the window to render
+    // again into a device context, and what this check is about is what the compositor put on
+    // the display -- a second render is a different measurement wearing the same name.
+    static bool capture(HWND hwnd, Shot& out) {
+        RECT wr{};
+        if (!GetWindowRect(hwnd, &wr)) return false;
+        int w = wr.right - wr.left, h = wr.bottom - wr.top;
+        if (w <= 0 || h <= 0) return false;
+
+        HDC screen = GetDC(nullptr);
+        if (!screen) return false;
+
+        bool ok = false;
+        HDC mem = CreateCompatibleDC(screen);
+        HBITMAP dib = nullptr;
+        HGDIOBJ old = nullptr;
+        void* bits = nullptr;
+
+        if (mem) {
+            BITMAPINFO bi{};
+            bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+            bi.bmiHeader.biWidth = w;
+            bi.bmiHeader.biHeight = -h;      // top-down, so row 0 is the top of the window
+            bi.bmiHeader.biPlanes = 1;
+            bi.bmiHeader.biBitCount = 32;
+            bi.bmiHeader.biCompression = BI_RGB;
+
+            dib = CreateDIBSection(mem, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+            if (dib && bits) {
+                old = SelectObject(mem, dib);
+                if (BitBlt(mem, 0, 0, w, h, screen, wr.left, wr.top, SRCCOPY | CAPTUREBLT)) {
+                    out.w = w;
+                    out.h = h;
+                    out.bgra.resize(size_t(w) * h * 4);
+                    memcpy(out.bgra.data(), bits, out.bgra.size());
+                    ok = true;
+                }
+            }
+        }
+
+        if (old) SelectObject(mem, old);
+        if (dib) DeleteObject(dib);
+        if (mem) DeleteDC(mem);
+        ReleaseDC(nullptr, screen);
+        return ok;
+    }
+
+    // The centroid of every pixel close to the given colour. False when too few match to be a
+    // marker rather than a stray blend along some edge.
+    static bool find(const Shot& s, BYTE r, BYTE g, BYTE b, Centroid& out) {
+        const int tolerance = 48;
+        long long sum_x = 0, sum_y = 0, n = 0;
+
+        for (int y = 0; y < s.h; y++) {
+            const BYTE* row = s.bgra.data() + size_t(y) * s.w * 4;
+            for (int x = 0; x < s.w; x++) {
+                const BYTE* p = row + size_t(x) * 4;
+                if (std::abs(int(p[2]) - int(r)) > tolerance) continue;
+                if (std::abs(int(p[1]) - int(g)) > tolerance) continue;
+                if (std::abs(int(p[0]) - int(b)) > tolerance) continue;
+                sum_x += x; sum_y += y; n++;
+            }
+        }
+
+        if (n < 16) return false;
+        out.x = double(sum_x) / n;
+        out.y = double(sum_y) / n;
+        out.n = n;
+        return true;
+    }
+
+    int surface_w_, surface_h_;
+    PresentationMarker first_{}, second_{};
 };
 
 }  // namespace selftest

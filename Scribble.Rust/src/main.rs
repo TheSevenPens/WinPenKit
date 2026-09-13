@@ -54,6 +54,11 @@ struct ScribbleApp {
     // Set on the frame that nudges the window, read on the next one. egui reads the window
     // position once per frame, so the move and the measurement cannot share a frame.
     origin_probe: Option<((i32, i32), (f32, f32))>,
+    // Runs before the origin nudge, across as many frames as it needs: the markers have to
+    // reach the screen, and this loop is what draws them. Its verdict is held here until the
+    // report exists.
+    presentation_probe: Option<selftest::PresentationProbe>,
+    presentation_result: Option<selftest::PresentationOutcome>,
     replay_path: Option<String>,
     last_canvas_point: Option<(f32, f32)>,
     brush_size: f32,
@@ -97,6 +102,8 @@ impl ScribbleApp {
             selftest_frames: 0,
             replay_requested: false,
             origin_probe: None,
+            presentation_probe: None,
+            presentation_result: None,
             replay_path: None,
             last_canvas_point: None,
             brush_size: 6.0,
@@ -561,6 +568,46 @@ impl eframe::App for ScribbleApp {
                 && self.canvas_size[0] > 0
                 && (!self.hwnd.is_null() || self.selftest_frames > 60)
             {
+                // Before everything else, because it reads the screen and the origin check
+                // below moves the window. Three steps, the same as the other samples: draw the
+                // markers into the pixmap, present, then look for them -- however many frames
+                // that takes.
+                if self.presentation_result.is_none() {
+                    match &mut self.presentation_probe {
+                        None => {
+                            let probe = selftest::PresentationProbe::new(
+                                self.canvas_size[0] as u32, self.canvas_size[1] as u32);
+                            if let Some(pixmap) = &mut self.pixmap {
+                                // Cleared first so nothing already drawn can be mistaken for a
+                                // marker. Left in place afterwards: the process exits as soon
+                                // as the report is emitted.
+                                pixmap.fill(Color::from_rgba8(0xF0, 0xF0, 0xF0, 0xFF));
+                                for m in probe.markers() {
+                                    let mut paint = Paint::default();
+                                    paint.set_color_rgba8(m.r, m.g, m.b, 255);
+                                    paint.anti_alias = false;
+                                    if let Some(rect) = tiny_skia::Rect::from_xywh(
+                                        m.x as f32, m.y as f32, m.size as f32, m.size as f32)
+                                    {
+                                        pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+                                    }
+                                }
+                                self.needs_texture_update = true;
+                            }
+                            self.presentation_probe = Some(probe);
+                            ctx.request_repaint();
+                            return;
+                        }
+                        Some(probe) => match probe.poll(self.hwnd) {
+                            None => {
+                                ctx.request_repaint();
+                                return;
+                            }
+                            Some(outcome) => self.presentation_result = Some(outcome),
+                        },
+                    }
+                }
+
                 // One frame before the checks: nudge the window, and come back next frame to
                 // see whether the canvas origin moved with it. Odd numbers, so a conversion
                 // that happens to quantize cannot match by luck.
@@ -627,6 +674,13 @@ impl eframe::App for ScribbleApp {
                             }
                         }
                     }
+                }
+
+                if let Some(outcome) = self.presentation_result.take() {
+                    r.check("L1.presentation-sampling", outcome.pass, outcome.detail);
+                } else {
+                    r.check("L1.presentation-sampling", false,
+                            "could not run: no drawing surface".to_string());
                 }
 
                 // Last: the window was nudged a frame ago, so this reads what moved with it.
