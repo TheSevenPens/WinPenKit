@@ -224,10 +224,11 @@ public sealed class WinUiPointerSession : IPenSession
             Buttons: buttons,
             Cursor: cursor,
             Source: InputApi.WinUiPointer,
-            // Already microseconds, so no conversion. The unit overstates it: every reading
-            // in a run ends in the same sub-millisecond remainder -- 171us in one run, 622us in
-            // another -- so the value moves in whole milliseconds and the tail is a per-run
-            // constant.
+            // Already microseconds, so no conversion -- and the unit is earned. Drawn on by
+            // hand: 1878 points, 1878 distinct timestamps, gaps whose greatest common divisor
+            // is 1us. Under synthetic injection every reading ended in the same sub-millisecond
+            // remainder, which reads as a millisecond clock with a fixed offset; the offset
+            // belonged to the injector.
             //
             // Not anchored the way the millisecond backends are. Anchoring needs the source's
             // width, and whether this microsecond value comes from a 32-bit millisecond clock

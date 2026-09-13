@@ -276,10 +276,10 @@ internal sealed class WmPointerSession : IPenSession
             // GetTickCount epoch and PerformanceCount is QPC, and they were measured 27.08ms
             // apart on this machine, so they are not two readings of one clock.
             //
-            // PerformanceCount is counted in finer units -- 100ns ticks against whole
-            // milliseconds -- which is not the same as carrying finer values. Under synthetic
-            // injection it delivered exact millisecond multiples. The finer unit is the reason
-            // to prefer it, not evidence that it pays off.
+            // The finer unit pays off on real hardware: 2070 points, 2070 distinct timestamps,
+            // gaps whose greatest common divisor is 1us. Under synthetic injection the same
+            // field delivers exact millisecond multiples, because the injector stamps its own
+            // events -- so injection can only ever bound this clock from above.
             TimestampMicroseconds: PenTimestamp.FromPerformanceCount(
                 penInfo.pointerInfo.PerformanceCount)));
 

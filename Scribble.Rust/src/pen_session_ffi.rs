@@ -59,9 +59,11 @@ pub enum PenTimestampSource {
     /// No timestamp; the field is zero.
     #[default]
     None = 0,
-    /// `QueryPerformanceCounter`, divided down to microseconds. The counter ticks every
-    /// 100ns on a typical machine, which is its unit rather than the granularity of what
-    /// arrives in it: measured, every value was an exact millisecond multiple.
+    /// `QueryPerformanceCounter`, divided down to microseconds. The counter ticks every 100ns
+    /// on a typical machine and the field carries that fineness on real hardware: 2070 points,
+    /// 2070 distinct timestamps, gaps with a greatest common divisor of 1us. Synthetic
+    /// injection makes it look millisecond-granular, because the injector stamps its own
+    /// events.
     PerformanceCounter = 1,
     /// The millisecond counter `GetTickCount64` reads, multiplied up to microseconds.
     SystemTicks = 2,

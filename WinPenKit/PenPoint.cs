@@ -93,13 +93,12 @@ public readonly record struct PenPoint(
     /// report rate gives consecutive points the same value, so a difference of zero is a
     /// normal reading and any consumer dividing by one has to expect it. That is what sampling rate, velocity and any time-based smoothing
     /// actually need.</para>
-    /// <para>It is not a high-resolution clock. The unit is microseconds everywhere so that
-    /// arithmetic is uniform, and on every backend measured so far the value moves in whole
-    /// milliseconds -- WM_POINTER included, whose field is counted in 100ns QPC ticks and
-    /// still arrived as exact millisecond multiples. WPF is coarser again, giving a whole batch
-    /// of points one timestamp. <see cref="PenConventions.Timestamp"/> names the clock and
-    /// carries the measured resolution per backend, with the caveat that synthetic injection
-    /// may be setting the floor those measurements found.</para>
+    /// <para>How fine it actually is depends entirely on the backend, and the spread is four
+    /// orders of magnitude. Drawn on by hand, WM_POINTER and WinUI both resolve to the
+    /// <b>microsecond</b> and Wintab to the millisecond, each giving one distinct timestamp per
+    /// point. WPF is coarser in kind rather than degree: a whole batch of points shares one
+    /// timestamp. <see cref="PenConventions.Timestamp"/> names the clock and carries the
+    /// measured resolution per backend.</para>
     /// <para>Zero when <see cref="PenConventions.Timestamp"/> is
     /// <see cref="PenTimestampSource.None"/>. Zero is not a time; it means the backend
     /// supplied nothing. The session does not substitute its own clock, because that would
