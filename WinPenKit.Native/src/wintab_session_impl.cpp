@@ -428,6 +428,10 @@ void WintabSessionImpl::on_packet(WPARAM serial) {
     // managed binding says it too. Reporting the fallback here as well said the caller had
     // asked for something they had not.
     pt.source    = requested_digitizer_ ? PEN_API_WINTAB_DIGITIZER : PEN_API_WINTAB_SYSTEM;
+    // lcPktData asks for PK_PKTBITS_ALL, so pkTime is filled in on every packet. Wintab calls
+    // it milliseconds and says nothing about its origin; neither that nor its real granularity
+    // has been measured, because Wintab ignores synthetic pen input.
+    pt.timestamp_us = static_cast<int64_t>(pkt.pkTime) * 1000LL;
 
     {
         std::lock_guard<std::mutex> lock(points_mutex_);

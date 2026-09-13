@@ -128,6 +128,7 @@ Every `PenPoint` contains:
 | `Buttons` | `uint` | Button state, in one of two encodings named by `session.Conventions.Buttons`. Wintab: `(action << 16) \| buttonNumber`. Pointer backends: a flag bitmask, bit 0 barrel, bit 1 eraser. Read it through `PenButtonTracker`. |
 | `Cursor` | `uint` | Cursor type, numbered as `session.Conventions.Cursor` says. Pointer backends normalise to 13 tip / 14 eraser; Wintab passes the driver's own number through. |
 | `Source` | `InputApi` | Which backend produced this point. |
+| `TimestampMicroseconds` | `long` | When the point was produced. **Subtract two of these; do not read one.** The clock is named by `session.Conventions.Timestamp`. See below. |
 
 ### What `MaxPressure` is, and is not
 
@@ -154,6 +155,50 @@ Where the number comes from varies, and the number alone does not say which:
 
 See issue 94.
 
+### What `TimestampMicroseconds` is for
+
+Differences. Two of them subtracted give elapsed microseconds, which is what sampling rate,
+velocity and any time-based smoothing need. One on its own gives nothing: the origin is
+unstated, every backend counts from somewhere different, and no two of them are comparable.
+
+The unit is microseconds on every backend so that the arithmetic does not branch. That is
+finer than most of them measure, and the unit does not tell you which:
+
+| backend | clock (`Conventions.Timestamp`) | field | measured resolution |
+| --- | --- | --- | --- |
+| WM_POINTER, WinForms | `PerformanceCounter` | `POINTER_INFO.PerformanceCount` | 100 ns |
+| WinUI 3 | `SystemTicks` | `PointerPoint.Timestamp` | 1 ms |
+| Avalonia | `SystemTicks` | `PointerEventArgs.Timestamp` | 1 ms |
+| WPF | `SystemTicks` | `StylusEventArgs.Timestamp` | about 15.6 ms |
+| Wintab system, Wintab digitizer | `DeviceTicks` | `PACKET.pkTime` | **not established** |
+
+Measured on 12 Sep 2026, one machine, with synthetic pen input. What that run establishes is
+the unit, the epoch and the granularity of each clock. What it cannot establish is latency or
+sampling rate, because the gaps between injected points are the injection script's and not a
+device's.
+
+Three results are worth stating plainly, because each is a place where the declared type
+overstates what arrives:
+
+- **WinUI declares microseconds and delivers milliseconds.** Every reading ended in the same
+  171 µs, so the sub-millisecond digits are a fixed offset, not measurement.
+- **WPF repeats values.** Consecutive points came back with identical timestamps. A gap of
+  zero there means the clock could not tell two points apart, which is not the same claim as
+  two points arriving together.
+- **`dwTime` and `PerformanceCount` are not two readings of one clock.** Both are populated on
+  every `POINTER_INFO`. `dwTime` is milliseconds on the `GetTickCount64` epoch and
+  `PerformanceCount` is QPC; they sat 27.08 ms apart, identically, across every sample. These
+  backends use `PerformanceCount`, which is four orders of magnitude finer.
+
+Wintab's `pkTime` is requested on every packet — `lcPktData` is `PK_PKTBITS_ALL` — and Wintab
+documents it as milliseconds with no origin. Neither that origin nor its real granularity has
+been measured here, because Wintab ignores synthetic pen input and measuring it takes a
+tablet. Treat its differences as usable and everything else about it as unknown.
+
+Where `Conventions.Timestamp` is `None`, the field is zero. Zero is not a time; it means the
+backend supplied none. No session substitutes its own clock, which would measure when this
+library got round to reading the packet rather than when the pen moved.
+
 ### What `RawX/Y` holds
 
 Ask the session: `session.Conventions.RawUnits`.
@@ -179,6 +224,7 @@ var c = session.Conventions;
 c.RawUnits   // what RawX/Y are measured in, or None
 c.Buttons    // WintabEvent or PointerFlags
 c.Cursor     // Normalised or DeviceAssigned
+c.Timestamp  // which clock TimestampMicroseconds counts on, or None
 ```
 
 `PenCapabilities` answers a different question -- *supported or not*, like `Proximity` and `ZHeight`. `Conventions` answers *which convention*. Asking one flag to answer both is how a hi-res capability once survived a fallback that had turned hi-res off.

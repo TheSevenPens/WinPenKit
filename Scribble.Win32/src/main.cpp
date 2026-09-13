@@ -46,7 +46,18 @@ static std::string        g_record_path;
 // implementations of one API can disagree, and the API name does not say which is running.
 static PenConventions g_conventions = { PEN_RAW_NONE,
                                         PEN_BUTTONS_WINTAB_EVENT,
-                                        PEN_CURSOR_DEVICE_ASSIGNED };
+                                        PEN_CURSOR_DEVICE_ASSIGNED,
+                                        PEN_TS_NONE };
+
+// selftest.h declares its own copy of this enum so that Scribble.Qt can share the recorder
+// without including a WinPenKit header. Two declarations of one set of values drift silently,
+// and the recording header would then name the wrong clock. This file includes both, so it is
+// where that cannot happen.
+static_assert(static_cast<int>(selftest::TimestampSource::None) == PEN_TS_NONE);
+static_assert(static_cast<int>(selftest::TimestampSource::PerformanceCounter)
+              == PEN_TS_PERFORMANCE_COUNTER);
+static_assert(static_cast<int>(selftest::TimestampSource::SystemTicks) == PEN_TS_SYSTEM_TICKS);
+static_assert(static_cast<int>(selftest::TimestampSource::DeviceTicks) == PEN_TS_DEVICE_TICKS);
 
 // raw_x is a different quantity on each backend, so the readout carries its unit. Printing
 // the pair alone invited reading it as a position in the same space as Screen, which on
@@ -208,7 +219,8 @@ static void start_session() {
             case PEN_API_WM_POINTER:       api_name = "WmPointerSession (native)"; break;
             default:                       api_name = "unknown"; break;
         }
-        g_recorder.describe(api_name, g_max_pressure);
+        g_recorder.describe(api_name, g_max_pressure,
+                            static_cast<selftest::TimestampSource>(g_conventions.timestamp));
     }
     g_has_last = false;
     g_has_pen_data = false;
@@ -264,7 +276,7 @@ static void process_points(HWND hwnd) {
         if (pt.buttons != 0) g_last_raw_buttons = pt.buttons;
 
         if (!g_record_path.empty())
-            g_recorder.add(pt.desktop_x, pt.desktop_y, pt.pressure);
+            g_recorder.add(pt.desktop_x, pt.desktop_y, pt.pressure, pt.timestamp_us);
 
         // Converted by hand rather than through ScreenToClient, which takes a POINT and so
         // forces the position onto the whole-pixel grid on the way in. The client origin is

@@ -61,12 +61,68 @@ public enum PenCursorNumbering
 }
 
 /// <summary>
+/// Which clock <see cref="PenPoint.TimestampMicroseconds"/> is counted on.
+/// </summary>
+/// <remarks>
+/// <para>The timestamp itself is microseconds with no stated origin, so subtracting two of
+/// them is always valid and reading one on its own is not. This says where the number came
+/// from, for a diagnostician who needs to line pen points up against something else.</para>
+/// <para>Resolution is a separate question from clock, and the two do not follow each other.
+/// Measured on 12 Sep 2026, one machine, synthetic pen input:</para>
+/// <list type="table">
+/// <item><term>WM_POINTER, WinForms</term><description>100 ns, from
+/// <c>POINTER_INFO.PerformanceCount</c></description></item>
+/// <item><term>WinUI 3</term><description>1 ms. <c>PointerPoint.Timestamp</c> is declared in
+/// microseconds and every reading ended in the same 171 µs, so the sub-millisecond digits are
+/// a fixed offset rather than measurement</description></item>
+/// <item><term>Avalonia</term><description>1 ms</description></item>
+/// <item><term>WPF</term><description>about 15.6 ms -- consecutive points repeat a
+/// value</description></item>
+/// <item><term>Wintab</term><description>not established; see
+/// <see cref="DeviceTicks"/></description></item>
+/// </list>
+/// </remarks>
+public enum PenTimestampSource
+{
+    /// <summary>
+    /// The backend supplies no timestamp, and <see cref="PenPoint.TimestampMicroseconds"/> is
+    /// zero. Zero rather than the time the session read the packet, which measures this
+    /// library's own scheduling and not the pen. Same rule as
+    /// <see cref="PenRawUnits.None"/>.
+    /// </summary>
+    None,
+
+    /// <summary>
+    /// <c>QueryPerformanceCounter</c>, divided down to microseconds. Sub-microsecond at
+    /// source, and the only backend clock that resolves finer than a millisecond.
+    /// </summary>
+    PerformanceCounter,
+
+    /// <summary>
+    /// The millisecond counter <c>GetTickCount64</c> reads, multiplied up to microseconds.
+    /// Measured against that clock on the three managed frameworks and found to track it.
+    /// </summary>
+    SystemTicks,
+
+    /// <summary>
+    /// The driver's own millisecond counter, multiplied up to microseconds. Wintab's
+    /// <c>pkTime</c>.
+    /// </summary>
+    /// <remarks>
+    /// Its origin and its resolution were not measured -- Wintab does not respond to
+    /// synthetic pen injection, so establishing either needs a tablet. Treat deltas as usable
+    /// and everything else as unknown until that measurement exists.
+    /// </remarks>
+    DeviceTicks,
+}
+
+/// <summary>
 /// What a session's <see cref="PenPoint"/> values mean, for the fields whose meaning depends
 /// on which backend produced them.
 /// </summary>
 /// <remarks>
 /// <para><see cref="PenPoint"/> is this library's whole output, and a consumer holding one is
-/// supposed to know what it says. For three of its fields that depended on the backend, and
+/// supposed to know what it says. For four of its fields that depended on the backend, and
 /// nothing reported which convention was in force.</para>
 /// <para><see cref="IPenSession.MaxPressure"/> is the pattern this follows: a value whose
 /// scale varies, paired with a property naming the scale. It was simply never applied to
@@ -78,7 +134,8 @@ public enum PenCursorNumbering
 public readonly record struct PenConventions(
     PenRawUnits RawUnits,
     PenButtonEncoding Buttons,
-    PenCursorNumbering Cursor);
+    PenCursorNumbering Cursor,
+    PenTimestampSource Timestamp);
 
 /// <summary>
 /// One place for the short unit name a readout shows beside

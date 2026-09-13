@@ -170,7 +170,7 @@ That stroke is synthetic but shaped like a slow hand-drawn curve: ~1.6px samplin
 
 Two orders of magnitude between signal and noise, and the synthetic quantized figure lands within about a degree of what a tablet actually produced.
 
-`--replay <path>` takes a recording of your own — `desktopX,desktopY,pressure`, with `#` comments and a header line. That is how a stream captured from real hardware gets held to the same assertions.
+`--replay <path>` takes a recording of your own — `desktopX,desktopY,pressure,timeUs`, with `#` comments and a header line. The reader needs the first three columns and ignores any beyond them, so a recording made before the time column still replays. That is how a stream captured from real hardware gets held to the same assertions.
 
 ### Capturing one
 

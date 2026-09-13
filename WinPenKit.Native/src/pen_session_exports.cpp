@@ -156,6 +156,10 @@ void pen_session_destroy(PenSessionHandle handle) {
 
 // ── Output ──────────────────────────────────────────────────────
 
+int pen_session_get_point_size(void) {
+    return static_cast<int>(sizeof(PenPoint));
+}
+
 int pen_session_drain_points(PenSessionHandle handle, PenPoint* buffer, int max_points) {
     if (!handle || !buffer || max_points <= 0) return 0;
     auto* s = reinterpret_cast<PenSessionOpaque*>(handle);
@@ -249,6 +253,7 @@ void pen_session_get_conventions(PenSessionHandle handle, PenConventions* out) {
     out->raw_units = PEN_RAW_NONE;
     out->buttons   = PEN_BUTTONS_WINTAB_EVENT;
     out->cursor    = PEN_CURSOR_DEVICE_ASSIGNED;
+    out->timestamp = PEN_TS_NONE;
 
     if (!handle) return;
     auto* s = reinterpret_cast<PenSessionOpaque*>(handle);
@@ -259,8 +264,9 @@ void pen_session_get_conventions(PenSessionHandle handle, PenConventions* out) {
         out->raw_units = s->wintab->is_digitizer_mode()
             ? PEN_RAW_TABLET_NATIVE
             : PEN_RAW_SCREEN_PIXELS;
-        out->buttons = PEN_BUTTONS_WINTAB_EVENT;
-        out->cursor  = PEN_CURSOR_DEVICE_ASSIGNED;
+        out->buttons   = PEN_BUTTONS_WINTAB_EVENT;
+        out->cursor    = PEN_CURSOR_DEVICE_ASSIGNED;
+        out->timestamp = PEN_TS_DEVICE_TICKS;
         return;
     }
 
@@ -268,6 +274,7 @@ void pen_session_get_conventions(PenSessionHandle handle, PenConventions* out) {
         out->raw_units = PEN_RAW_HIMETRIC;
         out->buttons   = PEN_BUTTONS_POINTER_FLAGS;
         out->cursor    = PEN_CURSOR_NORMALISED;
+        out->timestamp = PEN_TS_PERFORMANCE_COUNTER;
     }
 }
 

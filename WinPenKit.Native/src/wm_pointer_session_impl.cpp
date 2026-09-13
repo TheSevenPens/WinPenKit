@@ -11,6 +11,29 @@
 
 namespace wintab {
 
+namespace {
+
+// POINTER_INFO.PerformanceCount is a QueryPerformanceCounter reading, in whatever ticks this
+// machine counts. PenPoint.timestamp_us is microseconds.
+//
+// Divided before multiplying rather than after. A 10 MHz counter passes 10^12 ticks within
+// days of uptime, and multiplying that by a million overflows a signed 64-bit value inside a
+// normal service life. Splitting the division costs one extra divide and is exact.
+//
+// The frequency is fixed for the life of the system, so it is read once.
+int64_t performance_count_to_us(uint64_t performance_count) {
+    static const int64_t freq = []() -> int64_t {
+        LARGE_INTEGER f{};
+        return QueryPerformanceFrequency(&f) ? f.QuadPart : 0;
+    }();
+    if (freq <= 0) return 0;
+    const int64_t ticks = static_cast<int64_t>(performance_count);
+    return (ticks / freq) * 1000000LL + (ticks % freq) * 1000000LL / freq;
+}
+
+} // namespace
+
+
 // ── Static availability check ────────────────────────────────────
 
 bool WmPointerSessionImpl::is_available() {
@@ -201,6 +224,10 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
                                ((pi.penFlags & PEN_FLAG_ERASER) ? 0x0002u : 0u);
                 pt.cursor    = (pi.penFlags & PEN_FLAG_INVERTED) ? 14 : 13;
                 pt.source    = PEN_API_WM_POINTER;
+                // PerformanceCount, not dwTime. Both are populated; dwTime is milliseconds on
+                // the GetTickCount epoch and PerformanceCount is QPC, measured 27.08ms apart
+                // on one machine, so they are not two readings of one clock.
+                pt.timestamp_us = performance_count_to_us(pi.pointerInfo.PerformanceCount);
                 points_.push_back(pt);
             }
             has_new_data_ = true;
@@ -266,6 +293,7 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
     pt.buttons   = buttons;
     pt.cursor    = cursor;
     pt.source    = PEN_API_WM_POINTER;
+    pt.timestamp_us = performance_count_to_us(pen_info.pointerInfo.PerformanceCount);
 
     {
         std::lock_guard<std::mutex> lock(points_mutex_);

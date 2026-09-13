@@ -184,7 +184,8 @@ void CanvasWidget::tabletEvent(QTabletEvent* event) {
     // it, so a pressure test appends a duplicate at a pressure the stroke never had.
     if (!m_recordPath.empty() && m_inContact) {
         m_recorded.push_back({desktopPx.x(), desktopPx.y(),
-                              std::round(pressure * kAssumedMaxPressure)});
+                              std::round(pressure * kAssumedMaxPressure),
+                              static_cast<double>(event->timestamp())});
     }
 
     // The window origin, read per event rather than cached: a window that moves must not keep
@@ -339,9 +340,14 @@ void ScribbleWindow::saveRecording() {
     // formatting are not a second implementation of the format that --replay reads.
     const QByteArray source = penapi::description(m_obtained).toUtf8();
     selftest::Recorder rec;
-    rec.describe(("Qt " + source).constData(), kAssumedMaxPressure);
+    // SystemTicks: QInputEvent::timestamp is milliseconds, and on Windows it was measured
+    // against GetTickCount64 on 12 Sep 2026 and found to track it. Qt itself documents no
+    // unit and no epoch, so that measurement is the only thing this label rests on.
+    rec.describe(("Qt " + source).constData(), kAssumedMaxPressure,
+                 selftest::TimestampSource::SystemTicks);
     for (const auto& p : m_canvas->recorded())
-        rec.add(p[0], p[1], static_cast<uint32_t>(p[2]));
+        rec.add(p[0], p[1], static_cast<uint32_t>(p[2]),
+                static_cast<int64_t>(p[3]) * 1000LL);
 
     const int written = rec.save(m_canvas->recordPath());
     fprintf(stderr, "[record] %d points -> %s\n", written, m_canvas->recordPath().c_str());

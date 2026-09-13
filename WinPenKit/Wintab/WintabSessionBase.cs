@@ -251,7 +251,12 @@ internal abstract class WintabSessionBase : IPenSession
                 Status: pkt.pkStatus,
                 Buttons: pkt.pkButtons,
                 Cursor: pkt.pkCursor,
-                Source: Api));
+                // lcPktData asks for PK_PKTBITS_ALL, so pkTime is filled in on every packet.
+                // Wintab calls it milliseconds and says nothing about its origin, and neither
+                // that nor its real granularity has been measured -- Wintab ignores synthetic
+                // pen injection, so it takes a tablet.
+                Source: Api,
+                TimestampMicroseconds: PenTimestamp.FromMilliseconds(pkt.pkTime)));
 
             _hasNewData = true;
         }

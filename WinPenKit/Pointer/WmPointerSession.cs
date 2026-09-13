@@ -35,7 +35,8 @@ internal sealed class WmPointerSession : IPenSession
     public PenConventions Conventions => new(
         PenRawUnits.HundredthsOfMillimetre,
         PenButtonEncoding.PointerFlags,
-        PenCursorNumbering.Normalised);
+        PenCursorNumbering.Normalised,
+        PenTimestampSource.PerformanceCounter);
 
     public PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt |
@@ -270,7 +271,13 @@ internal sealed class WmPointerSession : IPenSession
             Status: 0,
             Buttons: buttons,
             Cursor: cursor,
-            Source: InputApi.WmPointer));
+            Source: InputApi.WmPointer,
+            // PerformanceCount, not dwTime. Both are populated; dwTime is milliseconds on the
+            // GetTickCount epoch and PerformanceCount is QPC, and they were measured 27.08ms
+            // apart on this machine, so they are not two readings of one clock. This one is
+            // four orders of magnitude finer.
+            TimestampMicroseconds: PenTimestamp.FromPerformanceCount(
+                penInfo.pointerInfo.PerformanceCount)));
 
         _hasNewData = true;
     }

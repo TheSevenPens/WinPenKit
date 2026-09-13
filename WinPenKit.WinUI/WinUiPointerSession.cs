@@ -53,7 +53,8 @@ public sealed class WinUiPointerSession : IPenSession
     public PenConventions Conventions => new(
         PenRawUnits.None,
         PenButtonEncoding.PointerFlags,
-        PenCursorNumbering.Normalised);
+        PenCursorNumbering.Normalised,
+        PenTimestampSource.SystemTicks);
 
     public PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt |
@@ -185,7 +186,11 @@ public sealed class WinUiPointerSession : IPenSession
             Status: 0,
             Buttons: buttons,
             Cursor: cursor,
-            Source: InputApi.WinUiPointer));
+            Source: InputApi.WinUiPointer,
+            // Already microseconds, so no conversion. The unit overstates it: every reading
+            // measured on 12 Sep 2026 ended in the same 171 microseconds, so the value moves
+            // in whole milliseconds and the tail is a constant.
+            TimestampMicroseconds: (long)point.Timestamp));
 
         _hasNewData = true;
     }

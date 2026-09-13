@@ -52,6 +52,23 @@ pub enum PenCursorNumbering {
     DeviceAssigned = 1,
 }
 
+/// Which clock `PenPoint::timestamp_us` is counted on.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PenTimestampSource {
+    /// No timestamp; the field is zero.
+    #[default]
+    None = 0,
+    /// `QueryPerformanceCounter`, divided down to microseconds. Sub-microsecond at source.
+    PerformanceCounter = 1,
+    /// The millisecond counter `GetTickCount64` reads, multiplied up to microseconds.
+    SystemTicks = 2,
+    /// The driver's own millisecond counter -- Wintab `pkTime`. Its origin and its real
+    /// granularity are not established; Wintab ignores synthetic pen input, so measuring
+    /// either takes a tablet.
+    DeviceTicks = 3,
+}
+
 /// What a session's points mean, for the fields whose meaning depends on the
 /// backend. Read once after `start`, not inferred from the API.
 #[repr(C)]
@@ -60,6 +77,7 @@ pub struct PenConventions {
     pub raw_units: PenRawUnits,
     pub buttons: PenButtonEncoding,
     pub cursor: PenCursorNumbering,
+    pub timestamp: PenTimestampSource,
 }
 
 impl Default for PenConventions {
@@ -68,6 +86,20 @@ impl Default for PenConventions {
             raw_units: PenRawUnits::None,
             buttons: PenButtonEncoding::WintabEvent,
             cursor: PenCursorNumbering::DeviceAssigned,
+            timestamp: PenTimestampSource::None,
+        }
+    }
+}
+
+impl PenTimestampSource {
+    /// The name a recording header shows for this clock. Matches the managed enum's member
+    /// names so one reader parses a file from any of the seven samples.
+    pub fn name(self) -> &'static str {
+        match self {
+            PenTimestampSource::None => "None",
+            PenTimestampSource::PerformanceCounter => "PerformanceCounter",
+            PenTimestampSource::SystemTicks => "SystemTicks",
+            PenTimestampSource::DeviceTicks => "DeviceTicks",
         }
     }
 }
@@ -103,6 +135,11 @@ pub struct PenPoint {
     pub buttons: u32,
     pub cursor: u32,
     pub source: i32,
+    /// When the point was produced, in microseconds. Subtract two of these; do not read one
+    /// on its own. The origin differs per backend and none of them are comparable, so the
+    /// only contract is that values from one running session increase and their difference is
+    /// elapsed microseconds. `PenConventions::timestamp` names the clock.
+    pub timestamp_us: i64,
 }
 
 // Opaque handle.
@@ -110,6 +147,7 @@ pub type PenSessionHandle = *mut c_void;
 
 #[link(name = "WinPenKit.Native")]
 unsafe extern "C" {
+    pub fn pen_session_get_point_size() -> i32;
     pub fn pen_session_get_available_apis(buffer: *mut PenInputApi, max_count: i32) -> i32;
     pub fn pen_session_get_api_label(api: PenInputApi) -> *const c_char;
     pub fn pen_session_create(api: PenInputApi) -> PenSessionHandle;
@@ -136,6 +174,30 @@ pub struct PenSession {
 }
 
 impl PenSession {
+    /// Checks that this mirror of `PenPoint` is the same size as the DLL's, returning an
+    /// error message naming both when it is not.
+    ///
+    /// `pen_session_drain_points` memcpys an array. A size mismatch does not corrupt one
+    /// field: every point after the first is read from the wrong offset, so the whole array
+    /// comes back as numbers that are not positions and not pressures, with nothing to say
+    /// so. That is worth one call at startup.
+    ///
+    /// Equal sizes do not prove equal layout. The two have only ever diverged by a field
+    /// being appended, and this catches that.
+    pub fn check_point_layout() -> Result<(), String> {
+        let dll = unsafe { pen_session_get_point_size() } as usize;
+        let ours = std::mem::size_of::<PenPoint>();
+        if dll == ours {
+            Ok(())
+        } else {
+            Err(format!(
+                "PenPoint is {ours} bytes here and {dll} bytes in WinPenKit.Native.dll. \
+                 The DLL beside this executable was built from a different pen_session.h; \
+                 rebuild one against the other."
+            ))
+        }
+    }
+
     pub fn get_available_apis() -> Vec<PenInputApi> {
         let mut apis = [PenInputApi::WintabSystem; 8];
         let count = unsafe { pen_session_get_available_apis(apis.as_mut_ptr(), 8) };

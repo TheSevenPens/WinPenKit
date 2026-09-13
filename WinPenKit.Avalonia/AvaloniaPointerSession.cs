@@ -28,7 +28,8 @@ public sealed class AvaloniaPointerSession : IPenSession
     public PenConventions Conventions => new(
         PenRawUnits.None,
         PenButtonEncoding.PointerFlags,
-        PenCursorNumbering.Normalised);
+        PenCursorNumbering.Normalised,
+        PenTimestampSource.SystemTicks);
 
     public PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt |
@@ -186,7 +187,11 @@ public sealed class AvaloniaPointerSession : IPenSession
             Status: 0,
             Buttons: buttons,
             Cursor: cursor,
-            Source: InputApi.AvaloniaPointer));
+            Source: InputApi.AvaloniaPointer,
+            // Avalonia documents this only as "the time when the input occurred" and states
+            // no unit. Measured against GetTickCount64 on 12 Sep 2026 and found to track it
+            // within a millisecond, so it is milliseconds on that epoch.
+            TimestampMicroseconds: PenTimestamp.FromMilliseconds((long)e.Timestamp)));
 
         _hasNewData = true;
     }

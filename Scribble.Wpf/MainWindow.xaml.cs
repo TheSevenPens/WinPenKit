@@ -373,7 +373,7 @@ public partial class MainWindow : Window
         // Described here rather than at save time, so the header names the session the points
         // actually came from. Switching the API while recording lands in Describe's
         // spans-more-than-one-session path instead of relabelling everything captured so far.
-        _recorder?.Describe(_session.GetType().Name, _session.MaxPressure);
+        _recorder?.Describe(_session.GetType().Name, _session.MaxPressure, _session.Conventions.Timestamp);
 
         Title = "Scribble WPF - WinPenKit";
         _renderActive = true;

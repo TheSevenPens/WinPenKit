@@ -79,7 +79,29 @@ public readonly record struct PenPoint(
     uint Cursor,
 
     /// <summary>Which input API produced this point.</summary>
-    InputApi Source)
+    InputApi Source,
+
+    /// <summary>
+    /// When the point was produced, in microseconds. Subtract two of these; do not read one
+    /// on its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>The origin is deliberately unstated. Every backend counts from a different
+    /// place, and no two of them are comparable, so the only contract this field offers is
+    /// that values from one running session increase and their difference is elapsed
+    /// microseconds. That is what sampling rate, velocity and any time-based smoothing
+    /// actually need.</para>
+    /// <para>It is not a high-resolution clock on most backends. The unit is microseconds
+    /// everywhere so that arithmetic is uniform, but only WM_POINTER resolves finer than a
+    /// millisecond -- and WPF is coarser than that, repeating a value across consecutive
+    /// points. <see cref="PenConventions.Timestamp"/> names the clock and carries the
+    /// measured resolution per backend.</para>
+    /// <para>Zero when <see cref="PenConventions.Timestamp"/> is
+    /// <see cref="PenTimestampSource.None"/>. Zero is not a time; it means the backend
+    /// supplied nothing. The session does not substitute its own clock, because that would
+    /// measure when this library got around to reading the packet.</para>
+    /// </remarks>
+    long TimestampMicroseconds)
 {
     // These five decode the Wintab encoding -- (action << 16) | buttonNumber -- and nothing
     // here knows whether that is the encoding in hand. The five pointer backends set only

@@ -91,6 +91,15 @@ typedef struct {
     uint32_t buttons;
     uint32_t cursor;
     int32_t  source;      // PenInputApi that produced this point
+    // When the point was produced, in microseconds. Subtract two of these; do not read one on
+    // its own. The origin differs per backend and none of them are comparable, so the only
+    // contract is that values from one running session increase and their difference is
+    // elapsed microseconds. pen_session_get_conventions names the clock.
+    //
+    // The unit is finer than most backends resolve: WM_POINTER is genuinely sub-microsecond,
+    // Wintab counts whole milliseconds. Zero when the conventions report PEN_TS_NONE, which
+    // means the backend supplied nothing -- not that no time has passed.
+    int64_t  timestamp_us;
 } PenPoint;
 
 // ── Discovery ───────────────────────────────────────────────────
@@ -173,10 +182,24 @@ typedef enum {
     PEN_CURSOR_DEVICE_ASSIGNED = 1   // the driver's own number, passed through
 } PenCursorNumbering;
 
+typedef enum {
+    // No timestamp; PenPoint.timestamp_us is 0.
+    PEN_TS_NONE                = 0,
+    // QueryPerformanceCounter, divided down to microseconds. Sub-microsecond at source.
+    PEN_TS_PERFORMANCE_COUNTER = 1,
+    // The millisecond counter GetTickCount64 reads, multiplied up to microseconds.
+    PEN_TS_SYSTEM_TICKS        = 2,
+    // The driver's own millisecond counter -- Wintab pkTime. Its origin and its real
+    // granularity have not been measured; Wintab ignores synthetic pen input, so it takes a
+    // tablet. Deltas are usable; nothing else about it is established.
+    PEN_TS_DEVICE_TICKS        = 3
+} PenTimestampSource;
+
 typedef struct {
     PenRawUnits        raw_units;
     PenButtonEncoding  buttons;
     PenCursorNumbering cursor;
+    PenTimestampSource timestamp;
 } PenConventions;
 
 // Fills out with what this session's points mean. A null handle yields
@@ -219,6 +242,18 @@ PEN_API int pen_session_drain_points(PenSessionHandle handle,
 
 // Returns non-zero if new data is available since the last drain.
 PEN_API int pen_session_has_new_data(PenSessionHandle handle);
+
+// sizeof(PenPoint) as this DLL was compiled.
+//
+// pen_session_drain_points memcpys an array, so a binding whose mirror of PenPoint is a
+// different size does not read one wrong field -- every point after the first is read from the
+// wrong offset and the whole array is garbage that still looks like numbers. A binding written
+// against an older header gets exactly that, silently, and the struct has now grown once.
+//
+// A binding should compare this against its own size at startup and refuse to run on a
+// mismatch. Equal sizes do not prove equal layout, but the two have only ever diverged by a
+// field being added, which this catches.
+PEN_API int pen_session_get_point_size(void);
 
 // ── Properties ──────────────────────────────────────────────────
 

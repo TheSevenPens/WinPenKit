@@ -46,7 +46,7 @@ public:
     const std::string& recordPath() const { return m_recordPath; }
 
     /// The captured stream, in physical desktop pixels with pressure on a 0..1024 scale.
-    const std::vector<std::array<double, 3>>& recorded() const { return m_recorded; }
+    const std::vector<std::array<double, 4>>& recorded() const { return m_recorded; }
 
     /// Proximity arrives as an application-level event rather than a widget one, so the window
     /// forwards it here.
@@ -77,7 +77,10 @@ private:
     PenReadout m_readout;
 
     std::string m_recordPath;
-    std::vector<std::array<double, 3>> m_recorded;
+    // x, y, pressure, and QInputEvent::timestamp in milliseconds. Qt documents no epoch for
+    // that timestamp, which is why the recording writes it as a difference from the first
+    // point and never as an absolute.
+    std::vector<std::array<double, 4>> m_recorded;
 };
 
 /// The standard Scribble window: ribbon above, canvas below.

@@ -498,27 +498,55 @@ inline bool record_requested(std::string& path) {
     return found;
 }
 
+/// Which clock a recording's time column is counted on.
+///
+/// Declared here rather than taken from pen_session.h, because Scribble.Qt shares this header
+/// and includes no WinPenKit header at all -- that independence is the whole point of that
+/// sample. The values and the names match `WinPenKit.PenTimestampSource` and the C
+/// `PenTimestampSource` deliberately, so one reader parses a file from any of the seven
+/// samples; Scribble.Win32 holds the static_assert that keeps the two in step, because it is
+/// the one translation unit that sees both.
+enum class TimestampSource {
+    None = 0,
+    PerformanceCounter = 1,
+    SystemTicks = 2,
+    DeviceTicks = 3,
+};
+
+inline const char* timestamp_source_name(TimestampSource ts) {
+    switch (ts) {
+        case TimestampSource::PerformanceCounter: return "PerformanceCounter";
+        case TimestampSource::SystemTicks:        return "SystemTicks";
+        case TimestampSource::DeviceTicks:        return "DeviceTicks";
+        default:                                  return "None";
+    }
+}
+
 struct Recorder {
-    std::vector<std::array<double, 3>> points;  // desktop x, desktop y, pressure
+    struct Sample { double x, y; uint32_t pressure; int64_t time_us; };
+    std::vector<Sample> points;
     std::string source;
     int max_pressure = 0;
+    TimestampSource timestamp = TimestampSource::None;
     bool spans_sessions = false;
 
     /// Name the session these points come from, and its pressure range. Called when a
     /// session starts, not when the file is written: this sample switches pen API while a
     /// recording runs, and one maximum cannot describe two devices.
-    void describe(const char* src, int max_p) {
+    void describe(const char* src, int max_p,
+                  TimestampSource ts = TimestampSource::None) {
         if (!points.empty() && (source != src || max_pressure != max_p)) {
             spans_sessions = true;
             return;
         }
         source = src ? src : "";
         max_pressure = max_p;
+        timestamp = ts;
     }
 
-    void add(double x, double y, uint32_t pressure) {
+    void add(double x, double y, uint32_t pressure, int64_t time_us) {
         if (pressure == 0) return;  // hover carries no stroke
-        points.push_back({x, y, static_cast<double>(pressure)});
+        points.push_back({x, y, pressure, time_us});
     }
 
     /// Returns the number of points written, or 0 when there was nothing to write -- an
@@ -535,15 +563,24 @@ struct Recorder {
         if (spans_sessions)
             f << "# WARNING: the pen API changed while this was recording. The values above "
                  "describe the session the first points came from; later points came from "
-                 "another. Do not normalise pressure from this file.\n";
+                 "another. Do not normalise pressure from this file, and do not read the "
+                 "time column across the change -- the two sessions count from different "
+                 "origins, so a gap that spans them measures nothing.\n";
         f << "# Captured: " << points.size() << " points\n";
-        f << "desktopX,desktopY,pressure\n";
+
+        // The time column is relative to the first point, so the file needs no epoch and
+        // carries no machine uptime. What it does need is the clock, because that sets what a
+        // gap of zero means.
+        f << "# Timestamp: " << timestamp_source_name(timestamp) << "\n";
+        f << "desktopX,desktopY,pressure,timeUs\n";
 
         // Round-trip precision, deliberately: a recorder that quantized its own output would
         // report every session as quantized.
         f << std::setprecision(17);
+        const int64_t origin = points.front().time_us;
         for (const auto& p : points)
-            f << p[0] << ',' << p[1] << ',' << static_cast<uint32_t>(p[2]) << '\n';
+            f << p.x << ',' << p.y << ',' << p.pressure << ','
+              << (timestamp == TimestampSource::None ? 0 : p.time_us - origin) << '\n';
 
         return static_cast<int>(points.size());
     }

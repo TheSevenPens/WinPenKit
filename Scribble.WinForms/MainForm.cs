@@ -467,7 +467,7 @@ public sealed class MainForm : Form
 
             // Described at start, not at save: this sample switches pen API while a recording
             // is running, and the header has to name the session the points came from.
-            _recorder?.Describe(_session.GetType().Name, _session.MaxPressure);
+            _recorder?.Describe(_session.GetType().Name, _session.MaxPressure, _session.Conventions.Timestamp);
 
             Text = "Scribble WinForms - WinPenKit";
             _renderTimer.Start();
