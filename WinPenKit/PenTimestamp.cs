@@ -71,10 +71,11 @@ public static class PenTimestamp
     /// more than half the range, which a stroke drawn across the boundary produces and a
     /// session resuming after an idle does not: fed two WPF packets 25 days apart, it returned
     /// a difference of about minus 24.7 days.</para>
-    /// <para>Valid only for a clock on the <c>GetTickCount</c> epoch. Wintab's <c>pkTime</c>
-    /// was measured to be on it on 13 Sep 2026, so every backend in this library now anchors;
-    /// a driver clock whose origin is genuinely unstated still cannot, which is what
-    /// <see cref="DeviceTickCounter"/> is for.</para>
+    /// <para>Valid only for a clock on the <c>GetTickCount</c> epoch. Every backend in this
+    /// library is on it: Wintab's <c>pkTime</c> was the last unknown and was measured there on
+    /// 13 Sep 2026. A device clock whose origin is genuinely unstated could not use this, and
+    /// would need its wrap detected by watching for a backward jump instead -- an approach this
+    /// library carried for Wintab until the measurement, and removed with it.</para>
     /// </remarks>
     public static long FromSystemTicks(long rawMilliseconds) =>
         FromSystemTicks(rawMilliseconds, Environment.TickCount64);
@@ -95,44 +96,5 @@ public static class PenTimestamp
         // a negative difference, where integer division would truncate toward zero instead.
         double k = Math.Floor(((double)(nowMilliseconds - rawMilliseconds) + Wrap32 / 2.0) / Wrap32);
         return FromMilliseconds(rawMilliseconds + (long)k * Wrap32);
-    }
-}
-
-/// <summary>
-/// Extends a device's narrow millisecond counter, for a clock whose origin is unknown and so
-/// cannot be anchored against the system's.
-/// </summary>
-/// <remarks>
-/// <para><b>Nothing in this library uses it any more.</b> It was written for Wintab's
-/// <c>pkTime</c>, whose origin Wintab documents nowhere; that origin was measured on
-/// 13 Sep 2026 and turned out to be the <c>GetTickCount64</c> epoch, so both Wintab sessions
-/// now anchor with <see cref="PenTimestamp.FromSystemTicks"/> like everything else. It is kept
-/// for a device clock that genuinely has no knowable origin, and because the reasoning below is
-/// worth having written down if one turns up.</para>
-/// <para>Detection is a backward jump of more than half the range. Pen packets arrive
-/// milliseconds apart, so nothing legitimate moves backward, and half a range is 24.9 days of
-/// margin.</para>
-/// <para><b>What this cannot do.</b> It sees only the packets it is given, so a wrap that
-/// happens while the session is stopped, or across a gap in which every packet was discarded by
-/// a capture region, is missed, and the difference across that gap is then wrong by 49.7 days.
-/// That is a real limit rather than a rounding error, and it is why the framework backends no
-/// longer use this approach. Establishing Wintab's epoch would let them share one.</para>
-/// </remarks>
-public sealed class DeviceTickCounter
-{
-    private long _high;
-    private long _last = long.MinValue;
-
-    /// <summary>
-    /// The next raw reading, extended and converted to microseconds. Call once per packet, in
-    /// arrival order.
-    /// </summary>
-    public long Next(long raw)
-    {
-        if (_last != long.MinValue && raw < _last && _last - raw > PenTimestamp.Wrap32 / 2)
-            _high += PenTimestamp.Wrap32;
-
-        _last = raw;
-        return PenTimestamp.FromMilliseconds(_high + raw);
     }
 }

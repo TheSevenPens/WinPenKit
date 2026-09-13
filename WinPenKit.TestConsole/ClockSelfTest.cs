@@ -13,7 +13,7 @@ namespace WinPenKit.TestConsole;
 /// ever be reached in ordinary use of this repository and a defect in the handling would sit
 /// undisturbed until someone's machine had been up long enough.</para>
 /// <para><b>What this reaches, and what it does not.</b> It calls
-/// <see cref="PenTimestamp"/> and <see cref="DeviceTickCounter"/> directly. It is not
+/// <see cref="PenTimestamp"/> directly. It is not
 /// <c>WpfStylusSession</c>, not <c>WintabSessionBase</c>, and not the C++ copy of the wrap
 /// detector in <c>wintab_session_impl.cpp</c> -- a defect in that copy still prints a pass
 /// here. Each session hands its raw reading to these functions and does nothing else with it,
@@ -30,7 +30,6 @@ public static class ClockSelfTest
     {
         int failed = 0;
         failed += SystemTicks();
-        failed += DeviceTicks();
         failed += PerformanceCounter();
         failed += EpochProbe();
 
@@ -105,29 +104,6 @@ public static class ClockSelfTest
                    - PenTimestamp.FromSystemTicks(AsUInt32(early), early);
             failed += Expect("system/idle-across-the-wrap", d, (late - early) * 1000);
         }
-
-        return failed;
-    }
-
-    // ── The detected path: Wintab ───────────────────────────────
-
-    private static int DeviceTicks()
-    {
-        int failed = 0;
-
-        // A uint counter returning to zero, one millisecond per step.
-        failed += Sequence("device/uint-wrap",
-            [uint.MaxValue - 2, uint.MaxValue - 1, uint.MaxValue, 0, 1],
-            [1000, 1000, 1000, 1000]);
-
-        failed += Sequence("device/ordinary", [1000, 1016, 1031, 1047], [16000, 15000, 16000]);
-
-        // A coarse clock repeating a value is normal. A zero delta is a reading, not a wrap.
-        failed += Sequence("device/repeated-values", [5000, 5000, 5016, 5016], [0, 16000, 0]);
-
-        // A small backward step is not a wrap. Adding a range to it would turn a 2ms oddity
-        // into a 49-day one.
-        failed += Sequence("device/small-backward-step", [9000, 8998], [-2000]);
 
         return failed;
     }
@@ -270,25 +246,5 @@ public static class ClockSelfTest
         }
         Console.WriteLine($"[FAIL] {name,-28} expected {expected}, got {actual}");
         return 1;
-    }
-
-    private static int Sequence(string name, long[] raw, long[] expectedDeltasUs)
-    {
-        var clock = new DeviceTickCounter();
-        var got = new long[raw.Length];
-        for (int i = 0; i < raw.Length; i++) got[i] = clock.Next(raw[i]);
-
-        for (int i = 0; i < expectedDeltasUs.Length; i++)
-        {
-            long actual = got[i + 1] - got[i];
-            if (actual != expectedDeltasUs[i])
-            {
-                Console.WriteLine($"[FAIL] {name,-28} delta {i}: expected {expectedDeltasUs[i]}us, got {actual}us");
-                return 1;
-            }
-        }
-
-        Console.WriteLine($"[PASS] {name,-28} {raw.Length} readings");
-        return 0;
     }
 }

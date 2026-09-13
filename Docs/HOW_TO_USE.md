@@ -428,9 +428,8 @@ wait for one:
 dotnet run --project WinPenKit.TestConsole -- --selftest-clock
 ```
 
-Nineteen cases, no tablet and no window. Two are the wraps themselves; two more are ordinary
-input and a repeated value, present because a wrap detector that fires on normal packets would
-corrupt every stroke rather than one every few weeks. Five exercise the epoch probe's analysis
+Fifteen cases, no tablet and no window. Two are the wraps themselves. Five exercise the epoch
+probe's analysis
 against synthetic readings shaped like a foreign epoch, a counter that stalls when idle, and a
 clock the tick count lags — the probe needs a tablet and a person, so its verdict would
 otherwise only ever have been produced once, on one machine, with no evidence it could produce
@@ -440,6 +439,10 @@ Verified in both directions, which is the only claim worth making about a suite 
 the extension removed, the two wrap cases fail by exactly −4,294,967,295,000 µs. With the epoch
 analysis reverted to the unsigned subtraction it originally used, `probe/tick-lags-pktime` fails
 with the same `2/3 passed` the first real hardware run produced.
+
+Four cases covering the backward-jump wrap detector went with the detector itself. Nothing uses
+that approach now that every backend anchors, and a suite that tests code no caller reaches
+reports health it cannot vouch for.
 
 ### What `RawX/Y` holds
 
