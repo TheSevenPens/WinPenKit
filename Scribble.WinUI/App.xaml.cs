@@ -19,6 +19,10 @@ public partial class App : Application
 
         // Unpackaged WinUI does not hand the command line to OnLaunched, so read it directly.
         var cli = Environment.GetCommandLineArgs();
+
+        if (StrokeRecorder.Requested(cli, out string? recordPath))
+            window.RecordTo(recordPath!);
+
         bool replay = StrokeReplay.Requested(cli, out string? replayPath);
         if (SelfTest.Requested(cli) || replay)
             window.ArmSelfTest(replay ? replayPath : null);

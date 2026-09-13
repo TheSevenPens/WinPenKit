@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Windows.Foundation;
 using WinPenKit;
+using WinPenKit.Diagnostics;
 using WinPenKit.WinUI;
 
 namespace Scribble.WinUI;
@@ -67,6 +68,7 @@ public sealed class PenSessionWinUI3 : IDisposable
     private PenPoint _latestPenPoint;
     private Point _latestCanvasPoint;
     private PenPoint[] _lastDrainedPoints = [];
+    private StrokeRecorder? _recorder;
 
     // ── Win32 P/Invoke (for desktop → canvas DIP conversion) ────────
 
@@ -114,6 +116,16 @@ public sealed class PenSessionWinUI3 : IDisposable
     /// All raw PenPoints from the last <see cref="DrainSegments"/> call.
     /// </summary>
     public PenPoint[] LastDrainedPoints => _lastDrainedPoints;
+
+    /// <summary>
+    /// Capture every drained point into <paramref name="recorder"/> until the session ends.
+    /// </summary>
+    /// <remarks>
+    /// Set here rather than in the window, because this is where the points are drained --
+    /// the window only sees <see cref="LastDrainedPoints"/> when telemetry changed, which is
+    /// not every drain.
+    /// </remarks>
+    public void RecordTo(StrokeRecorder recorder) => _recorder = recorder;
 
     /// <summary>True if the last <see cref="DrainSegments"/> call processed
     /// any pen points (including hover with pressure=0).</summary>
@@ -164,7 +176,14 @@ public sealed class PenSessionWinUI3 : IDisposable
             : PenSessionFactory.Create(api);
 
         _lastPoint = null;
-        return _session.Start(_hwnd);
+        var error = _session.Start(_hwnd);
+
+        // Described at start, not at save: this sample switches pen API while a recording is
+        // running, and the header has to name the session the points came from.
+        if (error is null)
+            _recorder?.Describe(_session.GetType().Name, _session.MaxPressure);
+
+        return error;
     }
 
     public void Stop()
@@ -216,6 +235,10 @@ public sealed class PenSessionWinUI3 : IDisposable
         var segments = new List<StrokeSegment>();
 
         PointsSeen += points.Length;
+
+        if (_recorder is { } rec)
+            foreach (var pt in points)
+                rec.Add(pt);
 
         foreach (var pt in points)
         {

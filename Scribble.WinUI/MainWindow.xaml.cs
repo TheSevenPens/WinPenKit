@@ -68,6 +68,14 @@ public sealed partial class MainWindow : Window
 
         Closed += (_, _) =>
         {
+            // Saved before the session is torn down, so the header still names the session the
+            // points came from.
+            if (_recorder != null && _recordPath != null)
+            {
+                int written = _recorder.Save(_recordPath);
+                Console.Error.WriteLine($"[record] {written} points -> {_recordPath}");
+            }
+
             Stop();
             _session?.Dispose();
             _renderTimer.Stop();
@@ -93,6 +101,10 @@ public sealed partial class MainWindow : Window
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _session ??= new PenSessionWinUI3(hwnd, _canvasInfo, Canvas);
+
+        // Attached here, not in RecordTo: the session is created lazily on the first
+        // size change, which is after the command line has been read.
+        if (_recorder is { } rec) _session.RecordTo(rec);
 
         _canvasInfo.PositionInWindow = Canvas.GetPositionInWindow();
 
@@ -158,6 +170,16 @@ public sealed partial class MainWindow : Window
             foreach (var pt in _session.LastDrainedPoints)
                 Toolbar.UpdateButtons(pt);
         }
+    }
+
+    private StrokeRecorder? _recorder;
+    private string? _recordPath;
+
+    /// <summary>Starts capturing the pen stream, written to <paramref name="path"/> on close.</summary>
+    internal void RecordTo(string path)
+    {
+        _recordPath = path;
+        _recorder = new StrokeRecorder();
     }
 
     /// <summary>
