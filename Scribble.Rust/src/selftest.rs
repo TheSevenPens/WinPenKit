@@ -185,6 +185,10 @@ impl Report {
 
     /// Presenting a correctly sized surface into a differently sized rect scales it back off
     /// the pixel grid, which undoes the point of sizing it physically.
+    ///
+    /// Measures the host's layout size, not the rate the surface is sampled at: a host can
+    /// cover the right number of device pixels while drawing only part of the surface across
+    /// them, and this passes on that. See issue 70 and the C# CheckPresentation1To1 remarks.
     pub fn check_presentation_1to1(&mut self, bitmap_w: u32, bitmap_h: u32,
                                    presented_w: f32, presented_h: f32) {
         let ok = (presented_w - bitmap_w as f32).abs() < 0.5

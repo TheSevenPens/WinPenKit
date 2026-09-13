@@ -55,7 +55,23 @@ Also needs nothing — no tablet, no pen, no person. Most of the surface bug cla
 | --- | --- |
 | `L1.surface-physical` | a canvas sized in logical units and magnified to fit — at 2.25x that is a surface drawn at 44% of the display's resolution, which no amount of coordinate precision survives |
 | `L1.surface-alignment` | a surface landing on a fractional device pixel, so the framework resamples all of it to draw it between pixel rows, softening every edge while coordinates and resolution both still measure correct |
-| `L1.presentation-1to1` | a correctly sized surface scaled back off the pixel grid on its way to the screen |
+| `L1.presentation-1to1` | a correctly sized surface given a host of the wrong size, so it is scaled back off the pixel grid on its way to the screen |
+
+### What `L1.presentation-1to1` does not cover
+
+It compares the **host's layout size** against the surface's pixel count. A host can cover
+exactly the right number of device pixels and still draw only part of the surface across them,
+and this check passes on that.
+
+Issue 70 was exactly that: a 2700px bitmap in a host covering 2700 device pixels, matching to
+the pixel, while the framework rendered the top-left 1200x600 pixels of it stretched across the
+whole host. Strokes landed 2.25 times too far from the canvas origin. The check passed before
+the fix and after it.
+
+Measuring the sampling rate needs pixels rather than layout: draw a marker into the surface at
+known coordinates, capture the window, and measure what it became. A 200-pixel square rendering
+202 logical pixels where 1:1 is 89 is what settled that issue, after several wrong readings
+taken from the layout tree. Nothing in the self test does this today.
 
 `L1.surface-alignment` reports both axes separately, because the error is routinely one-dimensional. One real instance was aligned in x and 0.64px out in y — which is how a check that scanned across a near-vertical stroke reported it clean.
 
