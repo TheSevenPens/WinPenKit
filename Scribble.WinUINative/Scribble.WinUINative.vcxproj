@@ -93,9 +93,13 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\skia_raii.cpp" />
     <ClCompile Include="src\canvas.cpp" />
+    <ClCompile Include="src\pensession.cpp" />
+    <ClCompile Include="src\xamlpointer.cpp" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\skia_raii.h" />
     <ClInclude Include="src\canvas.h" />
+    <ClInclude Include="src\pensession.h" />
+    <ClInclude Include="src\xamlpointer.h" />
     <Manifest Include="app.manifest" />
   </ItemGroup>
 

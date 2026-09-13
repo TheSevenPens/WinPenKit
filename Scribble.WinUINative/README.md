@@ -33,7 +33,32 @@ type plus the XAML compiler, none of which this sample would exercise for its ow
 
 The trade is real: **this is not a template for markup-first WinUI.**
 
-## Three things that cost time, written down so they do not cost it again
+## The native WM_POINTER session does not work on WinUI 3
+
+`Scribble.Win32` hands its own HWND to `pen_session_start` and the WM_POINTER session
+subclasses it. That does not work here, and it fails quietly.
+
+Measured: a session opened against the top-level window drains **zero** points. So does one
+opened against either child window WinUI creates — `Microsoft.UI.Content.DesktopChildSiteBridge`,
+which covers the whole content area, and `InputSiteWindowClass`. In every case the session
+reports itself running, `max pressure` reads 1024, and nothing anywhere reports an error. WinUI
+consumes pointer input through its own input site before a subclass on any of those windows
+sees it.
+
+So on WinUI, "pointer" means the framework's own events. `src/xamlpointer.h` takes
+`PointerPressed`/`Moved`/`Released`/`Exited` and shapes them into `PenPoint`, so everything
+downstream is identical to the native path. The managed `Scribble.WinUI` has the same shape for
+the same reason: its pointer backend is `WinUiPointerSession`, not the WM_POINTER session.
+
+**Wintab is unaffected.** A Wintab context runs on its own hidden pump window and uses the
+application window only to bound the capture region, so it takes the native path here as it
+does everywhere else. It needs the tablet to exercise.
+
+The dropdown therefore offers Wintab, Wintab (high-res) and WinUI Pointer, and deliberately
+does **not** offer the native WM_POINTER session — listing a backend measured not to work here
+would be offering a choice that silently draws nothing.
+
+## Four things that cost time, written down so they do not cost it again
 
 **`XamlControlsResources` crashes this app.** The obvious translation of App.xaml's
 `<XamlControlsResources/>` is to merge one into `Application.Resources`. Doing that fails at
@@ -57,6 +82,12 @@ clipped to the element — strokes land at the wrong place and most of the canva
 `Stretch::Fill` maps the whole bitmap onto the element, which with that sizing puts one bitmap
 pixel on one physical pixel. This is the `L1.presentation-1to1` fault, arrived at by hand.
 
+**Divide pressure by the right maximum.** Pressure normalises against the session's maximum, and the two backends do not share a session.
+Reading it from the native session while the XAML source was running returned that object's
+unstarted default of **1**, so a pressure of 850 became a stroke 5100 pixels wide and the canvas
+went solid black. It looked like a rendering fault. It was a division by the wrong scale — the
+same shape as every other "number whose units were assumed" in this repository.
+
 ## Building
 
 `WinPenKit.Native` must be built first — this project links its import library and copies its
@@ -74,8 +105,10 @@ it is absent.
 
 ## State
 
-Working: the window, the Skia surface, the Skia-to-`WriteableBitmap` presentation at 1:1, and
-drawing from WinUI pointer input with pressure.
+Working: the window; the Skia surface; presentation at 1:1; the WinPenKit session over the C
+ABI for Wintab; the WinUI pointer path; and drawing with pressure-derived width, verified with
+injected strokes at two pressures producing visibly different widths in the right places.
 
-Not yet done: the WinPenKit pen session, the standard seven-section ribbon with the pen API
-switcher, `--record`, `--replay`, and the `--selftest` checks.
+Not yet done: the standard seven-section ribbon with the pen API switcher and its restart
+notice, `--record`, `--replay`, and the `--selftest` checks. Wintab is wired but unverified —
+it needs the tablet.
