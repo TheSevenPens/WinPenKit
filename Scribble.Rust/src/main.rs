@@ -302,6 +302,26 @@ impl ScribbleApp {
     }
 }
 
+/// The smallest height at or above `base` whose product with the scale is a whole number of
+/// device pixels.
+///
+/// egui lays out in points, and at a fractional scale a whole number of points is not a whole
+/// number of device pixels: 130 at 2.25 is 292.5. A panel of that height puts everything below
+/// it on a half pixel permanently -- a softer canvas, and, because the snap that corrects it is
+/// then always resolving a tie, an intermittently wrong origin. Issue 89.
+///
+/// Grows rather than shrinks, because shrinking would clip what the ribbon has to show.
+fn snap_panel_height(base: f32, ppp: f32) -> f32 {
+    for step in 0..32 {
+        let h = base + step as f32;
+        let device = h * ppp;
+        if (device - device.round()).abs() < 1e-4 {
+            return h;
+        }
+    }
+    base
+}
+
 impl eframe::App for ScribbleApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
@@ -345,8 +365,11 @@ impl eframe::App for ScribbleApp {
         }
 
         // ── Ribbon ───────────────────────────────────────────────
+        // Height snapped so the canvas below starts on a whole device pixel. 130 points at
+        // 2.25 is 292.5, which put the canvas permanently on a half -- see snap_panel_height
+        // and issue 89.
         egui::TopBottomPanel::top("ribbon")
-            .exact_height(130.0)
+            .exact_height(snap_panel_height(130.0, ppp))
             .show(ctx, |ui| {
             ui.horizontal(|ui| {
 
@@ -538,9 +561,18 @@ impl eframe::App for ScribbleApp {
                 window_pos.x + canvas_rect.min.x,
                 window_pos.y + canvas_rect.min.y,
             );
+            //
+            // The ribbon height above is snapped so this normally has nothing to do. The
+            // epsilon covers the case where something else -- a theme with different frame
+            // margins, a scale not considered here -- still lands the origin on a half.
+            // Rounding a value sitting exactly on .5 is settled by f32 noise rather than by
+            // arithmetic: in issue 89 one frame computed 673.4999 where every other frame
+            // computed 673.5000, snapping the canvas the other way and costing the origin
+            // check 1px. Consistently wrong beats intermittently right.
+            const TIE: f32 = 1e-3;
             let canvas_screen_min = egui::pos2(
-                (raw_screen_min.x * ppp).round() / ppp,
-                (raw_screen_min.y * ppp).round() / ppp,
+                (raw_screen_min.x * ppp + TIE).round() / ppp,
+                (raw_screen_min.y * ppp + TIE).round() / ppp,
             );
             let snap_shift = canvas_screen_min - raw_screen_min;
 
