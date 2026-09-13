@@ -15,6 +15,9 @@ internal abstract class WintabSessionBase : IPenSession
     private IntPtr _hCtx;
     private readonly ConcurrentQueue<PenPoint> _points = new();
     private volatile bool _hasNewData;
+    // pkTime is a uint of milliseconds, so it wraps to zero after about 49.7 days of uptime.
+    private readonly MillisecondCounter _clock = new();
+
     private uint _lastButtons;
     private uint _lastCursor;
     private string _debugInfo = "";
@@ -256,7 +259,7 @@ internal abstract class WintabSessionBase : IPenSession
                 // that nor its real granularity has been measured -- Wintab ignores synthetic
                 // pen injection, so it takes a tablet.
                 Source: Api,
-                TimestampMicroseconds: PenTimestamp.FromMilliseconds(pkt.pkTime)));
+                TimestampMicroseconds: _clock.Next(pkt.pkTime)));
 
             _hasNewData = true;
         }

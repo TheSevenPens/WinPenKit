@@ -161,6 +161,20 @@ Differences. Two of them subtracted give elapsed microseconds, which is what sam
 velocity and any time-based smoothing need. One on its own gives nothing: the origin is
 unstated, every backend counts from somewhere different, and no two of them are comparable.
 
+**How far the backends agree.** Three things hold everywhere, and one does not:
+
+| | consistent? | |
+| --- | --- | --- |
+| unit | **yes** | microseconds on every backend, always |
+| contract | **yes** | subtract two, get elapsed microseconds; never decreasing within a session |
+| wrapping | **yes** | handled in the session, not left to the caller — see below |
+| **resolution** | **no** | 100 ns to 15.6 ms, a factor of 156,000 |
+
+The last row is the one that reaches your code. A velocity or smoothing routine written and
+tuned against WM_POINTER will meet **zero deltas** on WPF, where consecutive points repeat a
+timestamp. Guard the division. A zero difference means the clock could not separate two
+points, which is not a claim that no time passed.
+
 The unit is microseconds on every backend so that the arithmetic does not branch. That is
 finer than most of them measure, and the unit does not tell you which:
 
@@ -198,6 +212,40 @@ tablet. Treat its differences as usable and everything else about it as unknown.
 Where `Conventions.Timestamp` is `None`, the field is zero. Zero is not a time; it means the
 backend supplied none. No session substitutes its own clock, which would measure when this
 library got round to reading the packet rather than when the pen moved.
+
+### Counters that wrap
+
+Two backends count milliseconds in fewer than 64 bits:
+
+| backend | raw type | wraps after | what it does |
+| --- | --- | --- | --- |
+| WPF | `int` | ~24.9 days of uptime | passes `int.MaxValue` and **continues negative** |
+| Wintab | `uint` | ~49.7 days of uptime | returns to 0 |
+
+The other four are 64-bit and do not wrap in any relevant timeframe.
+
+Left alone, a stroke drawn across either boundary would produce a difference wrong by the
+entire range — about −49.7 days, from two points a millisecond apart. `MillisecondCounter`
+extends both inside the session, so `TimestampMicroseconds` stays continuous and the caller
+never sees it. Detection is a backward jump of more than half the range; pen packets arrive
+milliseconds apart, so nothing legitimate moves backward, and half a range leaves 12 days of
+margin.
+
+It cannot recover a wrap that happened while the session was not running, which the
+differences-only contract does not promise anyway.
+
+Neither wrap can be reached by ordinary testing, so there is a check that does not need to
+wait for one:
+
+```bash
+dotnet run --project WinPenKit.TestConsole -- --selftest-clock
+```
+
+Six cases, no tablet and no window. Two of them are the wraps; two more are ordinary input and
+a repeated value, present because a wrap detector that fires on normal packets would corrupt
+every stroke rather than one every few weeks. Verified in both directions: with the extension
+removed, the two wrap cases fail by exactly −4,294,967,295,000 µs and the other four still
+pass.
 
 ### What `RawX/Y` holds
 

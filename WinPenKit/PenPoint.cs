@@ -88,8 +88,10 @@ public readonly record struct PenPoint(
     /// <remarks>
     /// <para>The origin is deliberately unstated. Every backend counts from a different
     /// place, and no two of them are comparable, so the only contract this field offers is
-    /// that values from one running session increase and their difference is elapsed
-    /// microseconds. That is what sampling rate, velocity and any time-based smoothing
+    /// that values from one running session never decrease and their difference is elapsed
+    /// microseconds. Never decrease, not increase: a backend whose clock is coarser than its
+    /// report rate gives consecutive points the same value, so a difference of zero is a
+    /// normal reading and any consumer dividing by one has to expect it. That is what sampling rate, velocity and any time-based smoothing
     /// actually need.</para>
     /// <para>It is not a high-resolution clock on most backends. The unit is microseconds
     /// everywhere so that arithmetic is uniform, but only WM_POINTER resolves finer than a

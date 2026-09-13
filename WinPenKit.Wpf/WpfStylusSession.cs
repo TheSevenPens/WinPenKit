@@ -22,6 +22,11 @@ public sealed class WpfStylusSession : IPenSession
 {
     private readonly UIElement _element;
     private readonly ConcurrentQueue<PenPoint> _points = new();
+
+    // StylusEventArgs.Timestamp is an int of milliseconds, so it passes int.MaxValue after
+    // about 24.9 days of uptime and carries on negative. One instance per session, so the
+    // state cannot follow a device that is no longer the one being read.
+    private readonly MillisecondCounter _clock = new();
     private volatile bool _hasNewData;
 
     // ── IPenSession ──────────────────────────────────────────────
@@ -209,7 +214,7 @@ public sealed class WpfStylusSession : IPenSession
                 // Milliseconds on the GetTickCount epoch, measured on 12 Sep 2026 -- WPF
                 // documents no unit either. The coarsest of the six: consecutive points
                 // repeated a value, so the real step is about 15.6ms whatever the unit says.
-                TimestampMicroseconds: PenTimestamp.FromMilliseconds(e.Timestamp)));
+                TimestampMicroseconds: _clock.Next(e.Timestamp)));
 
             _hasNewData = true;
         }

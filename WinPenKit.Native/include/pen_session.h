@@ -93,8 +93,10 @@ typedef struct {
     int32_t  source;      // PenInputApi that produced this point
     // When the point was produced, in microseconds. Subtract two of these; do not read one on
     // its own. The origin differs per backend and none of them are comparable, so the only
-    // contract is that values from one running session increase and their difference is
-    // elapsed microseconds. pen_session_get_conventions names the clock.
+    // contract is that values from one running session never decrease and their difference
+    // is elapsed microseconds. Consecutive points can carry the same value when the backend's
+    // clock is coarser than its report rate, so a difference of zero is normal and a consumer
+    // dividing by one has to expect it. pen_session_get_conventions names the clock.
     //
     // The unit is finer than most backends resolve: WM_POINTER is genuinely sub-microsecond,
     // Wintab counts whole milliseconds. Zero when the conventions report PEN_TS_NONE, which

@@ -431,7 +431,14 @@ void WintabSessionImpl::on_packet(WPARAM serial) {
     // lcPktData asks for PK_PKTBITS_ALL, so pkTime is filled in on every packet. Wintab calls
     // it milliseconds and says nothing about its origin; neither that nor its real granularity
     // has been measured, because Wintab ignores synthetic pen input.
-    pt.timestamp_us = static_cast<int64_t>(pkt.pkTime) * 1000LL;
+    {
+        constexpr int64_t range = 1LL << 32;
+        const int64_t raw = static_cast<int64_t>(pkt.pkTime);
+        if (pk_time_last_ >= 0 && raw < pk_time_last_ && pk_time_last_ - raw > range / 2)
+            pk_time_high_ += range;
+        pk_time_last_ = raw;
+        pt.timestamp_us = (pk_time_high_ + raw) * 1000LL;
+    }
 
     {
         std::lock_guard<std::mutex> lock(points_mutex_);
