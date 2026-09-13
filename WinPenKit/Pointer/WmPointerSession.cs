@@ -28,6 +28,15 @@ internal sealed class WmPointerSession : IPenSession
 
     public InputApi Api => InputApi.WmPointer;
 
+    /// <summary>
+    /// The raw fields carry ptHimetricLocationRaw, the digitizer's own position in
+    /// hundredths of a millimetre.
+    /// </summary>
+    public PenConventions Conventions => new(
+        PenRawUnits.HundredthsOfMillimetre,
+        PenButtonEncoding.PointerFlags,
+        PenCursorNumbering.Normalised);
+
     public PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt |
         PenCapabilities.Buttons | PenCapabilities.Eraser |

@@ -84,7 +84,11 @@ public sealed partial class ScribbleRibbon : UserControl
         ProximityIndicator.Fill = ActiveBrush;
 
         // Position
-        RawPosValue.Text = $"{pt.RawX}, {pt.RawY}";
+        // RawX means four different things across the backends, and on this one it means
+        // nothing at all, so the unit travels with the reading.
+        RawPosValue.Text = telemetry.RawUnits == PenRawUnits.None
+            ? "--"
+            : $"{pt.RawX}, {pt.RawY} ({telemetry.RawUnits.Label()})";
         // A pen position is sub-pixel, so this is shown to two decimals. At zero decimals the readout cannot show the one fault it would most often be used to find: a coordinate quantized to a whole pixel looks identical to a good one.
         ScreenPosValue.Text = $"{telemetry.ScreenPoint.X:F2}, {telemetry.ScreenPoint.Y:F2}";
         AppPosValue.Text = $"{telemetry.AppPoint.X:F0}, {telemetry.AppPoint.Y:F0}";

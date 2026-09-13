@@ -493,7 +493,12 @@ public sealed class MainForm : Form
         _proximityLabel.Text = "🟢 Proximity";
         _cursorLabel.Text = $"Cursor: {last.Cursor}";
 
-        _rawPosLabel.Text = $"Raw: {last.RawX},{last.RawY}";
+        // The unit comes from the session. This backend reports HIMETRIC, which is not the
+        // same space as DesktopX and should not be read as though it were.
+        var rawUnits = _session?.Conventions.RawUnits ?? PenRawUnits.None;
+        _rawPosLabel.Text = rawUnits == PenRawUnits.None
+            ? "Raw: --"
+            : $"Raw: {last.RawX},{last.RawY} ({rawUnits.Label()})";
         // A pen position is sub-pixel, so this is shown to two decimals. At zero decimals the readout cannot show the one fault it would most often be used to find: a coordinate quantized to a whole pixel looks identical to a good one.
         _screenPosLabel.Text = $"Screen: {last.DesktopX:F2},{last.DesktopY:F2}";
 

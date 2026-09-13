@@ -44,13 +44,19 @@ timer.Elapsed += (_, _) =>
     if (points.Length == 0) return;
 
     var pt = points[^1]; // show latest
+
+    // RawX means a different thing on each backend, and on three of them it means nothing.
+    var rawUnits = session.Conventions.RawUnits;
+    string rawText = rawUnits == PenRawUnits.None
+        ? "--"
+        : $"{pt.RawX},{pt.RawY} ({rawUnits.Label()})";
     float pct = session.MaxPressure > 0
         ? (float)pt.Pressure / session.MaxPressure * 100f
         : 0f;
 
     Console.Write(
         $"\r  Desktop:{pt.DesktopX,7:F1},{pt.DesktopY,7:F1}  " +
-        $"Raw:{pt.RawX,6},{pt.RawY,6}  " +
+        $"Raw:{rawText,-18}  " +
         $"P:{pt.Pressure,5} ({pct,5:F1}%)  " +
         $"Z:{pt.Z,4}  " +
         $"Cursor:{pt.Cursor}  " +

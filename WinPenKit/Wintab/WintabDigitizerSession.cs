@@ -16,6 +16,15 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
 
     public override InputApi Api => InputApi.WintabDigitizer;
 
+    /// <summary>
+    /// Tablet-native while the hi-res context is open, screen pixels once it has fallen back
+    /// -- the same condition PenCapabilities.HiRes reports, read from the same field.
+    /// </summary>
+    public override PenConventions Conventions => new(
+        _useScaleAxis ? PenRawUnits.TabletNative : PenRawUnits.ScreenPixels,
+        PenButtonEncoding.WintabEvent,
+        PenCursorNumbering.DeviceAssigned);
+
     public override PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt | PenCapabilities.Twist |
         PenCapabilities.ZHeight | PenCapabilities.Buttons | PenCapabilities.Eraser |

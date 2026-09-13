@@ -20,6 +20,16 @@ public sealed class AvaloniaPointerSession : IPenSession
 
     public InputApi Api => InputApi.AvaloniaPointer;
 
+    /// <summary>
+    /// This framework exposes no device-native coordinate, so the raw fields carry nothing
+    /// and are written as zero. Reporting DesktopX truncated would look like a second
+    /// measurement and be the same one with its fraction removed.
+    /// </summary>
+    public PenConventions Conventions => new(
+        PenRawUnits.None,
+        PenButtonEncoding.PointerFlags,
+        PenCursorNumbering.Normalised);
+
     public PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt |
         PenCapabilities.Buttons | PenCapabilities.Eraser;
@@ -161,8 +171,11 @@ public sealed class AvaloniaPointerSession : IPenSession
         _points.Enqueue(new PenPoint(
             DesktopX: desktopX,
             DesktopY: desktopY,
-            RawX: (int)desktopX,
-            RawY: (int)desktopY,
+            // Zero, with Conventions.RawUnits reporting None. This used to be
+            // (int)desktopX, which reads as a device-native value and is DesktopX with its
+            // fraction dropped.
+            RawX: 0,
+            RawY: 0,
             Pressure: pressure,
             Azimuth: azimuth,
             Altitude: altitude,

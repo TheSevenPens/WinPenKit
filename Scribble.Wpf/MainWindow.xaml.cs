@@ -427,7 +427,12 @@ public partial class MainWindow : Window
         ProximityLabel.Text = "Proximity";
         CursorLabel.Text = $"Cursor: {last.Cursor}";
 
-        RawPosLabel.Text = $"Raw: {last.RawX},{last.RawY}";
+        // The unit comes from the session; this backend has no device-native coordinate, so
+        // it reports None and the readout says so rather than printing zeros.
+        var rawUnits = _session?.Conventions.RawUnits ?? PenRawUnits.None;
+        RawPosLabel.Text = rawUnits == PenRawUnits.None
+            ? "Raw: --"
+            : $"Raw: {last.RawX},{last.RawY} ({rawUnits.Label()})";
         // F2, not F0: at 1.75x, PointFromScreen turns an integer desktop coordinate into a
         // fractional DIP anyway, so a decimal Canvas readout proves nothing about the input.
         // The fractional part has to be visible here or quantization is undetectable.

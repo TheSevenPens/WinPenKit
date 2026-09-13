@@ -36,7 +36,10 @@ public readonly record struct PenTelemetry(
     Point AppPoint,
     Point CanvasPoint,
     int MaxPressure,
-    InputApi Api);
+    InputApi Api,
+    // What Point.RawX is measured in, or None when this backend has no device-native
+    // coordinate. Carried here because the ribbon has the point and not the session.
+    PenRawUnits RawUnits);
 
 /// <summary>
 /// WinUI 3 wrapper around <see cref="IPenSession"/>. Converts
@@ -260,7 +263,8 @@ public sealed class PenSessionWinUI3 : IDisposable
             appPoint,
             _latestCanvasPoint,
             _session?.MaxPressure ?? 0,
-            _session?.Api ?? InputApi.WintabSystem);
+            _session?.Api ?? InputApi.WintabSystem,
+            _session?.Conventions.RawUnits ?? PenRawUnits.None);
     }
 
     // ── Desktop → app/canvas DIP conversion ──────────────────────────

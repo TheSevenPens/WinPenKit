@@ -66,6 +66,16 @@ public interface IPenSession : IDisposable
     /// <summary>Which pen data features this session supports.</summary>
     PenCapabilities Capabilities { get; }
 
+    /// <summary>
+    /// What this session's points mean, for the fields whose meaning depends on the backend.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately without a default implementation: a new backend that does not say what
+    /// its raw units, button encoding and cursor numbering are will not compile. The next
+    /// divergence should be a build error rather than something a reader finds later.
+    /// </remarks>
+    PenConventions Conventions { get; }
+
     /// <summary>Diagnostic info about the session configuration.</summary>
     string DebugInfo { get; }
 
