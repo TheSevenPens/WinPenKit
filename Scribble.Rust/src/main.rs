@@ -2,7 +2,9 @@ mod pen_session_ffi;
 mod selftest;
 
 use eframe::egui;
-use pen_session_ffi::{PenInputApi, PenPoint, PenSession};
+use pen_session_ffi::{
+    PenButtonEncoding, PenConventions, PenInputApi, PenPoint, PenRawUnits, PenSession,
+};
 use tiny_skia::{Color, LineCap, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 fn main() -> eframe::Result {
@@ -61,6 +63,11 @@ struct ScribbleApp {
     max_pressure: i32,
     last_point_time: std::time::Instant,
 
+    // What this session's points mean. Read once at start rather than inferred
+    // per packet from the API: two implementations of one API can disagree about
+    // the encoding, which is what issue 40 was.
+    conventions: PenConventions,
+
     // Button state tracked from Wintab packet stream (relative encoding).
     tip_down: bool,
     barrel1_down: bool,
@@ -80,6 +87,7 @@ impl ScribbleApp {
             available_apis: apis,
             selected_api_index: 0,
             session: None,
+            conventions: PenConventions::default(),
             points_buffer: vec![PenPoint::default(); 128],
             hwnd: std::ptr::null_mut(),
             pixmap: None,
@@ -127,6 +135,7 @@ impl ScribbleApp {
         }
 
         self.max_pressure = session.max_pressure();
+        self.conventions = session.conventions();
         self.session = Some(session);
         self.tip_down = false;
         self.barrel1_down = false;
@@ -178,9 +187,7 @@ impl ScribbleApp {
             // Wintab: one event per packet, (action << 16) | buttonNumber.
             // Pointer: absolute bitmask (0x0001 = barrel, 0x0002 = eraser).
             // Pointer APIs only expose a single barrel — B2/B3 cannot light up.
-            let is_wintab = pt.source == PenInputApi::WintabSystem as i32
-                || pt.source == PenInputApi::WintabDigitizer as i32;
-            if is_wintab {
+            if self.conventions.buttons == PenButtonEncoding::WintabEvent {
                 let btn_action = (pt.buttons >> 16) & 0xFFFF;
                 let btn_number = pt.buttons & 0xFFFF;
                 match btn_action {
@@ -434,7 +441,18 @@ impl eframe::App for ScribbleApp {
                 ui.vertical(|ui| {
                     ui.strong("POSITION");
                     if let Some(pt) = &self.last_point {
-                        ui.monospace(format!("Raw: {},{}", pt.raw_x, pt.raw_y));
+                        // The unit travels with the reading: raw_x means a different
+                        // quantity on each backend, and on some it means nothing at all.
+                        ui.monospace(if self.conventions.raw_units == PenRawUnits::None {
+                            "Raw: --".to_string()
+                        } else {
+                            format!(
+                                "Raw: {},{} ({})",
+                                pt.raw_x,
+                                pt.raw_y,
+                                self.conventions.raw_units.label()
+                            )
+                        });
                         // A pen position is sub-pixel, so this is shown to two decimals. At zero decimals the readout cannot show the one fault it would most often be used to find: a coordinate quantized to a whole pixel looks identical to a good one.
                         ui.monospace(format!("Screen: {:.2},{:.2}", pt.desktop_x, pt.desktop_y));
                         let app_x = pt.desktop_x as f32 / ppp - window_pos.x;
