@@ -103,7 +103,14 @@
 
         <!-- Canvas — Skia bitmap-backed -->
         <Border x:Name="CanvasArea" Background="#F0F0F0" ClipToBounds="True">
-            <Image x:Name="DrawImage" Stretch="None"
+            <!-- Stretch=Fill against an explicit Width/Height in DIPs, assigned in
+                 EnsureBitmap. The DIP size is always pixel size / RenderScaling, so Fill is an
+                 identity mapping here rather than a resample.
+
+                 Stretch=None with a dpi-tagged bitmap rendered the top-left corner of the
+                 backing store magnified by the render scaling, and strokes landed that many
+                 times too far from the origin. See issue 70. -->
+            <Image x:Name="DrawImage" Stretch="Fill"
                    HorizontalAlignment="Left" VerticalAlignment="Top" />
         </Border>
     </DockPanel>

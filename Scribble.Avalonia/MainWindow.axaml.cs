@@ -198,16 +198,25 @@ public partial class MainWindow : Window
             oldBitmap.Dispose();
         }
 
-        // Declared at the display's dpi, so Avalonia lays the image out at its DIP size and
-        // presents the pixels 1:1 instead of scaling them.
+        // 96 dpi, deliberately, so Bitmap.Size reports the pixel count rather than a DIP
+        // size. Tagging it at the display's dpi made Size report w/scale while the store held
+        // w pixels, and the image then rendered its top-left w/scale pixels stretched across
+        // the whole host -- magnified by the render scaling. Issue 70.
+        //
+        // The 1:1 mapping comes from the explicit Width/Height below instead.
         _avBitmap = new WriteableBitmap(
             new PixelSize(w, h),
-            new Vector(96 * scale, 96 * scale),
+            new Vector(96, 96),
             global::Avalonia.Platform.PixelFormat.Bgra8888,
             global::Avalonia.Platform.AlphaFormat.Premul);
 
         CopyToAvBitmap();
         DrawImage.Source = _avBitmap;
+
+        // The DIP size w physical pixels occupy on this display. With Stretch=Fill this is an
+        // identity transform, which is what puts a stroke where the pen was.
+        DrawImage.Width = w / scale;
+        DrawImage.Height = h / scale;
     }
 
     private void CopyToAvBitmap()
