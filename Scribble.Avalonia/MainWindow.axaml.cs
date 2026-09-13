@@ -377,7 +377,13 @@ public partial class MainWindow : Window
         ProximityLabel.Text = "Proximity";
         CursorLabel.Text = $"Cursor: {last.Cursor}";
 
-        RawPosLabel.Text = $"Raw: {last.RawX},{last.RawY}";
+        // The unit comes from the session, because RawX means four different things across
+        // the backends and three of them have no device-native value at all. Printing the
+        // zeros would read as a measurement.
+        var rawUnits = _session?.Conventions.RawUnits ?? PenRawUnits.None;
+        RawPosLabel.Text = rawUnits == PenRawUnits.None
+            ? "Raw: --"
+            : $"Raw: {last.RawX},{last.RawY} ({rawUnits.Label()})";
         // A pen position is sub-pixel, so this is shown to two decimals. At zero decimals the readout cannot show the one fault it would most often be used to find: a coordinate quantized to a whole pixel looks identical to a good one.
         ScreenPosLabel.Text = $"Screen: {last.DesktopX:F2},{last.DesktopY:F2}";
 

@@ -77,6 +77,12 @@ internal abstract class WintabSessionBase : IPenSession
         IsRunning = false;
     }
 
+    /// <summary>
+    /// Left abstract so each context states its own. The digitizer's raw units depend on
+    /// whether the hi-res context actually opened, which the base class cannot know.
+    /// </summary>
+    public abstract PenConventions Conventions { get; }
+
     public PenPoint[] DrainPoints()
     {
         _hasNewData = false;

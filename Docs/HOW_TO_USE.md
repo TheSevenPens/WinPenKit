@@ -84,7 +84,7 @@ Every `PenPoint` contains:
 | Field | Type | Description |
 |---|---|---|
 | `DesktopX/Y` | `double` | Physical screen pixels. Sub-pixel precision in digitizer mode. |
-| `RawX/Y` | `int` | Raw values from the API, in **four different units** depending on the backend. See below. |
+| `RawX/Y` | `int` | Device-native position, in units given by `session.Conventions.RawUnits`. Zero when that is `None`. See below. |
 | `Pressure` | `uint` | Raw tip pressure. 0 = hovering. Normalize: `(float)pt.Pressure / session.MaxPressure` |
 | `Azimuth` | `double` | Spherical: compass direction in degrees (0.0–360.0). |
 | `Altitude` | `double` | Spherical: angle from surface in degrees (0.0–90.0). 90 = perpendicular. |
@@ -93,20 +93,38 @@ Every `PenPoint` contains:
 | `Twist` | `double` | Barrel rotation in degrees (0.0–360.0). |
 | `Z` | `int` | Height above tablet surface. 0 unless the session advertises `ZHeight`. |
 | `Status` | `uint` | Packet flags, carrying the proximity bit. 0 unless the session advertises `Proximity`, which only the Wintab backends do. |
-| `Buttons` | `uint` | Button state, in **two different encodings**. Wintab: `(action << 16) \| buttonNumber`. Pointer backends: a flag bitmask, bit 0 barrel, bit 1 eraser. Read it through `PenButtonTracker`. |
-| `Cursor` | `uint` | Cursor type. Pointer backends normalise to 13 tip / 14 eraser. Wintab passes the driver's own number through, and those are device-assigned. |
+| `Buttons` | `uint` | Button state, in one of two encodings named by `session.Conventions.Buttons`. Wintab: `(action << 16) \| buttonNumber`. Pointer backends: a flag bitmask, bit 0 barrel, bit 1 eraser. Read it through `PenButtonTracker`. |
+| `Cursor` | `uint` | Cursor type, numbered as `session.Conventions.Cursor` says. Pointer backends normalise to 13 tip / 14 eraser; Wintab passes the driver's own number through. |
 | `Source` | `InputApi` | Which backend produced this point. |
 
 ### What `RawX/Y` holds
 
-| Backend | Unit |
-|---|---|
-| Wintab digitizer | tablet-native units |
-| Wintab system | screen pixels |
-| WM_POINTER, WinForms | hundredths of a millimetre (`ptHimetricLocationRaw`) |
-| WPF, WinUI, Avalonia | `DesktopX` truncated to `int` — no device-native value is available |
+Ask the session: `session.Conventions.RawUnits`.
 
-**Nothing in the API reports which unit you have.** Read it as a diagnostic, not a position: sane raw values against a wrong `DesktopX` point at the mapping, and both wrong point upstream of it. The last row carries nothing `DesktopX` does not already carry. Tracked in issues 24 and 53.
+| Backend | `RawUnits` | |
+|---|---|---|
+| Wintab digitizer, hi-res context open | `TabletNative` | the tablet's own space |
+| Wintab digitizer, fallen back | `ScreenPixels` | |
+| Wintab system | `ScreenPixels` | mapped by the driver |
+| WM_POINTER, WinForms | `HundredthsOfMillimetre` | `ptHimetricLocationRaw` |
+| WPF, WinUI, Avalonia | `None` | **no device-native value exists; the fields are zero** |
+
+Read it as a diagnostic, not a position: sane raw values against a wrong `DesktopX` point at the mapping, and both wrong point upstream of it.
+
+Those last three frameworks used to report `DesktopX` truncated to `int`. That is not a second measurement, it is the first one with its fraction removed, and it defeated the only reason to look at this field. They now report nothing and say so.
+
+## Conventions
+
+`PenPoint` has fields whose meaning depends on which backend produced them. `session.Conventions` says which convention is in force:
+
+```csharp
+var c = session.Conventions;
+c.RawUnits   // what RawX/Y are measured in, or None
+c.Buttons    // WintabEvent or PointerFlags
+c.Cursor     // Normalised or DeviceAssigned
+```
+
+`PenCapabilities` answers a different question -- *supported or not*, like `Proximity` and `ZHeight`. `Conventions` answers *which convention*. Asking one flag to answer both is how a hi-res capability once survived a fallback that had turned hi-res off.
 
 Both tilt representations are always present — Wintab backends compute TiltX/TiltY from Azimuth/Altitude, and WM_POINTER backends compute Azimuth/Altitude from TiltX/TiltY.
 

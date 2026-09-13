@@ -8,6 +8,15 @@ internal sealed class WintabSystemSession : WintabSessionBase
 {
     public override InputApi Api => InputApi.WintabSystem;
 
+    /// <summary>
+    /// A system context is mapped to the screen by the driver, so the raw fields are screen
+    /// pixels: the same space DesktopX is in, at whole-pixel resolution.
+    /// </summary>
+    public override PenConventions Conventions => new(
+        PenRawUnits.ScreenPixels,
+        PenButtonEncoding.WintabEvent,
+        PenCursorNumbering.DeviceAssigned);
+
     public override PenCapabilities Capabilities =>
         PenCapabilities.Pressure | PenCapabilities.Tilt | PenCapabilities.Twist |
         PenCapabilities.ZHeight | PenCapabilities.Buttons | PenCapabilities.Eraser |
