@@ -5,9 +5,9 @@ Eight demo apps. Seven prove the WinPenKit SDK end-to-end, with bitmap-backed re
 `Scribble.Qt` is the exception and is here on purpose: it uses Qt's own stylus handling and no WinPenKit at all. Seven samples sharing one library can agree with each other and still be wrong together, so an independent implementation is what makes a measurement a statement about Windows rather than about this repository. It is also the closest thing here to what Krita sees, since Krita consumes `QTabletEvent` the same way.
 
 > Every app here accepts `--selftest` and `--replay`, which verify the environment, the drawing
-> surface and the coordinate conversion with no tablet and no person. All but `Scribble.Rust`
-> also accept `--record <path>`, which captures a live pen stream in the format `--replay`
-> reads. See [SELF-TEST.md](SELF-TEST.md).
+> surface and the coordinate conversion with no tablet and no person. Every one also accepts
+> `--record <path>`, which captures a live pen stream in the format `--replay` reads. See
+> [SELF-TEST.md](SELF-TEST.md).
 >
 > `Scribble.Qt` answers the same checks with the same ids, which is the only reason its numbers
 > can be put beside the others'.

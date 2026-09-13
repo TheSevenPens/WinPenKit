@@ -21,6 +21,7 @@ fn main() -> eframe::Result {
 
     let replay = selftest::replay_requested();
     let run_selftest = selftest::requested() || replay.is_some();
+    let record_path = selftest::record_requested();
 
     eframe::run_native(
         "Scribble.Rust",
@@ -30,6 +31,7 @@ fn main() -> eframe::Result {
             app.selftest_pending = run_selftest;
             app.replay_path = replay.clone().flatten();
             app.replay_requested = replay.is_some();
+            app.record_path = record_path.clone();
             Ok(Box::new(app))
         }),
     )
@@ -66,6 +68,10 @@ struct ScribbleApp {
 
     last_point: Option<PenPoint>,
     max_pressure: i32,
+    // --record: captures the pen stream to the format --replay reads. Saved when the window
+    // closes, so killing the process loses it -- true of every sample that has this.
+    record_path: Option<String>,
+    recorder: selftest::Recorder,
     last_point_time: std::time::Instant,
 
     // What this session's points mean. Read once at start rather than inferred
@@ -110,6 +116,8 @@ impl ScribbleApp {
             needs_texture_update: false,
             last_point: None,
             max_pressure: 0,
+            record_path: None,
+            recorder: selftest::Recorder::new(),
             last_point_time: std::time::Instant::now(),
             tip_down: false,
             barrel1_down: false,
@@ -120,6 +128,12 @@ impl ScribbleApp {
             // its first frame, before there is even a session to notify.
             was_focused: true,
         }
+    }
+
+    fn save_recording(&mut self) {
+        let Some(path) = self.record_path.take() else { return };
+        let written = self.recorder.save(&path);
+        eprintln!("[record] {written} points -> {path}");
     }
 
     fn start_session(&mut self) {
@@ -143,6 +157,18 @@ impl ScribbleApp {
 
         self.max_pressure = session.max_pressure();
         self.conventions = session.conventions();
+
+        // Described at start rather than at save: this sample switches pen API while a
+        // recording runs, and the header has to name the session the points came from.
+        if self.record_path.is_some() {
+            let name = match api {
+                PenInputApi::WintabSystem => "WintabSystemSession (native)",
+                PenInputApi::WintabDigitizer => "WintabDigitizerSession (native)",
+                PenInputApi::WmPointer => "WmPointerSession (native)",
+                _ => "unknown",
+            };
+            self.recorder.describe(name, self.max_pressure);
+        }
         self.session = Some(session);
         self.tip_down = false;
         self.barrel1_down = false;
@@ -222,6 +248,13 @@ impl ScribbleApp {
             }
             if pt.buttons != 0 {
                 self.last_raw_buttons = pt.buttons;
+            }
+
+            // Before the canvas bounds check below, which skips points outside the canvas: a
+            // recording is of what the session produced, not of what this window chose to
+            // draw. Scribble.Win32 records at the same place for the same reason.
+            if self.record_path.is_some() {
+                self.recorder.add(pt.desktop_x, pt.desktop_y, pt.pressure);
             }
 
             // Wintab gives physical desktop pixels, and the pixmap is in physical pixels too.
@@ -325,6 +358,14 @@ fn snap_panel_height(base: f32, ppp: f32) -> f32 {
 impl eframe::App for ScribbleApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
+
+        // Written on a graceful close. eframe's on_exit would also serve, but it takes a
+        // renderer handle this crate does not otherwise name; the close request is state egui
+        // already exposes. Killing the process still loses the recording, which is true of
+        // every sample that has one.
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.save_recording();
+        }
 
         // Wintab drops our context down the driver's overlap order when another
         // application takes focus, and nothing puts it back - the first stroke after

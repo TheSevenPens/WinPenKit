@@ -174,9 +174,8 @@ Two orders of magnitude between signal and noise, and the synthetic quantized fi
 
 ### Capturing one
 
-`--record <path>` writes the session's stream to that format. Six of the seven applications
-implement it: `Scribble.Wpf`, `Scribble.Avalonia`, `Scribble.WinForms`, `Scribble.WinUI`,
-`Scribble.Win32` and `Scribble.Qt`. `Scribble.Rust` does not.
+`--record <path>` writes the session's stream to that format. All seven applications
+implement it.
 
 `Scribble.Qt` is the one whose recordings are worth singling out. It reaches the pen through Qt
 rather than through WinPenKit, so a stroke captured there and compared against one captured from

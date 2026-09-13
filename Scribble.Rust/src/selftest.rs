@@ -760,3 +760,97 @@ unsafe extern "system" {
     fn BitBlt(dc: *mut c_void, x: i32, y: i32, cx: i32, cy: i32,
               src: *mut c_void, x1: i32, y1: i32, rop: u32) -> i32;
 }
+
+// -- Recording ---------------------------------------------------
+//
+// Writes the format `load_recording` above reads, so a stream captured here replays anywhere
+// in the repository. A reimplementation of Scribble.Win32's `selftest::Recorder` rather than a
+// binding to it, for the same reason the rest of this module is: this sample has no .NET
+// runtime under it, and the C++ one is a header it cannot include either.
+
+/// Captures a live pen stream, written when the application closes.
+#[derive(Default)]
+pub struct Recorder {
+    points: Vec<(f64, f64, u32)>,
+    source: String,
+    max_pressure: i32,
+    spans_sessions: bool,
+}
+
+impl Recorder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Names the session these points come from, and its pressure range.
+    ///
+    /// Called when a session starts rather than when the file is written: this sample switches
+    /// pen API while a recording runs, and one maximum cannot describe two devices.
+    pub fn describe(&mut self, source: &str, max_pressure: i32) {
+        if !self.points.is_empty() && (self.source != source || self.max_pressure != max_pressure)
+        {
+            self.spans_sessions = true;
+            return;
+        }
+        self.source = source.to_string();
+        self.max_pressure = max_pressure;
+    }
+
+    /// Hover carries no stroke, so a point at zero pressure is not part of one.
+    pub fn add(&mut self, x: f64, y: f64, pressure: u32) {
+        if pressure == 0 {
+            return;
+        }
+        self.points.push((x, y, pressure));
+    }
+
+    /// Returns the number of points written, or 0 when there was nothing to write -- an empty
+    /// file must never stand in for a stroke nobody drew.
+    pub fn save(&self, path: &str) -> usize {
+        use std::io::Write;
+
+        if self.points.is_empty() {
+            return 0;
+        }
+        let Ok(mut f) = std::fs::File::create(path) else {
+            return 0;
+        };
+
+        let _ = writeln!(f, "# Pen stroke recorded from a live session, in desktop pixels.");
+        if !self.source.is_empty() {
+            let _ = writeln!(f, "# Source: {}", self.source);
+        }
+        let _ = writeln!(f, "# MaxPressure: {}", self.max_pressure);
+        if self.spans_sessions {
+            let _ = writeln!(
+                f,
+                "# WARNING: the pen API changed while this was recording. The values above                  describe the session the first points came from; later points came from                  another. Do not normalise pressure from this file."
+            );
+        }
+        let _ = writeln!(f, "# Captured: {} points", self.points.len());
+        let _ = writeln!(f, "desktopX,desktopY,pressure");
+
+        // Round-trip precision, deliberately: a recorder that quantized its own output would
+        // report every session as quantized. Rust's default float formatting is already the
+        // shortest representation that round-trips, so no precision is specified.
+        for (x, y, p) in &self.points {
+            let _ = writeln!(f, "{},{},{}", x, y, p);
+        }
+
+        self.points.len()
+    }
+}
+
+/// `--record <path>`. The path is required: a recorder that chose its own filename would
+/// overwrite the previous capture, which is the one thing a person drawing a comparison pair
+/// cannot afford.
+pub fn record_requested() -> Option<String> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    for (i, a) in args.iter().enumerate() {
+        if !a.eq_ignore_ascii_case("--record") {
+            continue;
+        }
+        return args.get(i + 1).filter(|n| !n.starts_with("--")).cloned();
+    }
+    None
+}
