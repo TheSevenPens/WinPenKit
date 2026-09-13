@@ -49,6 +49,9 @@ public readonly record struct PresentationMarker(int X, int Y, int Size, byte R,
 /// the display from a hidden window.</para>
 /// <para>The markers are drawn into the live surface and are not erased. An application that
 /// carries on running should clear its canvas afterwards.</para>
+/// <para><c>Scribble.Win32</c> and <c>Scribble.Rust</c> carry their own copy of this
+/// measurement, for the same reason their whole self test is a reimplementation: neither has a
+/// managed runtime under it. A change to what this reports should be made in all three.</para>
 /// </remarks>
 public sealed class PresentationProbe
 {
