@@ -36,6 +36,11 @@ static constexpr int IDC_CLEAR_BTN    = 1003;
 
 static PenSessionHandle g_session = nullptr;
 
+// --record <path>: capture the pen stream to the format --replay reads. Saved when the
+// window is destroyed, so killing the process loses it -- true of every sample that has this.
+static selftest::Recorder g_recorder;
+static std::string        g_record_path;
+
 // What this session's points mean. Read once at start rather than inferred per packet from
 // pen_session_get_api, which is the inference pen_session_get_conventions replaces: two
 // implementations of one API can disagree, and the API name does not say which is running.
@@ -192,6 +197,19 @@ static void start_session() {
 
     pen_session_get_conventions(g_session, &g_conventions);
     g_max_pressure = pen_session_get_max_pressure(g_session);
+
+    // Described at start rather than at save: this sample switches pen API while a recording
+    // runs, and the header has to name the session the points came from.
+    if (!g_record_path.empty()) {
+        const char* api_name = "";
+        switch (pen_session_get_api(g_session)) {
+            case PEN_API_WINTAB_SYSTEM:    api_name = "WintabSystemSession (native)"; break;
+            case PEN_API_WINTAB_DIGITIZER: api_name = "WintabDigitizerSession (native)"; break;
+            case PEN_API_WM_POINTER:       api_name = "WmPointerSession (native)"; break;
+            default:                       api_name = "unknown"; break;
+        }
+        g_recorder.describe(api_name, g_max_pressure);
+    }
     g_has_last = false;
     g_has_pen_data = false;
     g_tip_down = g_barrel1_down = g_barrel2_down = g_barrel3_down = false;
@@ -244,6 +262,9 @@ static void process_points(HWND hwnd) {
             // Tip is tracked via pressure>0 below (universal across backends).
         }
         if (pt.buttons != 0) g_last_raw_buttons = pt.buttons;
+
+        if (!g_record_path.empty())
+            g_recorder.add(pt.desktop_x, pt.desktop_y, pt.pressure);
 
         // Converted by hand rather than through ScreenToClient, which takes a POINT and so
         // forces the position onto the whole-pixel grid on the way in. The client origin is
@@ -837,6 +858,10 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_DESTROY:
         KillTimer(hwnd, 1);
+        if (!g_record_path.empty()) {
+            int written = g_recorder.save(g_record_path);
+            fprintf(stderr, "[record] %d points -> %s\n", written, g_record_path.c_str());
+        }
         if (g_session) {
             pen_session_stop(g_session);
             pen_session_destroy(g_session);
@@ -894,6 +919,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
     // GDI+ for the canvas. Started before the window so the first WM_PAINT has it.
     Gdiplus::GdiplusStartupInput gdiplus_input;
     Gdiplus::GdiplusStartup(&g_gdiplus_token, &gdiplus_input, nullptr);
+
+    // Read before the window exists: the session is created on the first WM_SIZE, and the
+    // header naming it is written there.
+    selftest::record_requested(g_record_path);
 
     INITCOMMONCONTROLSEX icc = {sizeof(icc), ICC_BAR_CLASSES};
     InitCommonControlsEx(&icc);

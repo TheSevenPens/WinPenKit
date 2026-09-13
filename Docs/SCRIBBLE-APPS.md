@@ -3,8 +3,9 @@
 Seven demo apps proving the WinPenKit SDK end-to-end. All feature bitmap-backed rendering, a ribbon toolbar with API dropdown, brush size slider, clear button, pressure-sensitive drawing, and four-coordinate position display (Raw → Screen → App → Canvas).
 
 > Every app here accepts `--selftest` and `--replay`, which verify the environment, the drawing
-> surface and the coordinate conversion with no tablet and no person. See
-> [SELF-TEST.md](SELF-TEST.md).
+> surface and the coordinate conversion with no tablet and no person. All but `Scribble.Rust`
+> also accept `--record <path>`, which captures a live pen stream in the format `--replay`
+> reads. See [SELF-TEST.md](SELF-TEST.md).
 
 ## Summary
 

@@ -128,13 +128,20 @@ Two orders of magnitude between signal and noise, and the synthetic quantized fi
 
 ### Capturing one
 
-`--record <path>` writes the session's stream to that format. `Scribble.Wpf` implements it today.
+`--record <path>` writes the session's stream to that format. Five of the six samples
+implement it: `Scribble.Wpf`, `Scribble.Avalonia`, `Scribble.WinForms`, `Scribble.WinUI`
+and `Scribble.Win32`. `Scribble.Rust` does not.
+
+The path is required. A recorder that picked its own filename would overwrite the previous
+capture, which is the one thing a person drawing a comparison pair cannot afford.
 
 ```
-Scribble.Wpf.exe --record wpf-stylus.csv
+Scribble.Wpf.exe   --record wpf-stylus.csv
+ScribbleCpp.exe    --record native-pointer.csv
 ```
 
-Draw, then close the window: the recording is written on close, and the point count goes to standard error. Positions are written with round-trip formatting and no rounding of any kind, because a recorder that quantized its own output would report every session as quantized.
+Draw, then close the window: the recording is written on close, and the point count goes to
+standard error. Killing the process loses the recording -- there is no incremental write. Positions are written with round-trip formatting and no rounding of any kind, because a recorder that quantized its own output would report every session as quantized.
 
 This is what makes one session measurable against another. `--replay` on the result prints the recording's own mean turn angle as the `in` figure of `L3.conversion-lossless`, so two captures from the same hand on the same tablet can be compared directly:
 

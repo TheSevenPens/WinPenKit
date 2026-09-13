@@ -18,6 +18,9 @@
 
 #include <windows.h>
 #include <shellapi.h>   // CommandLineToArgvW
+#include <array>
+#include <fstream>
+#include <iomanip>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -459,5 +462,87 @@ inline bool replay_requested(std::string& path) {
     if (found && path.empty()) path = find_default_recording();
     return found;
 }
+
+// ── Recording ───────────────────────────────────────────────────
+//
+// Writes the same format load_recording reads, so a stream captured here can be replayed
+// through these checks or compared against testdata. The managed samples share
+// WinPenKit.Diagnostics.StrokeRecorder; this binding sees only the C ABI, so it writes the
+// few lines itself.
+
+inline bool record_requested(std::string& path) {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv) return false;
+
+    bool found = false;
+    for (int i = 1; i < argc; i++) {
+        if (_wcsicmp(argv[i], L"--record") != 0) continue;
+        if (i + 1 < argc && wcsncmp(argv[i + 1], L"--", 2) != 0) {
+            char narrow[MAX_PATH * 2];
+            size_t converted = 0;
+            wcstombs_s(&converted, narrow, argv[i + 1], sizeof(narrow) - 1);
+            path = narrow;
+            found = true;
+        }
+        break;
+    }
+    LocalFree(argv);
+    // The path is required. A recorder that chose its own filename would overwrite the
+    // previous capture, which is the one thing a person drawing a comparison pair cannot
+    // afford.
+    return found;
+}
+
+struct Recorder {
+    std::vector<std::array<double, 3>> points;  // desktop x, desktop y, pressure
+    std::string source;
+    int max_pressure = 0;
+    bool spans_sessions = false;
+
+    /// Name the session these points come from, and its pressure range. Called when a
+    /// session starts, not when the file is written: this sample switches pen API while a
+    /// recording runs, and one maximum cannot describe two devices.
+    void describe(const char* src, int max_p) {
+        if (!points.empty() && (source != src || max_pressure != max_p)) {
+            spans_sessions = true;
+            return;
+        }
+        source = src ? src : "";
+        max_pressure = max_p;
+    }
+
+    void add(double x, double y, uint32_t pressure) {
+        if (pressure == 0) return;  // hover carries no stroke
+        points.push_back({x, y, static_cast<double>(pressure)});
+    }
+
+    /// Returns the number of points written, or 0 when there was nothing to write -- an
+    /// empty file must never stand in for a stroke nobody drew.
+    int save(const std::string& path) const {
+        if (points.empty()) return 0;
+
+        std::ofstream f(path, std::ios::binary);
+        if (!f) return 0;
+
+        f << "# Pen stroke recorded from a live session, in desktop pixels.\n";
+        if (!source.empty()) f << "# Source: " << source << "\n";
+        f << "# MaxPressure: " << max_pressure << "\n";
+        if (spans_sessions)
+            f << "# WARNING: the pen API changed while this was recording. The values above "
+                 "describe the session the first points came from; later points came from "
+                 "another. Do not normalise pressure from this file.\n";
+        f << "# Captured: " << points.size() << " points\n";
+        f << "desktopX,desktopY,pressure\n";
+
+        // Round-trip precision, deliberately: a recorder that quantized its own output would
+        // report every session as quantized.
+        f << std::setprecision(17);
+        for (const auto& p : points)
+            f << p[0] << ',' << p[1] << ',' << static_cast<uint32_t>(p[2]) << '\n';
+
+        return static_cast<int>(points.size());
+    }
+};
 
 }  // namespace selftest
