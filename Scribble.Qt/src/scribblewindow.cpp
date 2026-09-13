@@ -20,6 +20,8 @@
 // cost is that this file says Q_EMIT where it would otherwise say emit.
 #undef emit
 
+#include "qtbackend.h"
+
 #include "selftest.h"
 
 namespace {
@@ -250,8 +252,8 @@ void CanvasWidget::resizeEvent(QResizeEvent*) {
 
 // ── ScribbleWindow ──────────────────────────────────────────────
 
-ScribbleWindow::ScribbleWindow(PenApi active, QWidget* parent)
-    : QMainWindow(parent), m_api(active) {
+ScribbleWindow::ScribbleWindow(PenApi requested, PenApi obtained, QWidget* parent)
+    : QMainWindow(parent), m_requested(requested), m_obtained(obtained) {
     setWindowTitle(QStringLiteral("Scribble Qt - WinPenKit comparison"));
     resize(1200, 700);
 
@@ -260,7 +262,7 @@ ScribbleWindow::ScribbleWindow(PenApi active, QWidget* parent)
     column->setContentsMargins(0, 0, 0, 0);
     column->setSpacing(0);
 
-    m_ribbon = new ScribbleRibbon(active, central);
+    m_ribbon = new ScribbleRibbon(obtained, central);
     m_canvas = new CanvasWidget(central);
     m_canvas->setBrushWidth(m_ribbon->brushSize());
 
@@ -270,6 +272,14 @@ ScribbleWindow::ScribbleWindow(PenApi active, QWidget* parent)
             m_canvas, &CanvasWidget::clear);
     connect(m_ribbon, &ScribbleRibbon::brushSizeChanged,
             m_canvas, &CanvasWidget::setBrushWidth);
+
+    // The window performs the switch and tells the ribbon what came of it, so the dropdown
+    // shows the backend Qt reports rather than the one that was asked for.
+    connect(m_ribbon, &ScribbleRibbon::apiSelected, this, [this](PenApi chosen) {
+        const bool ok = qtbackend::select(chosen);
+        m_obtained = qtbackend::current();
+        m_ribbon->setActiveApi(m_obtained, ok);
+    });
 
     column->addWidget(m_ribbon);
     column->addWidget(m_canvas, 1);
@@ -327,7 +337,7 @@ void ScribbleWindow::saveRecording() {
 
     // Written through the same recorder Scribble.Win32 uses, so the header and the number
     // formatting are not a second implementation of the format that --replay reads.
-    const QByteArray source = penapi::description(m_api).toUtf8();
+    const QByteArray source = penapi::description(m_obtained).toUtf8();
     selftest::Recorder rec;
     rec.describe(("Qt " + source).constData(), kAssumedMaxPressure);
     for (const auto& p : m_canvas->recorded())
@@ -349,14 +359,23 @@ int ScribbleWindow::runSelfTest(const std::string& replayPath) {
     r.check_window_placement(hwnd);
     r.report_scale(dpr);
 
-    // Which pen API this run is on. Reported rather than checked, the same way the scale is:
-    // there is no wrong answer, but a report that does not say which input path produced it
-    // cannot be compared against another run. It matters more here than in the other samples
-    // because Qt fixes the choice at startup and offers no way to ask afterwards -- so this
-    // line is the only record of what a given run was actually using.
-    r.check("L0.pen-api", true,
-            (penapi::description(m_api) + QStringLiteral(", fixed at startup"))
-                .toUtf8().constData());
+    // Which pen API this run is actually on, and whether that is the one asked for.
+    //
+    // This was a report and is now a check, because a report was not enough. It printed the
+    // requested backend and nothing anywhere compared it against the obtained one -- so for a
+    // day this sample said "Wintab, tablet-native" while running on WM_POINTER, and the
+    // recordings it produced carry that label. An instrument that cannot detect what it is
+    // pointed at is worse than none, because it is believed.
+    const PenApi live = qtbackend::current();
+    const bool matched = qtbackend::available() && live == m_requested;
+    r.check("L0.pen-api", matched,
+            (QStringLiteral("requested %1, obtained %2%3")
+                 .arg(penapi::description(m_requested), penapi::description(live),
+                      matched ? QString()
+                              : QStringLiteral("  <- Qt did not give the backend that was asked "
+                                               "for; anything recorded on this run is on the "
+                                               "one it did give"))
+             ).toUtf8().constData());
 
     // Qt lays out in device independent pixels, so the logical-to-physical ratio is the
     // device pixel ratio -- the same relationship WPF and Avalonia have, and not the 1.0 that

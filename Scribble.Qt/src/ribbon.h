@@ -58,9 +58,16 @@ public:
 
     double brushSize() const;
 
+    /// Called by the window once it knows what the switch actually produced, so the ribbon
+    /// never shows a backend on the strength of a request alone.
+    void setActiveApi(PenApi obtained, bool switchSucceeded);
+
 signals:
     void clearClicked();
     void brushSizeChanged(double px);
+
+    /// The user picked one. The window performs the switch; the ribbon does not.
+    void apiSelected(PenApi api);
 
 private slots:
     void onApiSelected(int index);
@@ -74,7 +81,7 @@ private:
     PenApi m_active;
 
     QComboBox* m_api = nullptr;
-    QLabel* m_restart = nullptr;
+    QLabel* m_status = nullptr;
     QPushButton* m_clear = nullptr;
 
     QSlider* m_brush = nullptr;
