@@ -172,7 +172,7 @@ unstated, every backend counts from somewhere different, and no two of them are 
 | contract | **yes** | subtract two, get elapsed microseconds; never decreasing within a session |
 | wrapping | **yes** | handled in the session, not left to the caller — see below |
 | **resolution** | **no** | 1 µs on WM_POINTER and WinUI; 1 ms on Wintab, Avalonia and WPF; 15.6 ms on Qt |
-| **one timestamp per point** | **no** | on WPF a batch shares one; on Qt a coarse clock repeats one |
+| **one timestamp per point** | **no** | yes on four backends; on WPF a batch shares one, on Qt a coarse clock repeats one |
 
 The last two rows reach your code. A velocity or smoothing routine tuned against WM_POINTER
 will meet **zero deltas** on WPF and Qt, and not occasionally: drawn on by hand, 2442 WPF points
@@ -228,21 +228,30 @@ than the thing it names.
 
 ### Measured resolution, and why injection could not measure it
 
-Five backends have now been measured on a Wacom DTH246 by hand. **Three of the five overturned
-the figure synthetic injection had produced.** Only Avalonia is still an injected number.
+**Every backend in this table has now been drawn on by hand**, on a Wacom DTH246, 13 Sep 2026.
+No injected figures remain.
 
-| backend | source | points | distinct timestamps | step |
+| backend | points | distinct timestamps | step | one stamp per point? |
 | --- | --- | --- | --- | --- |
-| **WM_POINTER (WinForms)** | **hardware** | **2070** | **2070** | **1 µs** |
-| **WinUI 3** | **hardware** | **1878** | **1878** | **1 µs** |
-| **Wintab (high-res)** | **hardware** | **1683** | **1683** | **1 ms** |
-| **WPF Stylus** | **hardware** | **2442** | **885** | **1 ms clock, 15.6 ms batches** |
-| **Qt (`Scribble.Qt`, not WinPenKit)** | **hardware** | **2280** | **810** | **15.6 ms** |
-| Avalonia | injection | 172 | 113 | 1 ms |
+| **WM_POINTER (WinForms)** | 2070 | 2070 | **1 µs** | yes |
+| **WinUI 3** | 1878 | 1878 | **1 µs** | yes |
+| **Avalonia** | 2167 | 2167 | 1 ms | yes |
+| **Wintab (high-res)** | 1683 | 1683 | 1 ms | yes |
+| **WPF Stylus** | 2442 | 885 | 1 ms clock, 15.6 ms batches | **no** — ~3 points share one |
+| **Qt (`Scribble.Qt`, not WinPenKit)** | 2280 | 810 | **15.6 ms** | **no** — coarse clock repeats |
 
-Read the Avalonia row as "no better than", not as a measurement. Three of the five that have
-since been drawn on came back different, so an injected figure has now been wrong more often
-than it has been right.
+Five of these six had an injected figure to compare against; Wintab never did, because it
+ignores injected input entirely. **Four of those five were wrong.** Only Qt's survived. That is
+the headline finding of this whole exercise, and it is a fact about the instrument rather than
+about any backend: measuring a clock through `InjectSyntheticPointerInput` mostly produces the
+injector's properties.
+
+Avalonia was the last measured and corrected its figure in a different direction from the rest.
+Injection gave 172 points carrying 113 distinct timestamps, which reads as a clock too coarse to
+separate consecutive points. On hardware there are **no repeats at all** — 2167 points, 2167
+timestamps, 2166 gaps and not one of them zero. Its 1 ms resolution is real, but that comes from
+the source type rather than from the recording: `PointerEventArgs.Timestamp` is a `ulong` count
+of milliseconds. Recorded in `testdata/avalonia-hardware-stroke.csv`.
 
 The Wintab row is the only one measured on real hardware — a Wacom DTH246 over the hi-res
 digitizer context, 13 Sep 2026 — and it is the best of the set by a wide margin. **Every one of
@@ -285,11 +294,11 @@ own events, so a backend cannot be shown to resolve finer than the thing feeding
 measurement taken through it can only ever bound a clock from above. Recorded in
 `testdata/wmpointer-hardware-stroke.csv` and `testdata/winui-hardware-stroke.csv`.
 
-One thing all five hardware recordings agree on, and the reason to trust them: a **180 Hz**
-device. The three per-point backends read it directly, as gaps averaging 5559 µs. WPF and Qt
+One thing all six hardware recordings agree on, and the reason to trust them: a **180 Hz**
+device. The four per-point backends read it directly, as gaps averaging 5559–5560 µs. WPF and Qt
 cannot — their timestamps step by the timer tick — but dividing points by elapsed span gives
-180.1 Hz and 179.9 Hz. Five unrelated code paths: the native C ABI, WinForms, WinUI, WPF, and
-Qt's own stack.
+180.1 Hz and 179.9 Hz. Six unrelated code paths: the native C ABI, WinForms, WinUI, Avalonia,
+WPF, and Qt's own stack.
 
 ### WPF is different in kind, not degree — and its clock was never the problem
 
@@ -316,14 +325,22 @@ delivery and a coarse clock. A finer clock would fix Qt and would do nothing for
 
 Recorded in `testdata/wpf-hardware-stroke.csv` and `testdata/qt-hardware-stroke.csv`.
 
+Avalonia sits with the per-point group rather than with these two, and the intermediate-point
+recovery added in #110 did not change that on the run measured: `GetIntermediatePoints` returned
+a single point every time, so nothing was coalesced and nothing shared a timestamp. That path
+produces several points per timestamp when the application falls behind, not as a rule.
+
 ### Two more things worth stating
 
 - **`dwTime` and `PerformanceCount` are not two readings of one clock.** Both are populated on
   every `POINTER_INFO`. `dwTime` is milliseconds on the `GetTickCount64` epoch, `PerformanceCount`
   is QPC, and they sat 27.08 ms apart — identically — across every sample. These backends use
   `PerformanceCount`.
-- **None of this establishes latency or sampling rate.** The gaps between injected points are
-  the injection script's, not a device's.
+- **Sampling rate is now established; latency still is not.** While every figure here came from
+  injection, the gaps were the injection script's and said nothing about a device. The six
+  hardware recordings do measure the device: 180 Hz, agreed on by all six. They still say nothing
+  about latency, which is the delay between the pen touching glass and the point reaching your
+  handler, and no recording of timestamps alone can measure it.
 
 ### Reading it as wall-clock time
 

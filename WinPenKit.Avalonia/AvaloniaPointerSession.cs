@@ -143,6 +143,13 @@ public sealed class AvaloniaPointerSession : IPenSession
     /// timestamps within a batch are a documented property that
     /// <see cref="PenPoint.TimestampMicroseconds"/> already warns about, and a difference of
     /// zero is already a reading a consumer has to expect.</para>
+    /// <para>Measured afterwards, the trade cost nothing on the run that tested it. One stroke
+    /// drawn on a 180 Hz tablet gave 2167 points and 2167 distinct timestamps, no repeats
+    /// anywhere: <c>GetIntermediatePoints</c> returned a single point every time, so there was
+    /// nothing coalesced to recover. The several-points-per-timestamp shape is what this path
+    /// produces when the application falls behind, not what it produces as a rule -- which is
+    /// worth knowing before treating it as Avalonia's normal behaviour. Recorded in
+    /// <c>testdata/avalonia-hardware-stroke.csv</c>.</para>
     /// </remarks>
     private void EnqueuePoint(PointerPoint point, ulong eventTimestamp)
     {

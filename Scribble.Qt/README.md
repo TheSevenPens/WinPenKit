@@ -163,17 +163,17 @@ This was the only backend whose injected figure survived contact with a tablet. 
 WinUI both measured 1 ms under `InjectSyntheticPointerInput` and both turned out to be
 microsecond-resolved when drawn on; Qt measured 15.6 ms and is 15.6 ms.
 
-That matters for anyone treating Qt as the reference, Krita included. All five rows below are
-now hardware measurements except Avalonia:
+That matters for anyone treating Qt as the reference, Krita included. Every row below is a
+hardware measurement taken on the same tablet on 13 Sep 2026:
 
 | | distinct timestamps / points | step |
 | --- | --- | --- |
 | WM_POINTER | 2070 / 2070 | **1 µs** |
 | WinUI 3 | 1878 / 1878 | **1 µs** |
+| Avalonia | 2167 / 2167 | 1 ms |
 | Wintab (high-res) | 1683 / 1683 | 1 ms |
 | WPF | 885 / 2442 | 1 ms clock, 15.6 ms batches |
 | **Qt** | **810 / 2280** | **15.6 ms** |
-| Avalonia *(injected)* | 113 / 172 | 1 ms |
 
 Qt and WPF land in a similar place by opposite routes, and the distinction is the useful part.
 WPF stamps a whole `StylusPointCollection` at once, so its **delivery** is coarse while its
@@ -187,9 +187,9 @@ between the two ticks of a 15.625 ms timer produces that figure arithmetically. 
 statistic was real evidence on the WM_POINTER recording, where gaps that small actually
 occurred. Quote the minimum gap alongside the gcd.
 
-All of this is synthetic injection, which stamps its own events, so each figure is an upper
-bound on granularity rather than proof the hardware path is no better. It needs a tablet to
-settle.
+Every figure in the table above was taken from a stroke drawn by hand. An earlier version of
+this section reported injected numbers and warned they were upper bounds; they were, and four of
+the five have since moved. Qt's did not.
 
 ## Two Qt-specific things found while building it
 

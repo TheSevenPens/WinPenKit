@@ -77,8 +77,10 @@ public enum PenCursorNumbering
 /// <item><term>WinUI 3</term><description><b>1 µs, on hardware.</b> 1878 points, 1878 distinct
 /// timestamps, gcd of the gaps exactly 1 µs. Under injection it looked like a millisecond clock
 /// with a fixed sub-millisecond offset; the offset was the injector's</description></item>
-/// <item><term>Avalonia</term><description>1 ms. 172 points carried 113 distinct values,
-/// stepping by 1 ms</description></item>
+/// <item><term>Avalonia</term><description><b>1 ms, on hardware, one stamp per point.</b> 2167
+/// points carried 2167 distinct timestamps with no repeats. The resolution comes from the source
+/// type -- <c>PointerEventArgs.Timestamp</c> counts milliseconds -- rather than from the
+/// recording, whose smallest gap is 3 ms</description></item>
 /// <item><term>WPF</term><description><b>1 ms clock, 15.6 ms batches, on hardware.</b> 2442
 /// points carried 885 distinct timestamps. The clock is not the problem and never was; see
 /// <see cref="SystemTicks"/></description></item>
@@ -92,9 +94,10 @@ public enum PenCursorNumbering
 /// caution but an observed fact. <c>InjectSyntheticPointerInput</c> stamps its own events, so a
 /// backend cannot be shown to resolve finer than the thing feeding it. WM_POINTER and WinUI
 /// both measured 1 ms through it and both turned out to be a thousand times finer when drawn on
-/// by hand; WPF's clock turned out to be 15 times finer than its batch cadence had suggested.
-/// Only the Avalonia row is still an injected figure: read it as "no better than", not as a
-/// measurement.</para>
+/// by hand; WPF's clock turned out to be 15 times finer than its batch cadence had suggested;
+/// Avalonia looked like it repeated timestamps and does not. Every backend above has since been
+/// drawn on, and of the five that had an injected figure to compare against, <b>four were
+/// wrong</b>. Only Qt's survived.</para>
 /// </remarks>
 public enum PenTimestampSource
 {
@@ -126,7 +129,9 @@ public enum PenTimestampSource
     /// <para>One clock, two very different streams, which is why this value alone does not
     /// tell a consumer what it is holding.</para>
     /// <para><b>Avalonia and WinUI</b> deliver one point per event, each with its own
-    /// timestamp: 172 Avalonia points carried 113 distinct values.</para>
+    /// timestamp, and on hardware neither repeats a value: 2167 Avalonia points carried 2167
+    /// distinct timestamps, 1878 WinUI points 1878. An injected run suggested Avalonia repeated
+    /// them -- 113 values for 172 points -- which was the injector outrunning its own clock.</para>
     /// <para><b>WPF does not.</b> <c>StylusEventArgs</c> carries a whole
     /// <c>StylusPointCollection</c> and the timestamp belongs to the event, so every point in
     /// the batch gets the same one. Drawn on by hand: 2442 points, <b>885 distinct
