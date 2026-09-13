@@ -1,4 +1,4 @@
-namespace WinPenKit;
+﻿namespace WinPenKit;
 
 /// <summary>
 /// Unified pen input session interface. Each implementation wraps a specific
@@ -58,6 +58,24 @@ public interface IPenSession : IDisposable
     /// Maximum raw pressure value the input device can report.
     /// Normalize with: <c>(float)point.Pressure / session.MaxPressure</c>.
     /// </summary>
+    /// <remarks>
+    /// <para><b>This is a range, not a count of distinguishable levels.</b> Normalising by it
+    /// is correct and is what it is for. Reading it as "the device resolves this many pressure
+    /// values" is not, and the gap can be large: a Wacom DTH246 over Wintab reports 32767 here
+    /// and resolves 8192 levels, in steps of 4. Measured 12 Sep 2026 from
+    /// <c>testdata/wintab-digitizer-stroke-1.75x.csv</c>, where 99.8% of the gaps between
+    /// consecutive distinct pressures are multiples of 4.</para>
+    /// <para>Nothing in this library reports granularity, because no driver declares it.
+    /// Wintab's <c>AXIS</c> carries <c>axUnits</c> and <c>axResolution</c>, and for
+    /// <c>DVC_NPRESSURE</c> this driver returns <c>TU_NONE</c> and 0 — while populating both
+    /// meaningfully for the X and Y axes. Granularity can only be observed from a captured
+    /// stream, never asked for.</para>
+    /// <para>Where the value comes from also varies, and the number alone does not say which.
+    /// The Wintab sessions query the device through <c>WTInfoA(WTI_DEVICES, DVC_NPRESSURE)</c>.
+    /// The WM_POINTER and framework sessions declare 1024, which is the API's fixed range
+    /// rather than anything the device was asked about.</para>
+    /// <para>See issue 94.</para>
+    /// </remarks>
     int MaxPressure { get; }
 
     /// <summary>Which input API this session uses.</summary>
