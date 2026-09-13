@@ -134,6 +134,33 @@ over the C ABI; the WinUI pointer path; drawing with pressure-derived width; the
 seven-section ribbon; `--record`; `--replay`; and the full check suite at **12/12** with a
 replay, 9/9 without.
 
-**Wintab is wired but unverified.** It takes the native path here as it does in every other
-sample, and it needs the tablet to exercise. Until then `L0.pen-api` is what will catch a
-fallback, as it already has once in `Scribble.Qt`.
+**Wintab is verified**, on a Wacom DTH246 (Cintiq 24) on 13 Sep 2026. Both contexts open and
+both report the backend they were asked for:
+
+| | |
+| --- | --- |
+| Wintab (system) | 9/9, `requested Wintab, obtained Wintab` |
+| Wintab (high-res) | 9/9, `requested Wintab (high-res), obtained Wintab (high-res)` |
+
+The high-res row is the one worth having: that context degrades to screen pixels when it cannot
+get tablet-native resolution, and `L0.pen-api` confirms it did not. Drawn by hand on the
+display in both modes; the stroke tracks the nib.
+
+### If Wintab will not open
+
+Every context failed on this machine until the Wacom service was restarted, and the failure had
+a distinctive shape worth recognising:
+
+```
+Start failed: Failed to open system context.
+Start failed: Fallback context also failed to open.
+```
+
+with the native log showing `WTInfoA` answering correctly -- real device extents, the right
+virtual desktop -- while every `WTOpenA` was refused, hi-res, fallback and system alike. Nothing
+held `wintab32.dll`, the service was running, and the tablet was present and enumerated.
+
+An elevated `Restart-Service WTabletServicePro -Force` fixed it outright. Queries working while
+opens are refused is the signature; reach for the service before looking for a fault in the
+sample. It reproduced identically through `WinPenKit.TestConsole`, which is how this was shown
+not to be a defect here.

@@ -136,8 +136,11 @@ It is the largest value the device will report, and dividing by it gives correct
 pressure. That is all it claims and all it does.
 
 It is **not** a count of distinguishable levels. A Wacom DTH246 over Wintab reports 32767 and
-resolves **8192**, in steps of 4 — measured from `testdata/wintab-digitizer-stroke-1.75x.csv`,
-where 99.8% of the gaps between consecutive distinct pressures are multiples of 4. Anyone
+resolves **8192**, in steps of 4. Measured twice, on different code paths: 99.8% of the gaps
+between consecutive distinct pressures are multiples of 4 in
+`testdata/wintab-digitizer-stroke-1.75x.csv`, taken through the managed Avalonia sample, and
+99.7% in `testdata/winuinative-wintab-hires-stroke.csv`, taken through the native C ABI on a
+1683-point stroke, where the smallest step between distinct pressures is exactly 4. Anyone
 reasoning "32767 levels to work with" is wrong by a factor of 4 on that device, having read a
 true sentence.
 
@@ -168,7 +171,7 @@ unstated, every backend counts from somewhere different, and no two of them are 
 | unit | **yes** | microseconds on every backend, always |
 | contract | **yes** | subtract two, get elapsed microseconds; never decreasing within a session |
 | wrapping | **yes** | handled in the session, not left to the caller — see below |
-| **resolution** | **no** | 1 ms on four backends, 15.6 ms on WPF, unknown on Wintab |
+| **resolution** | **no** | 1 ms on five backends including Wintab, 15.6 ms on WPF |
 | **one timestamp per point** | **no** | WPF stamps events, so a batch of points shares one |
 
 The last two rows reach your code. A velocity or smoothing routine tuned against WM_POINTER
@@ -229,7 +232,17 @@ earlier 20 ms-per-step injection was coarser than the clocks and could not have 
 | WM_POINTER (WinForms) | 17 | 8 | **1 ms observed** |
 | WPF | 196 | **6** | 15.6 ms, in 6 events |
 | Qt (`Scribble.Qt`, not WinPenKit) | 127 | **10** | **15.6 ms** |
-| Wintab | — | — | not established |
+| **Wintab (high-res)** | **1683** | **1683** | **1 ms** |
+
+The Wintab row is the only one measured on real hardware — a Wacom DTH246 over the hi-res
+digitizer context, 13 Sep 2026 — and it is the best of the set by a wide margin. **Every one of
+1683 points carried its own timestamp**, with no repeats and no backward steps, where WPF gave
+6 distinct values for 196 points. Gaps were 5 ms or 6 ms and nothing else, their greatest
+common divisor exactly 1000 µs, averaging 5555 µs: a **180 Hz** device reported on a
+millisecond clock, which is why it alternates rather than landing on 5.556 every time.
+
+It is also the one row synthetic injection did not shape, because Wintab ignores injected input
+entirely. Recorded in `testdata/winuinative-wintab-hires-stroke.csv`.
 
 Qt is in the table because `Scribble.Qt` exists to be compared against, not because WinPenKit
 produces it. Its gaps were 15, 16, 16, 47, 63, 93, 109, 563 and 750 ms — every one a multiple
@@ -295,9 +308,15 @@ calibration is no better than the 15.6 ms clock it is reading.
 
 
 Wintab's `pkTime` is requested on every packet — `lcPktData` is `PK_PKTBITS_ALL` — and Wintab
-documents it as milliseconds with no origin. Neither that origin nor its real granularity has
-been measured here, because Wintab ignores synthetic pen input and measuring it takes a
-tablet. Treat its differences as usable and everything else about it as unknown.
+documents it as milliseconds with no origin. Its **granularity is now measured** at 1 ms, with
+one timestamp per point and no repeats, which makes it the most usable clock of any backend
+here.
+
+Its **origin is still unknown**, and that is why this backend detects a wrap rather than
+anchoring against the system clock the way the framework backends do — anchoring needs an
+origin to anchor to. The recording that settled the granularity could not settle the origin,
+because `StrokeRecorder` writes times relative to the first point by design. Differences are
+sound; absolute values are not.
 
 Where `Conventions.Timestamp` is `None`, the field is zero. Zero is not a time; it means the
 backend supplied none. No session substitutes its own clock, which would measure when this
@@ -336,31 +355,6 @@ a repeated value, present because a wrap detector that fires on normal packets w
 every stroke rather than one every few weeks. Verified in both directions: with the extension
 removed, the two wrap cases fail by exactly −4,294,967,295,000 µs and the other four still
 pass.
-
-### What `MaxPressure` is, and is not
-
-It is the largest value the device will report, and dividing by it gives correct relative
-pressure. That is all it claims and all it does.
-
-It is **not** a count of distinguishable levels. A Wacom DTH246 over Wintab reports 32767 and
-resolves **8192**, in steps of 4 — measured from `testdata/wintab-digitizer-stroke-1.75x.csv`,
-where 99.8% of the gaps between consecutive distinct pressures are multiples of 4. Anyone
-reasoning "32767 levels to work with" is wrong by a factor of 4 on that device, having read a
-true sentence.
-
-Nothing here reports granularity, because no driver declares it. Wintab's `AXIS` carries
-`axUnits` and `axResolution`; for `DVC_NPRESSURE` the driver returns `TU_NONE` and `0`, while
-populating both meaningfully for X and Y. Granularity can only be observed from a captured
-stream.
-
-Where the number comes from varies, and the number alone does not say which:
-
-| backend | `MaxPressure` | what it is |
-| --- | --- | --- |
-| Wintab system, Wintab digitizer | queried | `WTInfoA(WTI_DEVICES, DVC_NPRESSURE).axMax` |
-| WM_POINTER, WPF, WinUI, Avalonia, WinForms | 1024 | the API's fixed range, not the device's |
-
-See issue 94.
 
 ### What `RawX/Y` holds
 
