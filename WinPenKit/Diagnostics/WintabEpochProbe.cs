@@ -14,11 +14,10 @@ namespace WinPenKit.Diagnostics;
 /// before conversion and against a clock with a known origin, which is what
 /// <c>WintabSessionBase.RawTimeObserver</c> exists for.</para>
 /// <para><b>What turned on the answer, and what the answer was.</b> Wintab was the last backend
-/// using <see cref="DeviceTickCounter"/>, which detects the 49.7-day wrap by watching for a
-/// backward jump. Detection cannot see a wrap that happens while the session is stopped, or
-/// across a gap where every packet was filtered out by a capture region; the difference across
-/// such a gap was then wrong by 49.7 days. Anchoring has no such gap but needs a known origin,
-/// and <c>pkTime</c> has none documented.</para>
+/// detecting its 49.7-day wrap by watching for a backward jump. Detection cannot see a wrap that
+/// happens while the session is stopped, or across a gap where every packet was filtered out by
+/// a capture region; the difference across such a gap was then wrong by 49.7 days. Anchoring has
+/// no such gap but needs a known origin, and <c>pkTime</c> has none documented.</para>
 /// <para>Run on a Wacom DTH246 on 13 Sep 2026, this probe found <c>pkTime</c> on the
 /// <c>GetTickCount64</c> epoch: over 6217 packets spanning 41.7s and a deliberate pause, it
 /// advanced 41703ms against 41703ms of wall clock, with the offset between them inside a 40ms
@@ -342,11 +341,11 @@ public static class WintabEpochProbe
         bool anchorable = passed == total;
         output.WriteLine(anchorable
             ? "VERDICT pkTime is counted on the GetTickCount64 epoch. Wintab can anchor its\n"
-            + "        clock the way the framework backends do, and DeviceTickCounter's blind\n"
-            + "        spot -- a wrap while stopped, or across a filtered gap -- closes."
+            + "        clock the way every other backend does, and the blind spot of wrap\n"
+            + "        detection -- a wrap while stopped, or across a filtered gap -- closes."
             : "VERDICT pkTime is NOT on the GetTickCount64 epoch, or does not free-run.\n"
-            + "        Wintab must keep detecting wraps rather than anchoring, and the blind\n"
-            + "        spot documented on DeviceTickCounter stands.");
+            + "        Anchoring is unsound for this clock: it would need its wrap detected by\n"
+            + "        watching for a backward jump, with that approach's blind spot.");
 
         output.WriteLine($"RESULT {passed}/{total} passed");
         return passed == total ? 0 : 1;
