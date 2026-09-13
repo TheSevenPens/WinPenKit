@@ -189,10 +189,28 @@ public sealed class SelfTest
     }
 
     /// <summary>
-    /// Whether the surface reaches the screen at one texel per device pixel. Presenting a
-    /// correctly sized bitmap into a differently sized rect scales it back off the pixel grid,
-    /// which undoes the point of sizing it physically.
+    /// Whether the host the surface is presented in covers the same device pixels the surface
+    /// holds. A correctly sized bitmap given a differently sized rect is scaled back off the
+    /// pixel grid, which undoes the point of sizing it physically.
     /// </summary>
+    /// <remarks>
+    /// <para><b>This measures the host's size, not the rate the surface is sampled at.</b>
+    /// Callers supply <paramref name="presentedPxWidth"/> from their host's layout size, and a
+    /// host can cover exactly the right number of device pixels while drawing only part of the
+    /// surface across them.</para>
+    /// <para>That is not hypothetical. In issue 70 a 2700px bitmap sat in a host covering
+    /// 2700 device pixels -- this check matched to the pixel and passed -- while the framework
+    /// rendered the top-left 1200x600 pixels of it stretched across the whole host. Strokes
+    /// landed 2.25 times too far from the canvas origin, and the check reported a pass before
+    /// the fix and after it.</para>
+    /// <para>What it does catch is a surface whose host is the wrong size, which is the fault
+    /// in issue 37: a canvas sized in logical units and magnified to fit. That is worth
+    /// keeping. It is simply a narrower claim than the name suggests.</para>
+    /// <para>Measuring the sampling rate needs pixels, not layout: draw a marker into the
+    /// surface at known coordinates, capture the window, and measure what it became. A
+    /// 200-pixel square rendering 202 logical pixels where 1:1 is 89 settled issue 70 in one
+    /// run, after several wrong readings taken from the layout tree.</para>
+    /// </remarks>
     public void CheckPresentation1To1(int bitmapWidth, int bitmapHeight,
                                       double presentedPxWidth, double presentedPxHeight)
     {
