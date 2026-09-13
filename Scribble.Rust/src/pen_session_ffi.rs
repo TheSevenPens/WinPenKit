@@ -59,7 +59,9 @@ pub enum PenTimestampSource {
     /// No timestamp; the field is zero.
     #[default]
     None = 0,
-    /// `QueryPerformanceCounter`, divided down to microseconds. Sub-microsecond at source.
+    /// `QueryPerformanceCounter`, divided down to microseconds. The counter ticks every
+    /// 100ns on a typical machine, which is its unit rather than the granularity of what
+    /// arrives in it: measured, every value was an exact millisecond multiple.
     PerformanceCounter = 1,
     /// The millisecond counter `GetTickCount64` reads, multiplied up to microseconds.
     SystemTicks = 2,
@@ -140,8 +142,10 @@ pub struct PenPoint {
     /// only contract is that values from one running session never decrease and their
     /// difference is elapsed microseconds. Consecutive points can carry the same value when
     /// the backend's clock is coarser than its report rate, so a difference of zero is normal
-    /// and a consumer dividing by one has to expect it. `PenConventions::timestamp` names the
-    /// clock.
+    /// and a consumer dividing by one has to expect it.
+    ///
+    /// The microsecond unit is finer than any backend has been measured to resolve, including
+    /// WM_POINTER. `PenConventions::timestamp` names the clock.
     pub timestamp_us: i64,
 }
 
@@ -151,6 +155,7 @@ pub type PenSessionHandle = *mut c_void;
 #[link(name = "WinPenKit.Native")]
 unsafe extern "C" {
     pub fn pen_session_get_point_size() -> i32;
+    pub fn pen_session_get_conventions_size() -> i32;
     pub fn pen_session_get_available_apis(buffer: *mut PenInputApi, max_count: i32) -> i32;
     pub fn pen_session_get_api_label(api: PenInputApi) -> *const c_char;
     pub fn pen_session_create(api: PenInputApi) -> PenSessionHandle;
@@ -188,17 +193,29 @@ impl PenSession {
     /// Equal sizes do not prove equal layout. The two have only ever diverged by a field
     /// being appended, and this catches that.
     pub fn check_point_layout() -> Result<(), String> {
-        let dll = unsafe { pen_session_get_point_size() } as usize;
-        let ours = std::mem::size_of::<PenPoint>();
-        if dll == ours {
-            Ok(())
-        } else {
-            Err(format!(
-                "PenPoint is {ours} bytes here and {dll} bytes in WinPenKit.Native.dll. \
-                 The DLL beside this executable was built from a different pen_session.h; \
-                 rebuild one against the other."
-            ))
+        // Both structs, not just PenPoint. pen_session_get_conventions writes through a
+        // caller-provided pointer, so a PenConventions that is too small here is written past
+        // -- and it is usually a stack local, which puts the damage on whatever sits next to
+        // it. It has already grown once, 12 bytes to 16.
+        let checks: [(&str, usize, usize); 2] = [
+            ("PenPoint",
+             std::mem::size_of::<PenPoint>(),
+             unsafe { pen_session_get_point_size() } as usize),
+            ("PenConventions",
+             std::mem::size_of::<PenConventions>(),
+             unsafe { pen_session_get_conventions_size() } as usize),
+        ];
+
+        for (name, ours, dll) in checks {
+            if ours != dll {
+                return Err(format!(
+                    "{name} is {ours} bytes here and {dll} bytes in WinPenKit.Native.dll. \
+                     The DLL beside this executable was built from a different pen_session.h; \
+                     rebuild one against the other."
+                ));
+            }
         }
+        Ok(())
     }
 
     pub fn get_available_apis() -> Vec<PenInputApi> {

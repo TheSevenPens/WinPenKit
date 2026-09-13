@@ -105,9 +105,15 @@ public enum PenTimestampSource
     None,
 
     /// <summary>
-    /// <c>QueryPerformanceCounter</c>, divided down to microseconds. Sub-microsecond at
-    /// source, and the only backend clock that resolves finer than a millisecond.
+    /// <c>QueryPerformanceCounter</c>, divided down to microseconds.
     /// </summary>
+    /// <remarks>
+    /// The counter ticks every 100ns on a typical machine, and that is its unit rather than
+    /// the granularity of what arrives in it. Measured under synthetic injection, every value
+    /// was an exact millisecond multiple and matched <c>dwTime</c> one for one. Whether real
+    /// pen hardware fills the field more finely is unmeasured and needs a tablet, so treat this
+    /// as the clock's name and not as a resolution claim.
+    /// </remarks>
     PerformanceCounter,
 
     /// <summary>

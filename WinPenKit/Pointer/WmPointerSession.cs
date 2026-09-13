@@ -274,8 +274,12 @@ internal sealed class WmPointerSession : IPenSession
             Source: InputApi.WmPointer,
             // PerformanceCount, not dwTime. Both are populated; dwTime is milliseconds on the
             // GetTickCount epoch and PerformanceCount is QPC, and they were measured 27.08ms
-            // apart on this machine, so they are not two readings of one clock. This one is
-            // four orders of magnitude finer.
+            // apart on this machine, so they are not two readings of one clock.
+            //
+            // PerformanceCount is counted in finer units -- 100ns ticks against whole
+            // milliseconds -- which is not the same as carrying finer values. Under synthetic
+            // injection it delivered exact millisecond multiples. The finer unit is the reason
+            // to prefer it, not evidence that it pays off.
             TimestampMicroseconds: PenTimestamp.FromPerformanceCount(
                 penInfo.pointerInfo.PerformanceCount)));
 

@@ -199,6 +199,33 @@ static void start_session() {
     g_session = pen_session_create(api);
     if (!g_session) return;
 
+    // Before draining anything. pen_session_drain_points memcpys an array, so a DLL whose
+    // PenPoint is a different size does not corrupt one field: every point after the first is
+    // read from the wrong offset and comes back as numbers that still look like pen data.
+    // Scribble.Rust has refused to start on this since the field was added; this sample links
+    // the same ABI and was not checking it.
+    // Both structs. pen_session_get_conventions writes through a caller-provided pointer, so
+    // a PenConventions that is too small here is written past -- and it is a stack local, so
+    // the damage lands on whatever sits beside it rather than in the struct being read. It
+    // has already grown once, 12 bytes to 16, alongside PenPoint 96 to 104.
+    struct SizeCheck { const wchar_t* name; int ours; int dll; };
+    const SizeCheck sizes[] = {
+        { L"PenPoint",       static_cast<int>(sizeof(PenPoint)),       pen_session_get_point_size() },
+        { L"PenConventions", static_cast<int>(sizeof(PenConventions)), pen_session_get_conventions_size() },
+    };
+    for (const auto& sc : sizes) {
+        if (sc.ours == sc.dll) continue;
+        wchar_t msg[320];
+        swprintf_s(msg, L"%s is %d bytes in this executable and %d bytes in "
+                        L"WinPenKit.Native.dll.\n\nThe DLL beside it was built from a "
+                        L"different pen_session.h; rebuild one against the other.",
+                   sc.name, sc.ours, sc.dll);
+        MessageBoxW(nullptr, msg, L"Scribble.Win32", MB_OK | MB_ICONERROR);
+        pen_session_destroy(g_session);
+        g_session = nullptr;
+        return;
+    }
+
     const char* error = pen_session_start(g_session, g_main_hwnd);
     if (error) {
         pen_session_destroy(g_session);

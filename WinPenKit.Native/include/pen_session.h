@@ -98,9 +98,10 @@ typedef struct {
     // clock is coarser than its report rate, so a difference of zero is normal and a consumer
     // dividing by one has to expect it. pen_session_get_conventions names the clock.
     //
-    // The unit is finer than most backends resolve: WM_POINTER is genuinely sub-microsecond,
-    // Wintab counts whole milliseconds. Zero when the conventions report PEN_TS_NONE, which
-    // means the backend supplied nothing -- not that no time has passed.
+    // The unit is finer than any backend has been measured to resolve. WM_POINTER's field is
+    // counted in 100ns QPC ticks and still arrived as exact millisecond multiples under
+    // synthetic injection; Wintab counts whole milliseconds. Zero when the conventions report
+    // PEN_TS_NONE, which means the backend supplied nothing -- not that no time has passed.
     int64_t  timestamp_us;
 } PenPoint;
 
@@ -187,7 +188,9 @@ typedef enum {
 typedef enum {
     // No timestamp; PenPoint.timestamp_us is 0.
     PEN_TS_NONE                = 0,
-    // QueryPerformanceCounter, divided down to microseconds. Sub-microsecond at source.
+    // QueryPerformanceCounter, divided down to microseconds. The counter ticks every 100ns
+    // on a typical machine, which is its unit and not the granularity of what arrives in it:
+    // measured under synthetic injection, every value was an exact millisecond multiple.
     PEN_TS_PERFORMANCE_COUNTER = 1,
     // The millisecond counter GetTickCount64 reads, multiplied up to microseconds.
     PEN_TS_SYSTEM_TICKS        = 2,
@@ -256,6 +259,17 @@ PEN_API int pen_session_has_new_data(PenSessionHandle handle);
 // mismatch. Equal sizes do not prove equal layout, but the two have only ever diverged by a
 // field being added, which this catches.
 PEN_API int pen_session_get_point_size(void);
+
+// sizeof(PenConventions) as this DLL was compiled.
+//
+// PenPoint is not the only struct that crosses this boundary. pen_session_get_conventions
+// writes through a caller-provided pointer, so a binding whose PenConventions is smaller than
+// the DLL's is written past -- and that one is usually a stack local, where the damage lands on
+// whatever is next to it rather than in the struct being read. It has already grown once,
+// 12 bytes to 16, alongside PenPoint's 96 to 104.
+//
+// Check this at startup with the same weight as pen_session_get_point_size.
+PEN_API int pen_session_get_conventions_size(void);
 
 // ── Properties ──────────────────────────────────────────────────
 

@@ -203,8 +203,12 @@ not separate in time, which is not a claim that no time passed.
 
 - **`× 1000` (Avalonia, WPF, Qt, Wintab) is exact and adds nothing.** The last three digits are
   always `000`. Four of the six backends produce a number that looks microsecond-precise and
-  carries milliseconds. If you ever see a non-zero remainder mod 1000, you are on WM_POINTER or
-  WinUI.
+  carries milliseconds.
+- **Do not try to infer resolution from the value.** An earlier draft of this page said a
+  non-zero remainder mod 1000 meant WM_POINTER or WinUI. That is wrong twice over: WinUI's
+  remainder is a per-run constant that cancels out of every difference, so the test flags a
+  millisecond clock as fine; and WM_POINTER's measured values all ended in `000`, so it flags
+  the finest clock available as coarse. Read `Conventions.Timestamp` and the table below.
 - **The QPC division truncates below a microsecond.** Integer division toward zero, so the error
   is under 1 µs and slightly downward. At a 200 Hz report rate that is 0.02% of one interval.
 - **The WinUI cast is lossless but the source is not what it claims.** Every reading in a run

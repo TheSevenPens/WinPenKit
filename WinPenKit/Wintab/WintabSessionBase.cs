@@ -15,8 +15,11 @@ internal abstract class WintabSessionBase : IPenSession
     private IntPtr _hCtx;
     private readonly ConcurrentQueue<PenPoint> _points = new();
     private volatile bool _hasNewData;
-    // pkTime is a uint of milliseconds, so it wraps to zero after about 49.7 days of uptime.
-    private readonly MillisecondCounter _clock = new();
+    // pkTime is a uint of milliseconds, wrapping to zero after about 49.7 days of uptime.
+    // Detected rather than anchored, because Wintab states no origin for pkTime and none has
+    // been measured, so there is nothing to anchor against. See DeviceTickCounter for what
+    // that costs.
+    private readonly DeviceTickCounter _clock = new();
 
     private uint _lastButtons;
     private uint _lastCursor;

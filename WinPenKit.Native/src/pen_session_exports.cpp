@@ -160,6 +160,10 @@ int pen_session_get_point_size(void) {
     return static_cast<int>(sizeof(PenPoint));
 }
 
+int pen_session_get_conventions_size(void) {
+    return static_cast<int>(sizeof(PenConventions));
+}
+
 int pen_session_drain_points(PenSessionHandle handle, PenPoint* buffer, int max_points) {
     if (!handle || !buffer || max_points <= 0) return 0;
     auto* s = reinterpret_cast<PenSessionOpaque*>(handle);

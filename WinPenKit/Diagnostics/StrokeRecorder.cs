@@ -42,7 +42,13 @@ public sealed class StrokeRecorder
     public void Describe(string source, int maxPressure,
                          PenTimestampSource timestampSource = PenTimestampSource.None)
     {
-        if (_points.Count > 0 && (source != _source || maxPressure != _maxPressure))
+        // The clock counts as part of the identity, not just the name and the range. Two
+        // sessions on the same backend with the same pressure range are still two origins, and
+        // treating them as one session saves a subtraction across them with no warning
+        // attached. Restarting a WPF session is exactly that case.
+        if (_points.Count > 0 && (source != _source
+                                  || maxPressure != _maxPressure
+                                  || timestampSource != _timestampSource))
         {
             _spansSessions = true;
             return;

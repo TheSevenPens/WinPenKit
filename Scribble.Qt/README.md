@@ -139,10 +139,19 @@ proximity or hover point gets that, not 0.
 **`lastTimestamp()` is 0 on the first event**, so a first delta computed from it is the whole
 uptime rather than a frame.
 
-**These are 32-bit.** `QEventPoint`'s five accessors return `ulong`, which is 32 bits on MSVC,
-so they wrap after about 49.7 days of uptime — the same hazard WinPenKit handles for Wintab's
-`pkTime` in `MillisecondCounter`. `QInputEvent::timestamp()` is `quint64` and does not. This is
-read from the declared types; it has not been tested.
+**Three of them are 32-bit.** `timestamp()`, `lastTimestamp()` and `pressTimestamp()` return
+`ulong`, which is 32 bits on MSVC, so they wrap after about 49.7 days of uptime. `timeHeld()`
+returns `qreal` and `velocity()` a `QVector2D`, so "all five are narrow" would be wrong.
+
+`QInputEvent::timestamp()` is a `quint64`, and that does **not** make it safe. On Windows Qt
+fills it from `GetMessageTime`, which is 32 bits, and widens the result afterwards — the value
+has already wrapped by the time it is a `quint64`. A recording made across the boundary carried
+a difference of about −49.7 days until this sample started anchoring the reading against
+`GetTickCount64`.
+
+Reading the declared width and concluding the clock is wide is the same error as reading
+`MaxPressure` 32767 as a level count, and it is why WinPenKit's framework backends anchor
+rather than trust the type.
 
 ### Qt's clock is as coarse as WPF's
 

@@ -137,6 +137,25 @@ void CanvasWidget::drawSegment(const QPointF& fromPx, const QPointF& toPx, doubl
     p.drawLine(fromPx, toPx);
 }
 
+/// Qt's `QInputEvent::timestamp` is a `quint64`, and on Windows it is not a 64-bit clock.
+/// The platform plugin fills it from `GetMessageTime`, which is 32 bits, and widens the
+/// result -- so the value has already wrapped by the time it is a quint64, and a recording
+/// spanning the boundary carries a difference wrong by 49.7 days.
+///
+/// Recovered rather than detected: the reading tracks GetTickCount64, so the full value is the
+/// nearest multiple of 2^32 ms that makes the two agree. Stateless, so an idle session, a
+/// dropped packet or a first packet after the wrap all behave the same.
+///
+/// The same arithmetic as WinPenKit's PenTimestamp.FromSystemTicks. Duplicated rather than
+/// shared because this sample links no WinPenKit header, which is the point of it.
+static int64_t anchorToSystemTicks(quint64 rawMs) {
+    constexpr int64_t range = 1LL << 32;
+    const int64_t raw = static_cast<int64_t>(rawMs);
+    const int64_t now = static_cast<int64_t>(::GetTickCount64());
+    const double k = std::floor((static_cast<double>(now - raw) + range / 2.0) / range);
+    return raw + static_cast<int64_t>(k) * range;
+}
+
 void CanvasWidget::tabletEvent(QTabletEvent* event) {
     event->accept();
     ensureImage();
@@ -185,7 +204,7 @@ void CanvasWidget::tabletEvent(QTabletEvent* event) {
     if (!m_recordPath.empty() && m_inContact) {
         m_recorded.push_back({desktopPx.x(), desktopPx.y(),
                               std::round(pressure * kAssumedMaxPressure),
-                              static_cast<double>(event->timestamp())});
+                              static_cast<double>(anchorToSystemTicks(event->timestamp()))});
     }
 
     // The window origin, read per event rather than cached: a window that moves must not keep
@@ -340,11 +359,15 @@ void ScribbleWindow::saveRecording() {
     // formatting are not a second implementation of the format that --replay reads.
     const QByteArray source = penapi::description(m_obtained).toUtf8();
     selftest::Recorder rec;
-    // SystemTicks: QInputEvent::timestamp is milliseconds, and on Windows it was measured
-    // against GetTickCount64 on 12 Sep 2026 and found to track it. Qt itself documents no
-    // unit and no epoch, so that measurement is the only thing this label rests on.
+    // The clock depends on which backend Qt is actually running, so it is read from the
+    // obtained backend rather than hardcoded. On WM_POINTER the timestamp comes from the
+    // window message and tracks GetTickCount64, measured; on WinTab Qt takes it from the
+    // driver packet, which is a different clock with an origin nobody here has established.
+    // Naming both SystemTicks would give the same Wintab clock different provenance depending
+    // on which sample recorded it.
     rec.describe(("Qt " + source).constData(), kAssumedMaxPressure,
-                 selftest::TimestampSource::SystemTicks);
+                 m_obtained == PenApi::WinTab ? selftest::TimestampSource::DeviceTicks
+                                              : selftest::TimestampSource::SystemTicks);
     for (const auto& p : m_canvas->recorded())
         rec.add(p[0], p[1], static_cast<uint32_t>(p[2]),
                 static_cast<int64_t>(p[3]) * 1000LL);

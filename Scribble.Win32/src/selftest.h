@@ -535,7 +535,10 @@ struct Recorder {
     /// recording runs, and one maximum cannot describe two devices.
     void describe(const char* src, int max_p,
                   TimestampSource ts = TimestampSource::None) {
-        if (!points.empty() && (source != src || max_pressure != max_p)) {
+        // The clock counts as part of the identity, not just the name and the range. Two
+        // sessions on the same backend with the same pressure range are still two origins, and
+        // treating them as one saves a subtraction across them with no warning attached.
+        if (!points.empty() && (source != src || max_pressure != max_p || timestamp != ts)) {
             spans_sessions = true;
             return;
         }

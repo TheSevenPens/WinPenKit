@@ -170,7 +170,9 @@ That stroke is synthetic but shaped like a slow hand-drawn curve: ~1.6px samplin
 
 Two orders of magnitude between signal and noise, and the synthetic quantized figure lands within about a degree of what a tablet actually produced.
 
-`--replay <path>` takes a recording of your own — `desktopX,desktopY,pressure,timeUs`, with `#` comments and a header line. The reader needs the first three columns and ignores any beyond them, so a recording made before the time column still replays. That is how a stream captured from real hardware gets held to the same assertions.
+`--replay <path>` takes a recording of your own — `desktopX,desktopY,pressure,timeUs`, with `#` comments and a header line. Extra columns are ignored, so a recording made before the time column still replays and one made after it replays through older code. That is how a stream captured from real hardware gets held to the same assertions.
+
+The readers do not all take the same number of columns, which matters before adding a fifth. The C# reader takes three — x, y and pressure — and guards on `f.Length < 3`. The C++ and Rust readers take only the first **two**: `sscanf_s("%lf,%lf")` and a two-element split, because replay needs the path and nothing else.
 
 ### Capturing one
 
