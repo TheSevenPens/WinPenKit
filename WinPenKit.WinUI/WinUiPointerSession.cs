@@ -131,8 +131,45 @@ public sealed class WinUiPointerSession : IPenSession
 
     private void OnPointerEvent(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
-        var point = e.GetCurrentPoint(_element);
+        // Every point the framework coalesced into this event, not just the last one.
+        //
+        // GetCurrentPoint alone returns the most recent sample and silently discards whatever
+        // WinUI merged behind it, which on a fast stroke is most of the stroke. The three
+        // WM_POINTER backends already recover theirs through GetPointerPenInfoHistory, and
+        // WPF gets the whole batch from GetStylusPoints, so this was the odd one out.
+        //
+        // Replayed in reverse, because this collection is newest first.
+        //
+        // Microsoft documents the opposite -- "the last item in the collection is equivalent to
+        // the PointerPoint object returned by GetCurrentPoint" -- and that is wrong here.
+        // Measured on WinUI 3 with an injected stroke travelling in increasing X: a 40-point
+        // batch ran 353.8 down to 295.1, and GetCurrentPoint returned 353.8, which is
+        // points[0]. So index 0 is the newest sample, the same order
+        // GetPointerPenInfoHistory uses and the opposite of Avalonia's.
+        //
+        // Taking the documentation at its word would reverse every batch. On a fast stroke
+        // that does not look like a bug; it looks like jitter, because each batch is drawn
+        // backwards inside a path that is still going the right way overall.
+        var points = e.GetIntermediatePoints(_element);
+        if (points is null || points.Count == 0)
+        {
+            EnqueuePoint(e.GetCurrentPoint(_element));
+            return;
+        }
 
+        for (int i = points.Count - 1; i >= 0; i--)
+            EnqueuePoint(points[i]);
+    }
+
+    /// <summary>
+    /// Converts one <see cref="PointerPoint"/> and queues it.
+    /// </summary>
+    /// <remarks>
+    /// Split out of the handler so that the per-point work is written once and the loop above
+    /// cannot drift from the single-point path beside it.
+    /// </remarks>
+    private void EnqueuePoint(Microsoft.UI.Input.PointerPoint point)
+    {
         // Only handle pen input.
         if (point.PointerDeviceType != PointerDeviceType.Pen)
             return;
