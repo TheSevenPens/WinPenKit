@@ -18,6 +18,10 @@ public partial class App : Application
             desktop.MainWindow = window;
 
             var args = desktop.Args ?? [];
+
+            if (StrokeRecorder.Requested(args, out string? recordPath))
+                window.RecordTo(recordPath!);
+
             bool replay = StrokeReplay.Requested(args, out string? replayPath);
             if (SelfTest.Requested(args) || replay)
             {
