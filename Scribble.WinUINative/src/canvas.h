@@ -48,6 +48,20 @@ public:
     /// The surface, for the acceptance checks and the presentation probe.
     skia::RasterSurface& surface() { return surface_; }
 
+    /// Desktop physical pixels to surface pixels. The conversion the acceptance checks drive,
+    /// and the same one `tick` uses, so a check exercises the code the pen goes through rather
+    /// than a second implementation of it.
+    std::pair<double, double> desktopToCanvas(double x, double y) const;
+
+    /// Fills a rectangle in surface pixels with a flat colour, for the presentation probe's
+    /// markers. Antialiasing off: the probe finds a marker by its exact colour, and a softened
+    /// edge is a marker with a fringe of colours that are not the one being looked for.
+    void fillSurfaceRect(int x, int y, int size, int r, int g, int b);
+
+    /// Marks the surface changed without drawing, so a caller that wrote through
+    /// `fillSurfaceRect` can present.
+    void markDirty() { dirty_ = true; }
+
 private:
     winrt::Microsoft::UI::Xaml::Controls::Image image_{ nullptr };
     winrt::Microsoft::UI::Xaml::FrameworkElement host_{ nullptr };

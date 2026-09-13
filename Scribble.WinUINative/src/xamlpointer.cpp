@@ -100,6 +100,17 @@ void XamlPointerSource::onPointer(PointerRoutedEventArgs const& e, bool endsStro
     pt.cursor  = props.IsEraser() ? 14u : 13u;   // normalised, as the pointer backends report
     pt.source  = PEN_API_WINUI_POINTER;
 
+    // PointerPoint.Timestamp is already microseconds, so it needs no conversion -- and it is
+    // not left at zero, because the recording header names a clock and a column of zeros under
+    // "SystemTicks" is a label describing something that is not there.
+    //
+    // The unit overstates the value: measured, every reading in a run ends in the same
+    // sub-millisecond remainder, so it moves in whole milliseconds. Not anchored the way the
+    // millisecond backends are, because whether a 32-bit clock sits underneath this one is not
+    // established -- Avalonia's and Qt's do, and anchoring a genuinely 64-bit value on another
+    // epoch would corrupt every reading rather than fix a rare one.
+    pt.timestamp_us = static_cast<int64_t>(point.Timestamp());
+
     // A pointer that has left the element ends the stroke. Zero pressure is how every backend
     // says "not drawing", so it needs no special case downstream.
     if (endsStroke) pt.pressure = 0;

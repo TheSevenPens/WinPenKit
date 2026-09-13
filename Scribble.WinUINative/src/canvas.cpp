@@ -97,6 +97,27 @@ void Canvas::present() {
     dirty_ = false;
 }
 
+std::pair<double, double> Canvas::desktopToCanvas(double x, double y) const {
+    const Point origin = originOnDesktop();
+    return { x - origin.X, y - origin.Y };
+}
+
+void Canvas::fillSurfaceRect(int x, int y, int size, int r, int g, int b) {
+    if (!surface_.valid()) return;
+
+    skia::Paint paint;
+    paint.color(0xFF000000u | (static_cast<uint32_t>(r) << 16)
+                            | (static_cast<uint32_t>(g) << 8)
+                            |  static_cast<uint32_t>(b))
+         .antialias(false);
+    sk_paint_set_style(paint.get(), FILL_SK_PAINT_STYLE);
+
+    const sk_rect_t rect{ static_cast<float>(x), static_cast<float>(y),
+                          static_cast<float>(x + size), static_cast<float>(y + size) };
+    sk_canvas_draw_rect(surface_.canvas(), &rect, paint.get());
+    dirty_ = true;
+}
+
 Point Canvas::originOnDesktop() const {
     if (!host_) return Point{ 0, 0 };
 

@@ -3,8 +3,14 @@
 #include "pensession.h"
 #include "xamlpointer.h"
 #include "ribbon.h"
+#include "selftestrun.h"
+
+#include "selftest.h"
 
 #include <microsoft.ui.xaml.window.h>   // IWindowNative
+
+#include <algorithm>
+#include <thread>
 
 // Scribble.WinUINative -- WinUI 3 through C++/WinRT, with no managed runtime anywhere.
 //
@@ -46,6 +52,14 @@ HWND g_hwnd = nullptr;
 std::unique_ptr<scribble::Ribbon> g_ribbon;
 scribble::PenReadout g_readout;
 
+// --record <path> and --selftest [--replay <path>], parsed once in wWinMain and read here.
+selftest::Recorder g_recorder;
+std::string g_recordPath;
+std::string g_replayPath;
+bool g_selfTestRequested = false;
+PenInputApi g_requestedApi = PEN_API_WINUI_POINTER;
+DispatcherTimer g_selfTestTimer{ nullptr };
+
 std::wstring widen(const char* s) {
     if (!s) return L"unknown";
     const int n = ::MultiByteToWideChar(CP_UTF8, 0, s, -1, nullptr, 0);
@@ -64,10 +78,25 @@ void startSession(PenInputApi api) {
     g_lastCanvasPoint.reset();
     g_pen->stop();
     g_xamlPointer->detach();
+    g_requestedApi = api;
+    scribble::settings::saveApi(api);
+
+    // Described when a session starts, not when the file is written. This sample switches
+    // backend while a recording runs, and the header has to name the session the points came
+    // from -- a maximum read at save time would scale the earlier half by the later device's
+    // range.
+    const auto describe = [](const char* name, int maxP, selftest::TimestampSource ts) {
+        if (!g_recordPath.empty()) g_recorder.describe(name, maxP, ts);
+    };
 
     if (api == PEN_API_WINUI_POINTER) {
         g_xamlPointer->attach(g_canvasHost, g_hwnd);
         g_backend = Backend::XamlPointer;
+        // SystemTicks: these points come from WinUI's own events, whose timestamps track
+        // GetTickCount64 -- the same clock WinPenKit's framework backends report.
+        describe("XamlPointerSource (WinUI native)",
+                 scribble::XamlPointerSource::kMaxPressure,
+                 selftest::TimestampSource::SystemTicks);
         g_ribbon->setStatus(winrt::hstring{
             L"XAML events, max " + std::to_wstring(scribble::XamlPointerSource::kMaxPressure) });
         return;
@@ -82,6 +111,12 @@ void startSession(PenInputApi api) {
     }
 
     g_backend = Backend::Native;
+
+    // The clock the session reports, not one assumed from the API. Both Wintab contexts run on
+    // pkTime, but reading it from the session is what keeps this honest if that changes.
+    describe(g_pen->apiLabel(), g_pen->maxPressure(),
+             static_cast<selftest::TimestampSource>(g_pen->conventions().timestamp));
+
     // The running API, read back from the session. A digitizer whose hi-res context failed is
     // still running, as something else, and reporting the request rather than the result is
     // the fault PenConventions exists to prevent.
@@ -136,6 +171,9 @@ void tick() {
             g_lastCanvasPoint.reset();
             continue;
         }
+
+        if (!g_recordPath.empty())
+            g_recorder.add(pt.desktop_x, pt.desktop_y, pt.pressure, pt.timestamp_us);
 
         if (g_lastCanvasPoint && pt.pressure > 0) {
             const float norm = static_cast<float>(pt.pressure) / static_cast<float>(maxP);
@@ -319,19 +357,87 @@ struct ScribbleApp : ApplicationT<ScribbleApp> {
         g_timer.Tick([](auto&&, auto&&) { tick(); });
         g_timer.Start();
 
+        // Written on close rather than incrementally: a partial file that looks complete is
+        // worse than none, and the whole stroke is in memory anyway.
+        g_window.Closed([](auto&&, auto&&) {
+            if (g_recordPath.empty()) return;
+            const int written = g_recorder.save(g_recordPath);
+            fprintf(stderr, "[record] %d points -> %s\n", written, g_recordPath.c_str());
+            fflush(stderr);
+        });
+
         g_window.Content(root);
         g_window.Activate();
 
-        // The last entry is WinUI Pointer, the one that works without a tablet attached.
-        // selectApi does not raise the selection event, so the session is opened explicitly.
-        g_ribbon->selectApi(static_cast<int>(apis.size()) - 1);
-        startSession(apis.back());
+        // The saved choice if there is one and it is still offered, otherwise WinUI Pointer --
+        // the last entry, and the one that works with no tablet attached.
+        PenInputApi initial = apis.back();
+        if (auto saved = scribble::settings::savedApi()) {
+            if (std::find(apis.begin(), apis.end(), *saved) != apis.end()) initial = *saved;
+        }
+        const int initialIndex = static_cast<int>(
+            std::find(apis.begin(), apis.end(), initial) - apis.begin());
+
+        // selectApi does not raise the selection event, so the session is opened explicitly
+        // rather than relying on a side effect of setting the index.
+        g_ribbon->selectApi(initialIndex);
+        startSession(initial);
+
+        if (g_selfTestRequested) {
+            // After the first layout, not here: the surface does not exist until the canvas
+            // host has been measured, and every surface check would report zero.
+            g_selfTestTimer = DispatcherTimer();
+            g_selfTestTimer.Interval(std::chrono::milliseconds(800));
+            g_selfTestTimer.Tick([](auto&&, auto&&) {
+                g_selfTestTimer.Stop();
+
+                // On its own thread, so the UI thread is free to present the frames the
+                // presentation probe is waiting for. Running the checks in this callback made
+                // that probe report "neither marker reached the screen" on every attempt,
+                // because while the callback ran none had been.
+                auto queue = winrt::Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread();
+                std::thread([queue] {
+                    auto runOnUi = [queue](std::function<void()> work) {
+                        winrt::handle done{ ::CreateEventW(nullptr, TRUE, FALSE, nullptr) };
+                        const bool queued = queue.TryEnqueue([&work, h = done.get()] {
+                            work();
+                            ::SetEvent(h);
+                        });
+                        // A wait rather than an infinite one: a UI thread that has stopped
+                        // servicing its queue would otherwise hang the checks with no output
+                        // at all, which is worse than a failed check.
+                        if (queued) ::WaitForSingleObject(done.get(), 5000);
+                    };
+
+                    const int code = scribble::runSelfTest(
+                        *g_canvas, g_hwnd, *g_pen,
+                        g_backend == Backend::XamlPointer, g_requestedApi, g_replayPath,
+                        runOnUi);
+                    ::ExitProcess(static_cast<UINT>(code));
+                }).detach();
+            });
+            g_selfTestTimer.Start();
+        }
     }
 };
 
 } // namespace
 
 int __stdcall wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    // Parsed through the shared helpers, so the flags spell the same way here as in the other
+    // samples. A sample whose --record took a different shape would not be comparable with the
+    // ones it exists to be compared against.
+    //
+    // Both called, not short-circuited. Written as `requested() || replay_requested(path)`
+    // this silently skipped the replay: --selftest made the left side true, the right side
+    // never ran, the path stayed empty, and the run reported 9/9 having quietly left out the
+    // three conversion checks that replaying is for. A green result with fewer checks in it is
+    // the worst way for this to fail.
+    const bool plain = selftest::requested();
+    const bool replay = selftest::replay_requested(g_replayPath);
+    g_selfTestRequested = plain || replay;
+    selftest::record_requested(g_recordPath);
+
     init_apartment(apartment_type::single_threaded);
     Application::Start([](auto&&) { make<ScribbleApp>(); });
     return 0;

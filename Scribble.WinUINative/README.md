@@ -58,7 +58,7 @@ The dropdown therefore offers Wintab, Wintab (high-res) and WinUI Pointer, and d
 does **not** offer the native WM_POINTER session — listing a backend measured not to work here
 would be offering a choice that silently draws nothing.
 
-## Four things that cost time, written down so they do not cost it again
+## Five things that cost time, written down so they do not cost it again
 
 **`XamlControlsResources` crashes this app.** The obvious translation of App.xaml's
 `<XamlControlsResources/>` is to merge one into `Application.Resources`. Doing that fails at
@@ -82,6 +82,16 @@ clipped to the element — strokes land at the wrong place and most of the canva
 `Stretch::Fill` maps the whole bitmap onto the element, which with that sizing puts one bitmap
 pixel on one physical pixel. This is the `L1.presentation-1to1` fault, arrived at by hand.
 
+**The acceptance checks cannot run on the UI thread.** The presentation probe draws, then
+waits for the drawing to reach the screen before capturing. Anything occupying the UI thread
+while it waits stops WinUI presenting the frame being waited for: run from a `DispatcherTimer`
+tick, the probe reported *"neither marker reached the screen"* on all 40 attempts, because none
+had. Pumping the message queue inside that callback does not help — the compositor commit
+happens when the callback returns. The checks now run on their own thread and marshal anything
+touching XAML back; the capture is GDI against the screen and needs no thread affinity. With
+that one change the probe went from failing every time to `841/841 px matched`, the same figure
+`Scribble.WinUI` reports.
+
 **Divide pressure by the right maximum.** Pressure normalises against the session's maximum, and the two backends do not share a session.
 Reading it from the native session while the XAML source was running returned that object's
 unstarted default of **1**, so a pressure of 850 became a stroke 5100 pixels wide and the canvas
@@ -103,12 +113,27 @@ the version `Directory.Build.props` gives the managed samples. Build a managed s
 NuGet has restored it; the project fails with a named error rather than a missing-DLL crash if
 it is absent.
 
+## Running
+
+```powershell
+Scribble.WinUINative.exe                      # draw
+Scribble.WinUINative.exe --selftest           # the checks that need no pen data
+Scribble.WinUINative.exe --selftest --replay my.csv
+Scribble.WinUINative.exe --record my.csv      # written when the window closes
+```
+
+The backend choice is remembered in `HKCU\Software\TheSevenPens\Scribble.WinUINative`, the
+same place and shape `Scribble.Qt` uses. Unlike Qt, switching takes effect immediately — a
+WinPenKit session opens and closes at will and WinUI's pointer events are just handlers — so
+there is no restart notice to show.
+
 ## State
 
-Working: the window; the Skia surface; presentation at 1:1; the WinPenKit session over the C
-ABI for Wintab; the WinUI pointer path; and drawing with pressure-derived width, verified with
-injected strokes at two pressures producing visibly different widths in the right places.
+Working, and verified: the window; the Skia surface; presentation at 1:1; the WinPenKit session
+over the C ABI; the WinUI pointer path; drawing with pressure-derived width; the standard
+seven-section ribbon; `--record`; `--replay`; and the full check suite at **12/12** with a
+replay, 9/9 without.
 
-Not yet done: the standard seven-section ribbon with the pen API switcher and its restart
-notice, `--record`, `--replay`, and the `--selftest` checks. Wintab is wired but unverified —
-it needs the tablet.
+**Wintab is wired but unverified.** It takes the native path here as it does in every other
+sample, and it needs the tablet to exercise. Until then `L0.pen-api` is what will catch a
+fallback, as it already has once in `Scribble.Qt`.

@@ -82,7 +82,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>$(MSBuildThisFileDirectory)external\skia-c-api\lib\$(Platform)\libSkiaSharp.lib;$(MSBuildThisFileDirectory)..\WinPenKit.Native\bin\$(Configuration)\$(Platform)\WinPenKit.Native.lib;windowsapp.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)external\skia-c-api\lib\$(Platform)\libSkiaSharp.lib;$(MSBuildThisFileDirectory)..\WinPenKit.Native\bin\$(Configuration)\$(Platform)\WinPenKit.Native.lib;windowsapp.lib;dwmapi.lib;gdi32.lib;user32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
@@ -96,12 +96,14 @@
     <ClCompile Include="src\pensession.cpp" />
     <ClCompile Include="src\xamlpointer.cpp" />
     <ClCompile Include="src\ribbon.cpp" />
+    <ClCompile Include="src\selftestrun.cpp" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\skia_raii.h" />
     <ClInclude Include="src\canvas.h" />
     <ClInclude Include="src\pensession.h" />
     <ClInclude Include="src\xamlpointer.h" />
     <ClInclude Include="src\ribbon.h" />
+    <ClInclude Include="src\selftestrun.h" />
     <Manifest Include="app.manifest" />
   </ItemGroup>
 
