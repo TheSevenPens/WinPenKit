@@ -37,6 +37,9 @@ public partial class MainWindow : Window
     /// <summary>Layout-unit-to-device-pixel ratio the surface was built at.</summary>
     private double _renderScale = 1.0;
 
+    private StrokeRecorder? _recorder;
+    private string? _recordPath;
+
     public MainWindow()
     {
         // Wintab hands packets to whichever context is on top of the driver's overlap order, and
@@ -98,6 +101,14 @@ public partial class MainWindow : Window
 
         Closing += (_, _) =>
         {
+            // Saved before the session is torn down, so Describe's snapshot still names the
+            // session the points came from.
+            if (_recorder != null && _recordPath != null)
+            {
+                int written = _recorder.Save(_recordPath);
+                Console.Error.WriteLine($"[record] {written} points -> {_recordPath}");
+            }
+
             _renderTimer.Stop();
             _session?.Stop();
             _session?.Dispose();
@@ -118,6 +129,19 @@ public partial class MainWindow : Window
                            ?? new global::Avalonia.Point(0, 0);
         return ((x - windowOrigin.X) - canvasOrigin.X * scale,
                 (y - windowOrigin.Y) - canvasOrigin.Y * scale);
+    }
+
+    /// <summary>Starts capturing the pen stream, written to <paramref name="path"/> on close.</summary>
+    /// <remarks>
+    /// The recording format is the one <c>--replay</c> reads, so a stream captured here can be
+    /// measured against <c>testdata/wintab-digitizer-stroke.csv</c> and
+    /// <c>testdata/wpf-stylus-stroke.csv</c>. That turns "the strokes look good" after a
+    /// framework bump into a turn angle that can be compared with the previous one.
+    /// </remarks>
+    internal void RecordTo(string path)
+    {
+        _recordPath = path;
+        _recorder = new StrokeRecorder();
     }
 
     /// <summary>Runs the launch-time acceptance checks against this window.</summary>
@@ -272,6 +296,10 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Described at start, not at save: this sample switches pen API while a recording is
+        // running, and the header has to name the session the points actually came from.
+        _recorder?.Describe(_session.GetType().Name, _session.MaxPressure);
+
         Title = "Scribble Avalonia - WinPenKit";
         _renderTimer.Start();
     }
@@ -299,6 +327,7 @@ public partial class MainWindow : Window
         foreach (var pt in points)
         {
             _buttons.Update(pt);
+            _recorder?.Add(pt);
 
             // Desktop pixels to canvas-local DIPs.
             //
