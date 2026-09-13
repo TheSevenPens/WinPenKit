@@ -1,11 +1,16 @@
 # Scribble Apps
 
-Seven demo apps proving the WinPenKit SDK end-to-end. All feature bitmap-backed rendering, a ribbon toolbar with API dropdown, brush size slider, clear button, pressure-sensitive drawing, and four-coordinate position display (Raw → Screen → App → Canvas).
+Eight demo apps. Seven prove the WinPenKit SDK end-to-end, with bitmap-backed rendering, a ribbon toolbar with API dropdown, brush size slider, clear button, pressure-sensitive drawing, and four-coordinate position display (Raw → Screen → App → Canvas).
+
+`Scribble.Qt` is the exception and is here on purpose: it uses Qt's own stylus handling and no WinPenKit at all. Seven samples sharing one library can agree with each other and still be wrong together, so an independent implementation is what makes a measurement a statement about Windows rather than about this repository. It is also the closest thing here to what Krita sees, since Krita consumes `QTabletEvent` the same way.
 
 > Every app here accepts `--selftest` and `--replay`, which verify the environment, the drawing
 > surface and the coordinate conversion with no tablet and no person. All but `Scribble.Rust`
 > also accept `--record <path>`, which captures a live pen stream in the format `--replay`
 > reads. See [SELF-TEST.md](SELF-TEST.md).
+>
+> `Scribble.Qt` answers the same checks with the same ids, which is the only reason its numbers
+> can be put beside the others'.
 
 ## Summary
 
@@ -18,6 +23,7 @@ Seven demo apps proving the WinPenKit SDK end-to-end. All feature bitmap-backed 
 | Scribble.WinForms | WinForms | SkiaSharp | C# | System, Digitizer, WinForms Pointer |
 | Scribble.Avalonia | Avalonia | SkiaSharp | C# | System, Digitizer, Avalonia Pointer |
 | WinPenKit.TestConsole | Console | (headless) | C# | System, Digitizer |
+| Scribble.Qt | Qt 6 Widgets | QPainter / QImage | C++ | **no WinPenKit** — Qt WM_Pointer or Qt WinTab |
 
 ## Scribble.Win32
 
@@ -99,3 +105,19 @@ Headless console app for verifying Wintab backends without a GUI. Useful for deb
 - Interactive API selection
 - Prints live pen data at 10 Hz (position, pressure, buttons, cursor)
 - WM_Pointer not available (no window handle) — correctly reports the error
+
+## Scribble.Qt
+
+Qt 6 Widgets, `QTabletEvent`, and no WinPenKit. Full notes in
+[Scribble.Qt/README.md](../Scribble.Qt/README.md); the parts that change how you read its output:
+
+- **The pen API is fixed at startup.** Qt decides between WM_POINTER and WinTab while the
+  Windows platform plugin initialises, so there is no dropdown — `--wintab` or `--pointer`, and
+  relaunch to change. The application cannot ask afterwards which one it got, so the ribbon
+  reports what it requested.
+- **Qt's WinTab context is always tablet-native.** `--wintab` is comparable to `WintabDigitizer`
+  and never to `WintabSystem`. There is no low-resolution option in Qt, and therefore none in
+  Krita.
+- **It shares `Scribble.Win32/src/selftest.h`** and nothing else. Same check ids, same report
+  lines, same recording format, no WinPenKit dependency.
+- Built with CMake against an external Qt 6; it is not in either solution.
