@@ -20,6 +20,71 @@ pub enum PenInputApi {
     WinFormsPointer = 6,
 }
 
+/// What `PenPoint::raw_x` and `raw_y` are measured in.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PenRawUnits {
+    /// No device-native position; the fields are zero.
+    None = 0,
+    TabletNative = 1,
+    ScreenPixels = 2,
+    /// Hundredths of a millimetre.
+    Himetric = 3,
+}
+
+/// How `PenPoint::buttons` is packed.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PenButtonEncoding {
+    /// One event per packet, `(action << 16) | button_number`.
+    WintabEvent = 0,
+    /// A bitmask replaced every packet: bit 0 barrel, bit 1 eraser.
+    PointerFlags = 1,
+}
+
+/// Where the numbers in `PenPoint::cursor` come from.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PenCursorNumbering {
+    /// 13 tip, 14 eraser, written by the session.
+    Normalised = 0,
+    /// The driver's own number, passed through.
+    DeviceAssigned = 1,
+}
+
+/// What a session's points mean, for the fields whose meaning depends on the
+/// backend. Read once after `start`, not inferred from the API.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct PenConventions {
+    pub raw_units: PenRawUnits,
+    pub buttons: PenButtonEncoding,
+    pub cursor: PenCursorNumbering,
+}
+
+impl Default for PenConventions {
+    fn default() -> Self {
+        Self {
+            raw_units: PenRawUnits::None,
+            buttons: PenButtonEncoding::WintabEvent,
+            cursor: PenCursorNumbering::DeviceAssigned,
+        }
+    }
+}
+
+impl PenRawUnits {
+    /// The short unit name a readout shows beside the raw pair, or an empty
+    /// string when there is no value to label.
+    pub fn label(self) -> &'static str {
+        match self {
+            PenRawUnits::TabletNative => "tablet",
+            PenRawUnits::ScreenPixels => "px",
+            PenRawUnits::Himetric => "0.01mm",
+            PenRawUnits::None => "",
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PenPoint {
@@ -57,6 +122,7 @@ unsafe extern "C" {
     pub fn pen_session_is_running(handle: PenSessionHandle) -> i32;
     pub fn pen_session_get_api(handle: PenSessionHandle) -> PenInputApi;
     pub fn pen_session_get_capabilities(handle: PenSessionHandle) -> i32;
+    pub fn pen_session_get_conventions(handle: PenSessionHandle, out: *mut PenConventions);
     pub fn pen_session_get_debug_info(handle: PenSessionHandle) -> *const c_char;
     pub fn pen_session_refresh_mapping(handle: PenSessionHandle);
     pub fn pen_session_on_activated(handle: PenSessionHandle);
@@ -110,6 +176,15 @@ impl PenSession {
 
     pub fn api(&self) -> PenInputApi {
         unsafe { pen_session_get_api(self.handle) }
+    }
+
+    /// What this session's points mean. Call after `start`: a digitizer whose
+    /// hi-res context failed reports screen pixels, and that is not known until
+    /// the context has been opened.
+    pub fn conventions(&self) -> PenConventions {
+        let mut c = PenConventions::default();
+        unsafe { pen_session_get_conventions(self.handle, &mut c) };
+        c
     }
 
     /// Tell the session the window has just been activated.
