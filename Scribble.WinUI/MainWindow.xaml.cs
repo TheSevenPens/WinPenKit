@@ -188,7 +188,11 @@ public sealed partial class MainWindow : Window
         Canvas.SizeChanged += (_, e) =>
         {
             if (e.NewSize.Width <= 0 || e.NewSize.Height <= 0) return;
-            DispatcherQueue.TryEnqueue(() => Environment.Exit(RunSelfTest(replayPath).Emit()));
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                var report = await RunSelfTest(replayPath);
+                Environment.Exit(report.Emit());
+            });
         };
     }
 
@@ -206,7 +210,12 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Runs the launch-time acceptance checks against this window.</summary>
-    internal SelfTest RunSelfTest(string? replayPath = null)
+    /// <remarks>
+    /// Asynchronous because of <c>L1.presentation-sampling</c>, which watches the screen until
+    /// the markers it drew appear there. Awaiting yields this thread, which is the one that has
+    /// to render them.
+    /// </remarks>
+    internal async Task<SelfTest> RunSelfTest(string? replayPath = null)
     {
         var t = new SelfTest { AppName = "Scribble.WinUI" };
 
@@ -241,7 +250,19 @@ public sealed partial class MainWindow : Window
             t.CheckReplay(stroke, DesktopToCanvas, scale);
         }
 
-        // Last: this one moves the window and puts it back.
+        // Last two, in this order: one measures what is on the screen, the other moves the
+        // window. Measuring first means the window has not just been moved back.
+        if (Canvas.HasSurface)
+        {
+            var probe = new PresentationProbe(bmpW, bmpH);
+            Canvas.DrawPresentationMarkers(probe);
+            await probe.MeasureAsync(t, hwnd, TimeSpan.FromSeconds(5));
+        }
+        else
+        {
+            t.Skip("L1.presentation-sampling", "no drawing surface");
+        }
+
         t.CheckOriginTracksWindow(hwnd, DesktopToCanvas, scale);
 
         return t;

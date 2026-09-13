@@ -56,22 +56,49 @@ Also needs nothing — no tablet, no pen, no person. Most of the surface bug cla
 | `L1.surface-physical` | a canvas sized in logical units and magnified to fit — at 2.25x that is a surface drawn at 44% of the display's resolution, which no amount of coordinate precision survives |
 | `L1.surface-alignment` | a surface landing on a fractional device pixel, so the framework resamples all of it to draw it between pixel rows, softening every edge while coordinates and resolution both still measure correct |
 | `L1.presentation-1to1` | a correctly sized surface given a host of the wrong size, so it is scaled back off the pixel grid on its way to the screen |
+| `L1.presentation-sampling` | a correctly sized surface in a correctly sized host, with only part of it drawn across the whole host |
 
-### What `L1.presentation-1to1` does not cover
+### Why there are two presentation checks
 
-It compares the **host's layout size** against the surface's pixel count. A host can cover
-exactly the right number of device pixels and still draw only part of the surface across them,
-and this check passes on that.
+`L1.presentation-1to1` compares the **host's layout size** against the surface's pixel count.
+A host can cover exactly the right number of device pixels and still draw only part of the
+surface across them, and that check passes on it.
 
 Issue 70 was exactly that: a 2700px bitmap in a host covering 2700 device pixels, matching to
 the pixel, while the framework rendered the top-left 1200x600 pixels of it stretched across the
 whole host. Strokes landed 2.25 times too far from the canvas origin. The check passed before
 the fix and after it.
 
-Measuring the sampling rate needs pixels rather than layout: draw a marker into the surface at
-known coordinates, capture the window, and measure what it became. A 200-pixel square rendering
-202 logical pixels where 1:1 is 89 is what settled that issue, after several wrong readings
-taken from the layout tree. Nothing in the self test does this today.
+No property could have caught it. `Bitmap.Size` said 1200 DIP, `Image.Bounds` said 1200 DIP,
+the arranged desired size said 1200 — all correct, at the moment the ink was landing 2.25 times
+too far out. The disagreement sat between `Size` and the draw, inside the framework. A check
+reading those properties would have been a second instrument with the same blind spot.
+
+So `L1.presentation-sampling` measures pixels instead. It draws two markers a known distance
+apart into the surface, waits for them on the screen, and compares the distance between them
+there. Because it is a ratio of two distances, it needs neither the canvas origin nor the
+display scale — both cancel, which matters, since a wrong origin is one of the things it has to
+be able to catch.
+
+Reintroducing issue 70 into `Scribble.Avalonia` produces:
+
+```
+[PASS] L1.presentation-1to1      bitmap 2700x1351 presented at 2700.0x1351.0 device px
+[FAIL] L1.presentation-sampling  markers 675x337 surface px apart appeared 1518.0x758.0 device
+                                 px apart (x 2.249, y 2.249)  <- the surface is sampled at
+                                 2.25x horizontally and 2.25x vertically, so ink lands that far
+                                 from where the pen was
+```
+
+**Two things follow from measuring the screen.** The window has to be visible and unobscured,
+so this is the one check that cannot run on a hidden window. And the application has to drive
+it across two frames: draw the markers, present, then await the measurement. Finding both
+markers is what says the frame landed, and two consecutive readings that agree is what says
+nothing is still moving — Windows animates a window open by compositing it scaled up to its
+final size, and a capture taken during that reads a few per cent small.
+
+Not implemented in `Scribble.Win32` or `Scribble.Rust`, which have their own self test and no
+access to the managed one.
 
 `L1.surface-alignment` reports both axes separately, because the error is routinely one-dimensional. One real instance was aligned in x and 0.64px out in y — which is how a check that scanned across a near-vertical stroke reported it clean.
 
@@ -109,6 +136,8 @@ Three things, and a green report should not be read as a statement about any of 
 **Wintab, at all.** Synthetic pen injection does not reach the driver. Every claim about Wintab behaviour needs a tablet.
 
 **Whether the stroke looks right.** Antialiasing and pressure response are measurable from a captured bitmap in principle, and are deliberately not automated: an image-derived metric reported a canvas as clean while it was being resampled, because it happened to scan the axis with no error. Checks that hold are automated; judgements about how a stroke looks belong to a person with a pen.
+
+`L1.presentation-sampling` also reads a captured bitmap, so it is worth saying what makes it different. It looks for two marks it put there itself, at coordinates it chose, and reports x and y separately — so the failure above, a metric that happened to scan the clean axis, is one it reports rather than one it can have. What it does not do is judge anything about the ink.
 
 ## Recordings
 

@@ -28,9 +28,10 @@ public partial class App : Application
                 // Opened fires before the first layout pass has produced a surface, so the
                 // checks are posted behind it at Loaded priority rather than run inline.
                 window.Opened += (_, _) => Dispatcher.UIThread.Post(
-                    () =>
+                    async () =>
                     {
-                        desktop.Shutdown(window.RunSelfTest(replay ? replayPath : null).Emit());
+                        var report = await window.RunSelfTest(replay ? replayPath : null);
+                        desktop.Shutdown(report.Emit());
                     },
                     DispatcherPriority.Loaded);
             }

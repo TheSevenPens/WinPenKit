@@ -31,10 +31,10 @@ public partial class App : Application
             return;
         }
 
-        window.ContentRendered += (_, _) =>
+        window.ContentRendered += async (_, _) =>
         {
-            int code = window.RunSelfTest(replay ? replayPath : null).Emit();
-            Shutdown(code);
+            var report = await window.RunSelfTest(replay ? replayPath : null);
+            Shutdown(report.Emit());
         };
         window.Show();
     }

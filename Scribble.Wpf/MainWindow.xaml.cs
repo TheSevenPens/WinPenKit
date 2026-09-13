@@ -108,7 +108,12 @@ public partial class MainWindow : Window
     /// </summary>
     /// <param name="replayPath">Recording to push through the coordinate conversion, adding
     /// the level 2 and 3 checks. Null runs levels 0 and 1 only.</param>
-    internal SelfTest RunSelfTest(string? replayPath = null)
+    /// <remarks>
+    /// Asynchronous because of <c>L1.presentation-sampling</c>, which watches the screen until
+    /// the markers it drew appear there. Awaiting yields this thread, which is the one that has
+    /// to render them.
+    /// </remarks>
+    internal async Task<SelfTest> RunSelfTest(string? replayPath = null)
     {
         var t = new SelfTest { AppName = "Scribble.Wpf" };
 
@@ -137,11 +142,52 @@ public partial class MainWindow : Window
             t.CheckReplay(stroke, DesktopToCanvas, _renderScale);
         }
 
-        // Last: this one moves the window and puts it back.
+        // Last two, in this order: one measures what is on the screen, the other moves the
+        // window. Measuring first means the window has not just been moved back.
+        await MeasurePresentationSampling(t);
+
         t.CheckOriginTracksWindow(_hwnd, DesktopToCanvas, _renderScale);
 
         return t;
     }
+
+    /// <summary>
+    /// Draws the probe's markers into the canvas, presents a frame, and lets the probe find
+    /// them on the screen.
+    /// </summary>
+    /// <remarks>
+    /// The canvas is cleared first so nothing already on it can be mistaken for a marker, and
+    /// the markers are left in place: the self test shuts the application down straight after.
+    /// </remarks>
+    private async Task MeasurePresentationSampling(SelfTest t)
+    {
+        if (_skCanvas == null)
+        {
+            t.Skip("L1.presentation-sampling", "no drawing surface");
+            return;
+        }
+
+        var probe = new PresentationProbe(_bitmapWidth, _bitmapHeight);
+
+        _skCanvas.Clear(new SKColor(0xF0, 0xF0, 0xF0));
+
+        // The canvas carries Scale(_renderScale) so that stroke widths can be given in DIPs.
+        // Marker coordinates are surface pixels by definition, so they are drawn with no
+        // transform -- the same reason EnsureBitmap resets the matrix to blit the old bitmap.
+        _skCanvas.Save();
+        _skCanvas.ResetMatrix();
+        probe.Draw(m =>
+        {
+            using var paint = new SKPaint { Color = new SKColor(m.R, m.G, m.B), IsAntialias = false };
+            _skCanvas.DrawRect(m.X, m.Y, m.Size, m.Size, paint);
+        });
+        _skCanvas.Restore();
+
+        CopyToWpfBitmap();
+
+        await probe.MeasureAsync(t, _hwnd, TimeSpan.FromSeconds(5));
+    }
+
 
     public MainWindow()
     {

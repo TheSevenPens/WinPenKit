@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 using SkiaSharp;
+using WinPenKit.Diagnostics;
 
 namespace Scribble.WinUI.Controls;
 
@@ -123,6 +124,35 @@ public sealed partial class DrawingCanvas : UserControl
         _skCanvas?.Clear(new SKColor(0xF0, 0xF0, 0xF0));
         CopyToWriteableBitmap();
     }
+
+    /// <summary>
+    /// Clears the canvas, draws the probe's markers into it, and presents a frame.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than in the window because the surface is private to this control. The
+    /// matrix is reset first: the canvas carries Scale(rasterization scale) so stroke widths
+    /// can be given in effective pixels, and marker coordinates are surface pixels by
+    /// definition.
+    /// </remarks>
+    internal void DrawPresentationMarkers(PresentationProbe probe)
+    {
+        if (_skCanvas == null) return;
+
+        _skCanvas.Clear(new SKColor(0xF0, 0xF0, 0xF0));
+        _skCanvas.Save();
+        _skCanvas.ResetMatrix();
+        probe.Draw(m =>
+        {
+            using var paint = new SKPaint { Color = new SKColor(m.R, m.G, m.B), IsAntialias = false };
+            _skCanvas.DrawRect(m.X, m.Y, m.Size, m.Size, paint);
+        });
+        _skCanvas.Restore();
+
+        CopyToWriteableBitmap();
+    }
+
+    /// <summary>True once the backing surface exists.</summary>
+    internal bool HasSurface => _skCanvas != null;
 
     /// <summary>Backing bitmap size in device pixels.</summary>
     internal (int Width, int Height) BitmapSize => (_bitmapWidth, _bitmapHeight);
