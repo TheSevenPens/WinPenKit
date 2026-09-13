@@ -2,6 +2,7 @@
 #include "canvas.h"
 #include "pensession.h"
 #include "xamlpointer.h"
+#include "ribbon.h"
 
 #include <microsoft.ui.xaml.window.h>   // IWindowNative
 
@@ -41,9 +42,9 @@ UIElement g_canvasHost{ nullptr };
 DispatcherTimer g_timer{ nullptr };
 
 std::optional<Point> g_lastCanvasPoint;
-double g_brushSize = 6.0;
 HWND g_hwnd = nullptr;
-TextBlock g_status{ nullptr };
+std::unique_ptr<scribble::Ribbon> g_ribbon;
+scribble::PenReadout g_readout;
 
 std::wstring widen(const char* s) {
     if (!s) return L"unknown";
@@ -67,21 +68,25 @@ void startSession(PenInputApi api) {
     if (api == PEN_API_WINUI_POINTER) {
         g_xamlPointer->attach(g_canvasHost, g_hwnd);
         g_backend = Backend::XamlPointer;
-        g_status.Text(L"WinUI Pointer (XAML events)  |  max pressure "
-                      + std::to_wstring(scribble::XamlPointerSource::kMaxPressure));
+        g_ribbon->setStatus(winrt::hstring{
+            L"XAML events, max " + std::to_wstring(scribble::XamlPointerSource::kMaxPressure) });
         return;
     }
 
     const std::string err = g_pen->start(api, g_hwnd);
     if (!err.empty()) {
         g_backend = Backend::None;
-        g_status.Text(L"Session failed: " + widen(err.c_str()));
+        g_ribbon->setStatus(winrt::hstring{ L"failed: " + widen(err.c_str()) });
+        g_ribbon->clearReadout();
         return;
     }
 
     g_backend = Backend::Native;
-    g_status.Text(widen(g_pen->apiLabel())
-                  + L"  |  max pressure " + std::to_wstring(g_pen->maxPressure()));
+    // The running API, read back from the session. A digitizer whose hi-res context failed is
+    // still running, as something else, and reporting the request rather than the result is
+    // the fault PenConventions exists to prevent.
+    g_ribbon->setStatus(winrt::hstring{
+        widen(g_pen->apiLabel()) + L", max " + std::to_wstring(g_pen->maxPressure()) });
 }
 
 /// Drains whatever the session has and draws it.
@@ -107,6 +112,9 @@ void tick() {
     const int maxP = (g_backend == Backend::XamlPointer)
                    ? scribble::XamlPointerSource::kMaxPressure
                    : g_pen->maxPressure();
+
+    POINT clientOrigin{ 0, 0 };
+    if (g_hwnd) ::ClientToScreen(g_hwnd, &clientOrigin);
     bool drew = false;
 
     for (int i = 0; i < n; ++i) {
@@ -134,15 +142,57 @@ void tick() {
             // + 0.5, and a width in physical pixels, matching every other sample. These
             // samples exist to be compared with each other, so a width formula that differs
             // between them is a confound in the one measurement they are for.
-            const float width = norm * static_cast<float>(g_brushSize) + 0.5f;
+            const float width = norm * static_cast<float>(g_ribbon->brushSize()) + 0.5f;
             g_canvas->drawSegment(g_lastCanvasPoint->X, g_lastCanvasPoint->Y,
                                   canvasPt.X, canvasPt.Y, width);
             drew = true;
         }
 
         g_lastCanvasPoint = canvasPt;
+
+        // The readout describes the most recent point, so it is filled every time rather than
+        // only when something was drawn: a hover that moves and draws nothing is exactly what
+        // the proximity row is for.
+        g_readout.hasData     = true;
+        g_readout.inProximity = (pt.status & 0x0001) != 0 || pt.pressure > 0;
+        g_readout.screenX = pt.desktop_x;
+        g_readout.screenY = pt.desktop_y;
+        g_readout.appX    = pt.desktop_x - clientOrigin.x;
+        g_readout.appY    = pt.desktop_y - clientOrigin.y;
+        g_readout.canvasX = canvasPt.X;
+        g_readout.canvasY = canvasPt.Y;
+        g_readout.rawX = pt.raw_x;
+        g_readout.rawY = pt.raw_y;
+        g_readout.rawUnits = (g_backend == Backend::XamlPointer)
+                           ? PEN_RAW_NONE
+                           : g_pen->conventions().raw_units;
+        g_readout.rawPressure = pt.pressure;
+        g_readout.maxPressure = maxP;
+        g_readout.azimuth = pt.azimuth;
+        g_readout.altitude = pt.altitude;
+        g_readout.twist = pt.twist;
+        g_readout.tiltX = pt.tilt_x;
+        g_readout.tiltY = pt.tilt_y;
+        g_readout.cursor = pt.cursor;
+        g_readout.rawButtons = pt.buttons;
+
+        if (g_backend == Backend::Native) {
+            g_readout.tip     = g_pen->tipDown() || pt.pressure > 0;
+            g_readout.barrel1 = g_pen->barrel1();
+            g_readout.barrel2 = g_pen->barrel2();
+            g_readout.barrel3 = g_pen->barrel3();
+        } else {
+            // A pointer bitmask carries no per-button identity, so B2 and B3 read false
+            // because the backend cannot say, not because they are up.
+            g_readout.tip     = pt.pressure > 0;
+            g_readout.barrel1 = (pt.buttons & 0x0001) != 0;
+            g_readout.barrel2 = false;
+            g_readout.barrel3 = false;
+        }
+        g_readout.eraser = pt.cursor == 14u || (pt.buttons & 0x0002) != 0;
     }
 
+    if (g_ribbon) g_ribbon->setReadout(g_readout);
     if (drew) g_canvas->present();
 }
 
@@ -197,17 +247,6 @@ struct ScribbleApp : ApplicationT<ScribbleApp> {
         root.RowDefinitions().Append([] { RowDefinition r; r.Height(GridLengthHelper::Auto()); return r; }());
         root.RowDefinitions().Append([] { RowDefinition r; r.Height(GridLengthHelper::FromValueAndType(1, GridUnitType::Star)); return r; }());
 
-        // A placeholder bar until the standard seven-section ribbon goes in. Kept so the canvas
-        // does not start at the window's top edge, which is where the half-pixel origin faults
-        // live.
-        auto bar = StackPanel();
-        bar.Orientation(Orientation::Horizontal);
-        bar.Spacing(12);
-        bar.Padding(ThicknessHelper::FromLengths(12, 8, 12, 8));
-        bar.Background(SolidColorBrush(winrt::Microsoft::UI::ColorHelper::FromArgb(255, 0xF3, 0xF3, 0xF3)));
-
-        // Only the APIs this binding can actually create. The managed-only values exist in the
-        // enum because a point's source field can carry them, not because this can open one.
         PenInputApi available[8];
         const int nativeCount = pen_session_get_available_apis(available, 8);
 
@@ -218,40 +257,21 @@ struct ScribbleApp : ApplicationT<ScribbleApp> {
         for (int i = 0; i < nativeCount; ++i)
             if (available[i] != PEN_API_WM_POINTER) apis.push_back(available[i]);
         apis.push_back(PEN_API_WINUI_POINTER);
-        const int count = static_cast<int>(apis.size());
 
-        auto apiBox = ComboBox();
-        apiBox.MinWidth(220);
-        apiBox.VerticalAlignment(VerticalAlignment::Center);
-        for (auto a : apis) {
-            const std::wstring label = (a == PEN_API_WINUI_POINTER)
-                                     ? L"WinUI Pointer"
-                                     : widen(pen_session_get_api_label(a));
-            apiBox.Items().Append(box_value(winrt::hstring{ label }));
-        }
-        apiBox.SelectionChanged([apis](IInspectable const& sender, auto&&) {
-            const int idx = sender.as<ComboBox>().SelectedIndex();
-            if (idx >= 0 && idx < static_cast<int>(apis.size())) startSession(apis[idx]);
-        });
-        bar.Children().Append(apiBox);
+        g_ribbon = std::make_unique<scribble::Ribbon>(
+            apis,
+            [](PenInputApi api) { startSession(api); },
+            [] {
+                if (g_canvas) g_canvas->clear();
+                g_lastCanvasPoint.reset();
+                g_readout = scribble::PenReadout{};
+                if (g_ribbon) g_ribbon->clearReadout();
+            },
+            [](double) { /* brush size is read from the ribbon when a segment is drawn */ });
 
-        auto clearButton = Button();
-        clearButton.Content(box_value(L"Clear"));
-        clearButton.VerticalAlignment(VerticalAlignment::Center);
-        clearButton.Click([](auto&&, auto&&) {
-            if (g_canvas) g_canvas->clear();
-            g_lastCanvasPoint.reset();
-        });
-        bar.Children().Append(clearButton);
-
-        g_status = TextBlock();
-        g_status.Text(L"no session");
-        g_status.VerticalAlignment(VerticalAlignment::Center);
-        g_status.Opacity(0.7);
-        bar.Children().Append(g_status);
-
-        Grid::SetRow(bar, 0);
-        root.Children().Append(bar);
+        auto ribbonRoot = g_ribbon->root();
+        Grid::SetRow(ribbonRoot, 0);
+        root.Children().Append(ribbonRoot);
 
         // The Image is pinned top-left inside a clipping Border, so a surface larger than its
         // host is clipped rather than scaled. Centring it instead would put the canvas origin
@@ -303,7 +323,9 @@ struct ScribbleApp : ApplicationT<ScribbleApp> {
         g_window.Activate();
 
         // The last entry is WinUI Pointer, the one that works without a tablet attached.
-        if (count > 0) apiBox.SelectedIndex(count - 1);
+        // selectApi does not raise the selection event, so the session is opened explicitly.
+        g_ribbon->selectApi(static_cast<int>(apis.size()) - 1);
+        startSession(apis.back());
     }
 };
 

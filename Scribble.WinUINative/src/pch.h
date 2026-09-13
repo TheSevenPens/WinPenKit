@@ -18,6 +18,8 @@
 #include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
+#include <winrt/Microsoft.UI.Xaml.Shapes.h>
+#include <winrt/Windows.UI.Text.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Microsoft.UI.Input.h>
 #include <winrt/Microsoft.UI.Content.h>
