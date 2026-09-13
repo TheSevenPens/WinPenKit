@@ -101,8 +101,51 @@ public sealed class AvaloniaPointerSession : IPenSession
 
     private void OnPointerEvent(object? sender, PointerEventArgs e)
     {
-        var point = e.GetCurrentPoint(_element);
+        // Every point the framework coalesced into this event, not just the last one.
+        //
+        // GetCurrentPoint alone returns the most recent sample and silently discards whatever
+        // Avalonia merged behind it, which on a fast stroke is most of the stroke. The three
+        // WM_POINTER backends already recover theirs through GetPointerPenInfoHistory, and WPF
+        // gets the whole batch from GetStylusPoints, so this and WinUI were the odd ones out.
+        //
+        // Oldest first, measured rather than read: Avalonia's XML doc for
+        // GetIntermediatePoints is a copy of GetCurrentPoint's and says nothing about order or
+        // content. With an injected stroke travelling in increasing X, a 3-point batch ran
+        // 296.9, 298.2, 299.5 and GetCurrentPoint returned 299.5 -- the last entry.
+        //
+        // This is the opposite of WinUI, whose collection is newest first despite Microsoft
+        // documenting it the other way round. Two frameworks, two orders, one of them
+        // documented incorrectly, so neither loop here is written from a specification.
+        var points = e.GetIntermediatePoints(_element);
+        if (points is null || points.Count == 0)
+        {
+            EnqueuePoint(e.GetCurrentPoint(_element), e.Timestamp);
+            return;
+        }
 
+        for (int i = 0; i < points.Count; i++)
+            EnqueuePoint(points[i], e.Timestamp);
+    }
+
+    /// <summary>
+    /// Converts one <see cref="PointerPoint"/> and queues it.
+    /// </summary>
+    /// <remarks>
+    /// <para>Split out of the handler so the per-point work is written once and the loop above
+    /// cannot drift from the single-point path beside it.</para>
+    /// <para><b>The timestamp comes from the event, and every point in a batch therefore
+    /// shares it.</b> Avalonia's <c>PointerPoint</c> carries only <c>Pointer</c>,
+    /// <c>Properties</c> and <c>Position</c> -- there is no per-point time to use. So
+    /// recovering the coalesced points trades one timestamp per delivered point for several
+    /// points per timestamp, which is the shape WPF already has.</para>
+    /// <para>That trade is worth taking. Positions are what a stroke is made of, and one that
+    /// is missing most of its samples is wrong in a way no consumer can repair; repeated
+    /// timestamps within a batch are a documented property that
+    /// <see cref="PenPoint.TimestampMicroseconds"/> already warns about, and a difference of
+    /// zero is already a reading a consumer has to expect.</para>
+    /// </remarks>
+    private void EnqueuePoint(PointerPoint point, ulong eventTimestamp)
+    {
         // Only handle pen input.
         if (point.Pointer.Type != PointerType.Pen)
             return;
@@ -196,7 +239,7 @@ public sealed class AvaloniaPointerSession : IPenSession
             // Windows Avalonia fills it from GetMessageTime, which is 32 bits, and widens the
             // result -- so the value has already wrapped by the time it is a ulong and the
             // width of the property says nothing about the width of the clock.
-            TimestampMicroseconds: PenTimestamp.FromSystemTicks((long)e.Timestamp)));
+            TimestampMicroseconds: PenTimestamp.FromSystemTicks((long)eventTimestamp)));
 
         _hasNewData = true;
     }
