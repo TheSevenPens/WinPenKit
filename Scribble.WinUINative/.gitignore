@@ -1,0 +1,7 @@
+# The import library is generated from libSkiaSharp.def by lib.exe at build time, and the .exp
+# falls out of the same step. The .def is committed; these are not.
+external/skia-c-api/lib/
+
+# libSkiaSharp.dll is copied in from the NuGet package next to the executable. It is 9MB of
+# third-party binary that the package restore already provides.
+**/libSkiaSharp.dll
