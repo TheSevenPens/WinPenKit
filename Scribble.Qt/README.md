@@ -103,6 +103,72 @@ The replay figures above come from `testdata/avalonia-pointer-stroke.csv` — a 
 hand through Avalonia's pointer path, taken through Qt's coordinate conversion, losing nothing.
 That is the comparison this sample is for.
 
+## How Qt times a stroke, and how that differs from WinPenKit
+
+Measured 12 Sep 2026 by probing `QTabletEvent` directly through two synthetic strokes: 127
+points, both strokes captured, every claim below checked against all 127 rows rather than read
+from the documentation.
+
+### Qt hands you five timing values per point; WinPenKit hands you one
+
+| Qt | type | what it is |
+| --- | --- | --- |
+| `QInputEvent::timestamp()` | `quint64` ms | free-running counter, tracks `GetTickCount64` |
+| `QEventPoint::timestamp()` | `ulong` ms | **identical to the event's** on all 127 rows |
+| `QEventPoint::lastTimestamp()` | `ulong` ms | the previous point's value |
+| `QEventPoint::pressTimestamp()` | `ulong` ms | the value at the press that began this stroke |
+| `QEventPoint::timeHeld()` | `qreal` | **seconds** since that press |
+
+`timeHeld()` is derived, not measured: `(timestamp - pressTimestamp) / 1000.0` held exactly on
+all 127 rows. `pressTimestamp` reset per stroke, as it should — 0, then 116545968, then
+116547468 for the two strokes.
+
+WinPenKit's `PenPoint.TimestampMicroseconds` is the equivalent of the first two rows only. The
+other three are conveniences a caller can compute, and WinPenKit does not compute them.
+
+So the difference is not that one is absolute and the other stroke-relative. **Both are
+free-running counters.** Qt additionally derives the stroke-relative values for you.
+
+### Three traps in Qt's extras
+
+**`timeHeld()` is meaningless before a press.** `pressTimestamp()` is 0 until one happens, and
+`timeHeld()` subtracts from that anyway. The hover point at the start of the run reported
+**116545.859 seconds** — 32 hours, the machine's uptime. Anything that reads `timeHeld()` on a
+proximity or hover point gets that, not 0.
+
+**`lastTimestamp()` is 0 on the first event**, so a first delta computed from it is the whole
+uptime rather than a frame.
+
+**These are 32-bit.** `QEventPoint`'s five accessors return `ulong`, which is 32 bits on MSVC,
+so they wrap after about 49.7 days of uptime — the same hazard WinPenKit handles for Wintab's
+`pkTime` in `MillisecondCounter`. `QInputEvent::timestamp()` is `quint64` and does not. This is
+read from the declared types; it has not been tested.
+
+### Qt's clock is as coarse as WPF's
+
+127 points carried **10 distinct timestamps**. The gaps were 15, 16, 16, 47, 63, 93, 109, 563
+and 750 ms — every one a multiple of 15.625 ms to within 0.75 ms across a 750 ms span.
+
+That matters for anyone treating Qt as the reference, Krita included. Measured on the same
+machine the same day:
+
+| | distinct timestamps / points | step |
+| --- | --- | --- |
+| Avalonia | 113 / 172 | 1 ms |
+| WinUI 3 | 11 / 13 | 1 ms |
+| WM_POINTER | 8 / 17 | 1 ms observed |
+| **Qt** | **10 / 127** | **15.6 ms** |
+| WPF | 6 / 196 | 15.6 ms |
+
+Qt and WPF sit together at the coarse end, and two of WinPenKit's backends are finer than Qt.
+The reason differs: WPF is coarse because it stamps a whole `StylusPointCollection` at once,
+while Qt's `QTabletEvent` is a `QSinglePointEvent` and carries one point — Qt's coarseness is
+the clock alone.
+
+All of this is synthetic injection, which stamps its own events, so each figure is an upper
+bound on granularity rather than proof the hardware path is no better. It needs a tablet to
+settle.
+
 ## Two Qt-specific things found while building it
 
 **Qt's `emit` macro collides with `SelfTest::emit()`.** Qt defines `emit` as empty so that

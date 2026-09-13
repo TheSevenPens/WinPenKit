@@ -224,7 +224,13 @@ earlier 20 ms-per-step injection was coarser than the clocks and could not have 
 | WinUI 3 | 13 | 11 | 1 ms |
 | WM_POINTER (WinForms) | 17 | 8 | **1 ms observed** |
 | WPF | 196 | **6** | 15.6 ms, in 6 events |
+| Qt (`Scribble.Qt`, not WinPenKit) | 127 | **10** | **15.6 ms** |
 | Wintab | — | — | not established |
+
+Qt is in the table because `Scribble.Qt` exists to be compared against, not because WinPenKit
+produces it. Its gaps were 15, 16, 16, 47, 63, 93, 109, 563 and 750 ms — every one a multiple
+of 15.625 ms to within 0.75 ms across a 750 ms span. `QInputEvent::timestamp` is as coarse as
+WPF's clock, which is worth knowing before treating Qt as the reference implementation.
 
 **The WM_POINTER row is an upper bound, not a measurement of the hardware path.**
 `PerformanceCount` is counted in QPC ticks of 100 ns, but every value arrived as an exact
