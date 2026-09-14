@@ -41,6 +41,9 @@ internal sealed class MainForm : Form
     /// </remarks>
     private const string CountCaption = "contexts open";
 
+    /// <summary>The last total read, so the digitising count can be worked out from it.</summary>
+    private uint? _lastOpen;
+
     public MainForm()
     {
         // Sizes are written at 96 dpi and scaled by hand. A form built in code never gets the
@@ -170,6 +173,7 @@ internal sealed class MainForm : Form
             return;
         }
 
+        _lastOpen = table.Open;
         _count.Text = table.Open.ToString();
         _countCaption.Text = CountCaption;
 
@@ -194,15 +198,26 @@ internal sealed class MainForm : Form
 
         var dll = Wintab.Library;
 
+        // The split, because the total on its own does not say which kind of context appeared.
+        // Wintab counts the system ones and does not count the other kind, so digitising is what
+        // is left when they are taken off the total.
+        uint? system = Wintab.SystemContexts;
+        string systemText = system?.ToString() ?? "not reported";
+        string digitisingText = maximum is null ? "not read yet"
+            : system is { } known && _lastOpen is { } total && total >= known
+                ? (total - known).ToString()
+                : "not reported";
+
         _detail.Text = string.Join(Environment.NewLine,
-            $"system contexts  {Wintab.SystemContexts}",
-            $"driver maximum   {maximum?.ToString() ?? "not read yet"}",
+            $"of those, system      {systemText}",
+            $"of those, digitising  {digitisingText}",
+            $"driver maximum        {maximum?.ToString() ?? "not read yet"}",
             "",
-            $"vendor           {dll?.CompanyName ?? "not reported"}",
-            $"wintab32.dll     {dll?.FileVersion ?? "not reported"}",
-            $"implementation   {Wintab.Implementation}",
-            $"spec / impl      {Wintab.SpecVersion} / {Wintab.ImplVersion}",
-            $"devices          {Wintab.Devices}");
+            $"vendor                {dll?.CompanyName ?? "not reported"}",
+            $"wintab32.dll          {dll?.FileVersion ?? "not reported"}",
+            $"implementation        {Wintab.Implementation}",
+            $"spec / impl           {Wintab.SpecVersion} / {Wintab.ImplVersion}",
+            $"devices               {Wintab.Devices}");
     }
 
     /// <summary>Only offer the reset where it is known to be the right one.</summary>

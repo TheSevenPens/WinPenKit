@@ -147,6 +147,11 @@ driver is not broken by this — it is just counting contexts that no longer hav
 `STA_CONTEXTS` by two and `STA_SYSCTXS` by nothing. Whatever the unit is, it is not "one context",
 so do not read `STA_CONTEXTS` as a number of contexts.
 
+That difference is also the only way to tell the two kinds apart. **Wintab has no counter for
+digitising contexts**: `WTI_STATUS` implements eight indices, confirmed by asking for all of them,
+and none of them is one. Digitising contexts are what is left after the system ones are subtracted
+from the total.
+
 ## `IFC_NCONTEXTS` is not a ceiling
 
 The Wintab specification calls it "the number of contexts supported". This driver reports **32**

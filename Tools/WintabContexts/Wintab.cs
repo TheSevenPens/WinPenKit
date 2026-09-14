@@ -58,8 +58,16 @@ internal static class Wintab
 
     public static string ImplVersion => Version(IFC_IMPLVERSION);
 
-    /// <summary>System contexts open, which is a subset of the total.</summary>
-    public static string SystemContexts => Number(WTI_STATUS, STA_SYSCTXS)?.ToString() ?? "not reported";
+    /// <summary>
+    /// System contexts open, which is a subset of the total. Null if the driver will not say.
+    /// </summary>
+    /// <remarks>
+    /// <b>There is no counter for the other kind.</b> Wintab reports the total and the system
+    /// subset and nothing else -- WTI_STATUS has eight indices and none of them is a digitising
+    /// count -- so digitising contexts are the two subtracted. Confirmed by opening one: the total
+    /// rises and this does not.
+    /// </remarks>
+    public static uint? SystemContexts => Number(WTI_STATUS, STA_SYSCTXS);
 
     /// <summary>Every device the driver lists, by the name it gives each one.</summary>
     /// <remarks>
