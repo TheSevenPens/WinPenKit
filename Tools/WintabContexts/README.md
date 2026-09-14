@@ -8,10 +8,15 @@ It exists to make a leak visible. Leave it open, kill a drawing application, and
 and stays up. Close one properly and the number comes back down. That is the whole of
 [the context leak](../../Docs/WINTAB-CONTEXT-LEAK.md), on screen, without a debugger.
 
-## Building it
+## Getting it
 
-**Deliberately not in `WinPenKit.slnx`, and not in any release.** CI builds the solution and then
-stages a named list of projects; this is in neither, so it ships with nothing. Build it by hand:
+It is built by the solution and **shipped in the release**, as its own download beside the
+Scribble samples. Somebody whose pen has stopped working wants to run this, not build it.
+
+It is **not** in the NuGet package, which is a library for people writing applications rather
+than a bag of tools.
+
+To run it from a clone:
 
 ```
 dotnet run --project Tools/WintabContexts

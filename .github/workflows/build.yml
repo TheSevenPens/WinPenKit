@@ -72,6 +72,7 @@ jobs:
           mkdir -p artifacts/Scribble.Wpf
           mkdir -p artifacts/Scribble.WinForms
           mkdir -p artifacts/Scribble.Avalonia
+          mkdir -p artifacts/WintabContexts
 
           # Native DLL + headers
           cp WinPenKit.Native/bin/Release/x64/WinPenKit.Native.dll artifacts/WinPenKit.Native/
@@ -116,6 +117,12 @@ jobs:
           for app in Scribble.Wpf Scribble.WinForms Scribble.Avalonia; do
             cp -r "$app"/bin/Release/net10.0-windows*/* "artifacts/$app/"
           done
+
+          # The context viewer. A diagnostic rather than a sample, and it ships in the release
+          # for the same reason the samples do: somebody looking at a driver that has stopped
+          # handing out contexts wants to run it, not build it. It is deliberately not part of
+          # the NuGet package, which is a library for consumers rather than a bag of tools.
+          cp -r Tools/WintabContexts/bin/Release/net10.0-windows*/* artifacts/WintabContexts/
           cp -r Scribble.WinUI/bin/x64/Release/net10.0-windows*/* artifacts/Scribble.WinUI/
 
       - name: Upload build artifacts

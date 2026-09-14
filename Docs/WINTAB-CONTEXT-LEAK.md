@@ -363,8 +363,8 @@ drawing application, and the number goes up and stays up.
 
 ![the tool](images/wintab-contexts.png)
 
-It is **not in the solution and not in any release** — CI builds the solution and stages a named
-list of projects, and this is in neither. Build it when it is wanted:
+It ships in the release as its own download, so it can be run without building anything. From a
+clone:
 
 ```
 dotnet run --project Tools/WintabContexts

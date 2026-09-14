@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Deliberately not in WinPenKit.slnx.
+    In the solution and in the release, and not in the NuGet package.
 
-    CI builds the solution and then stages a named list of projects into the release. A project
-    in neither is excluded from both, which is what this wants: it is a diagnostic for looking at
-    one machine, not something to ship. Build it by hand when it is wanted, by pointing dotnet run
-    at this folder. See the README beside this file.
+    Those are different audiences. The release is downloaded by somebody who wants to run
+    something; a diagnostic for a driver that has stopped handing out contexts is exactly the
+    sort of thing they want, already built. The package is referenced by somebody writing an
+    application, who wants a library and not a bag of tools.
   -->
 
   <PropertyGroup>
