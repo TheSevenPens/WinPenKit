@@ -1,0 +1,21 @@
+{
+  "start_utc": "2026-09-14T18:37:40.4750631Z",
+  "end_utc": "2026-09-14T18:47:40.5035917Z",
+  "elapsed_seconds": 600.0285286,
+  "service_status": "Running",
+  "driver_processes": [
+    {
+      "ProcessName": "Wacom_Tablet",
+      "Id": 34844
+    },
+    {
+      "ProcessName": "Wacom_TabletUser",
+      "Id": 55636
+    },
+    {
+      "ProcessName": "WTabletServicePro",
+      "Id": 40496
+    }
+  ],
+  "scope": "No investigation probe readers during this interval; unrelated clients were not stopped."
+}

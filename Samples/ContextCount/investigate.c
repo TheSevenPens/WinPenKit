@@ -218,7 +218,15 @@ static int managerProbe(void)
         double start, elapsed;
         const char *kind = i == 0 ? "hidden" : i == 1 ? "visible" : "null_hwnd";
         char detail[100];
-        if (i == 1) { ShowWindow(hwnd, SW_SHOWNOACTIVATE); pump(100); }
+        if (i == 1) {
+            /* STARTUPINFO can override the first ShowWindow when the console
+             * was launched hidden. Explicitly set visibility without activation. */
+            SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            pump(100);
+        }
+        row("manager_window_visible", i == 2 ? NULL : hwnd,
+            i == 2 ? FALSE : IsWindowVisible(hwnd), 0, kind);
         SetLastError(0);
         start = now();
         manager = mgrOpen(i == 2 ? NULL : hwnd, 0x7FF0);
@@ -444,7 +452,9 @@ static int packetCheck(void)
     label = CreateWindowExA(0, "STATIC",
         "Draw on the tablet while this window is active.\nKeep drawing when the text changes.\nNo ink is drawn; this checks pressure packets.\nThe window closes when both phases pass.",
         WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 20, 360, 120, hwnd, NULL, GetModuleHandleA(NULL), NULL);
-    ShowWindow(hwnd, SW_SHOW);
+    SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    row("packet_window_visible", hwnd, IsWindowVisible(hwnd), 0, "explicit_show");
+    if (!IsWindowVisible(hwnd)) goto done;
     SetForegroundWindow(hwnd);
     deadline = GetTickCount64() + 180000;
     while (IsWindow(hwnd) && GetTickCount64() < deadline) {

@@ -4,6 +4,27 @@ Work order: [issue #121](https://github.com/TheSevenPens/WinPenKit/issues/121).
 Started 2026-09-14. This is the experiment record; settled guidance belongs in
 [WINTAB-CONTEXT-LEAK.md](WINTAB-CONTEXT-LEAK.md).
 
+## Findings
+
+- **Known leaked contexts can be reclaimed without service restart.** The independent x64/x86
+  probe enumerated and closed its exited children's contexts while a live sentinel remained
+  valid. Arbitrary old orphan identification is not solved.
+- **The counter reflects device-context expansion.** Default virtual opens added two entries;
+  explicit device opens added one. A disconnected Wacom One 14 preference entry matches the
+  second profile's dimensions, supporting a retained-profile explanation.
+- **Allocation failures can leak too.** Two virtual system opens returned NULL while each
+  added an unreadable entry. A held-state system refusal coexisted with successful digitizer
+  and explicit-device opens; releasing successful handles restored virtual system opens.
+- **The historical half-return did not reproduce.** All 720 readings in the hour stayed at
+  405; a separate ten-minute interval without investigation readers also ended at 405.
+  The original 1074 population was not reached, so this is not a universal cleanup-policy test.
+- **Two previous interpretations were wrong.** NULL-HWND opens were refused on x64 and x86;
+  headless WinPenKit sessions actually create a real hidden pump window. `WacomCleanup()` made
+  its caller report zero while a fresh process still reported the retained global count.
+
+The original frozen-253/90 ms driver-wide wedge remains unexplained. The report below preserves
+the different failure captured here, the failed experiments, source citations, and limitations.
+
 ## Initial checks
 
 - Checkout: `d366f5b`, clean `main` before investigation.
@@ -49,6 +70,10 @@ Raw record: [initial-info.csv](data/wintab-2026-09-14/initial-info.csv).
 Hidden and visible manager windows both worked; a null manager window was refused.
 The initial manager enumeration had two built-in contexts with NULL owners, device
 IDs 0 and 1. **An invalid or NULL owner HWND is not a safe deletion criterion.**
+The final visibility check explicitly records `IsWindowVisible` as 0/1 for the hidden/visible
+cases, with successful manager opens in both (`final-manager-visibility.csv`). Earlier mode
+labels alone did not verify actual visibility under a hidden-console launch; see the hardware
+test's startup correction below.
 
 The `reclaim` command creates its own child and retains its Windows process handle.
 After confirming that child exited, it enumerates contexts and selects only names
@@ -200,7 +225,7 @@ At 17:35 UTC:
   explicit-device opens took about 25-26 ms.
 
 These observations distinguish this allocation failure from a persistent driver-wide refusal.
-They do not yet identify the internal exhausted resource. The numerical proximity to an 8-bit
+They do not identify the cause or prove resource exhaustion. The numerical proximity to an 8-bit
 handle index is a hypothesis only. Critically, successful opens above 32 cannot rule out a
 different allocation limit. No service restart was used to recover these control opens.
 
@@ -239,21 +264,72 @@ of a memory leak. Full metrics, timing summaries, and reader validity are in
 This run found no spontaneous count decrease. It does not reproduce or explain the original
 1074-to-538 observation: the allocation failure changed the starting population to 405,
 and continuous queries could themselves affect driver cleanup. A separate ten-minute control
-with all investigation readers closed started at 18:37:40.475 UTC; its result follows below.
+with all investigation readers closed ran from 18:37:40.475 to 18:47:40.503 UTC
+(600.029 seconds). Fresh readings before and after were both **405/405**, with four returned
+bytes, unchanged Wacom process IDs, and the service Running. No investigation probe ran during
+the wait; unrelated clients were not stopped. This found no net decrease without our readers,
+but two endpoint reads cannot exclude changes and reversals within that interval.
+Raw data: [idle-observation](data/wintab-2026-09-14/idle-observation/).
 
-### Follow-up protocol prepared during the quiet interval
+### Allocation follow-up with successful contexts held
 
-`Samples/ContextCount/probe-capacity.ps1` will attempt 128 virtual opens in one process,
-keeping successful handles open for two minutes even after a failure. During that hold it
-captures a manager enumeration, driver metrics, and fresh system, digitizer, device-0, and
-device-1 controls. It then retries a control after the holder has closed its successful handles.
-This distinguishes persistent refusal, refusal only while resources are held, and an isolated
-allocation failure. The script does not assume which outcome will occur or restart the service.
+At 18:48 UTC, `Samples/ContextCount/probe-capacity.ps1` attempted 128 virtual system opens
+from the retained baseline of 405. It holds successful contexts for two minutes even after
+a failure, captures manager enumeration and fresh controls, then closes successful handles
+and retries a system control. It never restarts the service.
 
-The next hardware control uses `investigate packet-check`: real positive-pressure packets
+The holder again completed 53 opens, ending with handle `0x2FF`, this time at count 511.
+The next open returned NULL after **31.085 ms** and increased the count to **512**. Both
+manager passes enumerated 512 entries, including the previous unreadable `0xB00` and new
+unreadable `0xB01`; their failed `WTGetA` results provide no usable device identity.
+
+While those 53 successful contexts remained open:
+
+- A fresh virtual **system** open returned NULL after 69.578 ms; count stayed 512.
+- A fresh virtual **digitizer** open succeeded in 53.878 ms: total 512 to 514, system stayed
+  512, and close restored 512.
+- Fresh explicit device-0 and device-1 system opens each succeeded in about 26 ms, increased
+  the count to 513, and closed back to 512.
+
+Thus the refusal depends on the kind of allocation in this state. It is not a global ceiling
+of 512 counted entries or a refusal of every context type. The repeated virtual handle boundary
+is a useful lead, but its exact internal cause remains unproven. Driver process IDs were
+unchanged and the service continued answering queries. Raw records, metrics, and process exit
+codes are under [capacity-followup](data/wintab-2026-09-14/capacity-followup/).
+
+At 18:50:24 UTC the holder closed all 53 successful opens, returning to **406**, one above
+its 405 baseline. A fresh virtual system control then succeeded in 50.739 ms and balanced
+406 to 408 to 406, without service restart. The failure therefore recurs while allocations
+are held and resolves when successful handles are released; each of the two boundary failures
+left one extra unreadable entry. It does not reproduce the historical all-kinds refusal.
+
+The hardware control uses `investigate packet-check`: real positive-pressure packets
 must arrive on the same live context both before and after manager reclamation. The probe
 discards queued pre-reclamation packets before counting the second phase. This check needs
 the user to draw; it cannot be satisfied by synthetic mouse messages.
+
+After preserving a further manager enumeration, the announced service restart at approximately
+18:51:30 UTC restored the baseline from **406 to 2**. A fresh virtual system open balanced
+2 to 4 to 2. The final x86 probe with the new run tag reclaimed six child entries and restored
+2 while preserving its sentinel. Files: `before-final-restart.csv`, `after-final-restart.csv`,
+`final-x86-reclaim.csv`.
+
+The first packet-test launch at 18:51:56 UTC exposed an instrumentation problem: hidden-console
+startup suppressed its initial `ShowWindow`. A process-ID-checked read at 18:53:19 confirmed
+the test window was hidden, then explicitly showed it (`packet-window-visibility.json`). The
+attempt received no packets before its three-minute deadline and closed its context normally,
+returning to 2. This is an incomplete manual test, not evidence of a packet-delivery failure.
+The final source uses explicit `SetWindowPos(..., SWP_SHOWWINDOW)` and records visibility;
+the manager control verified both hidden and visible cases. A second packet attempt started
+at 18:55:56 UTC with the visibility fix.
+
+That second attempt explicitly recorded a visible window but also received no hardware packets;
+it timed out at 18:58:56 UTC and successfully closed its context, returning 4 to 2. Consequently
+**physical packet delivery before/after reclamation is unverified**. The sentinel's `WTGetA`
+validity is established; it must not be presented as proof of uninterrupted pen input. The
+manual check can be repeated with `investigate packet-check` when the user is available.
+Both attempts and their lack of input are preserved (`final-packet-check.csv`,
+`packet-check-attempt2.csv`); neither is counted as a passing hardware test.
 
 ### Read-only side checks
 
@@ -283,10 +359,13 @@ The C probe compiles with MSVC `/W4 /WX /wd4191` on x86 and x64. Both architectu
 after the hour's observer exited, including the later child-identity guard.
 Nine malformed or out-of-range numeric argument cases
 returned exit code 2 without emitting an operation row (`argument-validation.json`). All
-three PowerShell scripts passed the PowerShell syntax parser. The CSV summarizer uses Python's
+four PowerShell scripts passed the PowerShell syntax parser. The CSV summarizer uses Python's
 standard library; interim output correctly reported no `sample_end` marker, and the completed
 output reports the final marker and all 720 reader rows as valid. Build and syntax results are
 recorded in `final-validation.json`.
+The final data audit checked 69 CSV files and 4,761 probe rows, with no invalid counter sizes
+or missing required fields (`data-audit.json`). Intentional API failures and both incomplete
+manual tests remain in the record; valid counter reads do not turn those outcomes into passes.
 
 ## External research: what helps and what does not
 
@@ -318,7 +397,46 @@ outside this repository, installing software, or changing tablet/security settin
   reader. Targeted Krita and GIMP searches did not provide an accessible instrumented report
   that explains these measurements. No claim of exhaustive tracker coverage is made.
 
+## Limits and next discriminating experiments
+
+- **A — Manager cleanup:** the sample identifies its own exited child. It does not implement
+  a retrospective orphan collector, and no WinTabUtils cleanup button was added. Built-in
+  NULL-owned entries and an unreadable failed-open entry prevent a safe general rule based
+  on owner validity. Recovery from the historical wedged state remains untested.
+- **B — Delayed count decrease:** the hour used 405 entries after a failed accumulation attempt,
+  not the original 1074 workload. Exit styles were varied in short reclamation tests, not in
+  separate hour-long repetitions. Unrelated applications were not forcibly stopped. A future
+  decrease should be accompanied by before/after manager enumeration by device, fresh readers,
+  and process IDs; that could distinguish one profile disappearing from general reclamation.
+- **C — Driver refusal:** no sleep/resume, unplug/replug, user switch, logoff, driver update,
+  reboot, or concurrent multi-process stress was performed. The machine already had about
+  three days of uptime, but uptime was not controlled. Static binary inspection did not prove
+  a timeout or the failing internal resource. Preserve a recurrence before service recovery.
+- **D — Two profiles:** matching disconnected preference metadata supports a retained-profile
+  explanation. No preferences were reset and no hardware was changed to prove that deleting
+  or reconnecting a profile changes virtual-open expansion.
+- **E — Other vendors and applications:** only this installed Wacom version and connected
+  Cintiq were measured. No other vendor's driver was installed. Krita and Clip Studio Paint's
+  historical leak counts were not independently rerun; the new plain-C experiment establishes
+  that WinPenKit is not required for the measured retention. No PenDynamicsPaint tests or files
+  were changed. Only diagnostic comments, samples, and documentation changed in WinPenKit;
+  no library behavior was patched and no broad .NET test run was used as hardware evidence.
+
 ## Status
 
-Experiments are in progress. No explanation for the historical 90 ms refusals or
-1074-to-538 observation has yet been established by this investigation.
+The bounded investigation is complete. Known-child manager reclamation, counter semantics,
+NULL-HWND refusal, the post-cleanup counter trap, and allocation-type-dependent refusal were
+independently measured. The original 253/90 ms driver-wide wedge and 1074-to-538 decrease
+remain unexplained; physical packet preservation remains unverified because neither manual
+attempt received input. These limits are retained rather than inferred away.
+
+The machine was left at **2 total / 2 system contexts**, both readings returning four bytes,
+with `WTabletServicePro` **Running** and no investigation probe left running. Fresh virtual
+system open/close and final tagged x64/x86 reclamation controls passed. Two announced service
+restarts occurred during the session. Nothing was installed; security settings and tablet
+preferences were unchanged. See [final-state.json](data/wintab-2026-09-14/final-state.json).
+
+The work is on `codex/wintab-investigation-121` in
+[PR #122](https://github.com/TheSevenPens/WinPenKit/pull/122). Issue #121 is left open for the
+user's review. Raw captures are under [data/wintab-2026-09-14](data/wintab-2026-09-14/), and
+all repeatable probes are under [Samples/ContextCount](../Samples/ContextCount/README.md).

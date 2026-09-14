@@ -1,0 +1,19 @@
+{
+  "start_utc": "2026-09-14T18:37:40.4750631Z",
+  "seconds": 600,
+  "observer_pid": 55492,
+  "driver_processes": [
+    {
+      "ProcessName": "Wacom_Tablet",
+      "Id": 34844
+    },
+    {
+      "ProcessName": "Wacom_TabletUser",
+      "Id": 55636
+    },
+    {
+      "ProcessName": "WTabletServicePro",
+      "Id": 40496
+    }
+  ]
+}

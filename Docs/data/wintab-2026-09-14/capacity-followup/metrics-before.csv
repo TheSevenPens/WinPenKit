@@ -1,0 +1,4 @@
+"utc","ProcessName","Id","service_status","HandleCount","threads","PrivateMemorySize64","WorkingSet64"
+"2026-09-14T18:48:19.5544406Z","Wacom_Tablet","34844","Running","724","67","47149056","92049408"
+"2026-09-14T18:48:19.5634962Z","Wacom_TabletUser","55636","Running","307","4","2977792","23506944"
+"2026-09-14T18:48:19.5671179Z","WTabletServicePro","40496","Running","204","4","2424832","12984320"

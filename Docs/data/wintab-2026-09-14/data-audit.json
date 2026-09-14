@@ -1,0 +1,7 @@
+{
+  "utc": "2026-09-14T19:00:47.1312017Z",
+  "csv_files": 69,
+  "probe_rows": 4761,
+  "invalid_or_malformed_rows": [],
+  "note": "Completed captures audited; intentional NULL opens, unreadable WTGet entries, and manual test timeouts are recorded outcomes, not discarded."
+}

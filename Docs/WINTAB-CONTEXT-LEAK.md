@@ -186,6 +186,13 @@ allowed new opens again. The failed open left one additional enumerated context,
 returning no handle. This is a different failure from the historical frozen-counter report.
 See the investigation record for the conditions and subsequent checks.
 
+The held-allocation follow-up again failed after virtual handle `0x2FF` and added an unreadable
+entry, this time reaching 512. While the holder kept its successful opens, a fresh virtual
+system open failed, but a virtual digitizer reached 514 and explicit-device system opens reached
+513. After the holder closed, a virtual system open succeeded again. This is an allocation-type
+dependent refusal; neither 32 nor 512 is a universal counted-context ceiling. Its internal cause
+and relationship to the historical driver-wide wedge remain unknown.
+
 ## The failure that started this, which is a different thing
 
 Two applications stopped taking pen input entirely. `WTOpenA` returned NULL for every kind of
@@ -204,7 +211,7 @@ everything worked. Killing and restarting the user-level `Wacom_TabletUser.exe` 
 the counts live in the service.
 
 **Why the historical driver-wide refusal occurred is not known.** Its relation to leaked
-contexts, the independently observed allocation limit, and IPC timeouts remains unproven.
+contexts, the independently observed allocation failure, and IPC timeouts remains unproven.
 The old 1074 observation has not been independently reproduced by the same opening sequence.
 
 ## What the specification says
@@ -240,6 +247,10 @@ Three leaked virtual opens generated six entries; closing those entries reduced 
 one each. A live sentinel remained valid and its own close restored the original baseline.
 This worked for system and digitizer contexts, killed children, ordinary process return without
 `WTClose`, and window destruction before process exit. None needed a service restart.
+
+The final probe tags names by child PID and run, avoiding accidental matches after PID reuse.
+The sentinel check establishes `WTGetA` validity. Two manual packet tests received no pen input,
+so continued physical packet delivery across reclamation remains unverified.
 
 **Do not turn `!IsWindow(owner)` into a cleanup button.** Our initial two built-in system
 contexts had NULL owners. A destroyed window also does not prove its process has exited, and
@@ -530,6 +541,11 @@ or reclamation policy. A virtual context expanding into two device contexts prov
 alternative hypothesis (one device's entries disappearing), but has not established what happened.
 See the independent timed observation in [the investigation record](WINTAB-INVESTIGATION-2026-09.md).
 
+That recheck recorded 405 throughout 361 persistent and 359 fresh-reader samples over an hour,
+then 405 before and after a separate ten-minute interval with all investigation readers closed.
+The Wacom process IDs were unchanged. No decrease was reproduced, but the starting population
+was different from 1074, so this does not establish a universal retention policy.
+
 ## What WinPenKit does, and what it does not cause
 
 There is exactly one `WTOpenA` and one `WTClose` in the assembly. A session opens one context and
@@ -752,7 +768,7 @@ refusal now says what the driver thinks of itself rather than only that it said 
   not reproduced.
 - Why two enumerated device IDs coexist with `IFC_NDEVICES=1`, and whether the topology changes
   after hardware, driver, or user-session changes.
-- The exact resource and scope of the allocation limit observed near 510 counted contexts,
+- The cause and scope of the allocation failure observed near 510 counted contexts,
   and its relation, if any, to the historical 253/90 ms refusal.
 - Whether older or newer Wacom driver versions differ. One version was tested.
 
@@ -763,6 +779,8 @@ These reports need to be distinguished from this investigation:
 - Blender [#111152](https://projects.blender.org/blender/blender/issues/111152), "Wintab rarely
   gets into a bad state and prevents Blender startup". Theirs crashes inside `WTOpenA` rather than
   returning NULL. The workaround offered is to switch to Windows Ink.
+  This description is retained from the original investigation; the September 14 recheck could
+  not freshly inspect the tracker because its host blocked the available web reader.
 - Godot [#38533](https://github.com/godotengine/godot/issues/38533) was **closed** by
   [#38535](https://github.com/godotengine/godot/pull/38535) in May 2020. The discussion confirms
   no crash; the patch makes a failure message verbose-only when a driver cannot open a tablet.
