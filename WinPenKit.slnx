@@ -11,4 +11,5 @@
   <Project Path="Scribble.Wpf/Scribble.Wpf.csproj" />
   <Project Path="Scribble.WinForms/Scribble.WinForms.csproj" />
   <Project Path="Scribble.Avalonia/Scribble.Avalonia.csproj" />
+  <Project Path="Tools/WintabContexts/WintabContexts.csproj" />
 </Solution>

@@ -1,3 +1,5 @@
+using WinPenKit.Diagnostics;
+
 namespace WinPenKit.Wintab;
 
 /// <summary>
@@ -79,6 +81,41 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
         return null;
     }
 
+    /// <summary>
+    /// Add whatever the driver will say about why, to a refusal that says nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "Fallback context also failed to open" names no cause, and a pen that has stopped working
+    /// looks exactly like a drawing bug, so anything the driver will say about itself is worth
+    /// passing on. Seen in the wild refusing every kind of context to every application, with its
+    /// context count frozen at 253 -- which the count alone would not have revealed, but the two
+    /// numbers together made it obvious that something was wrong at the driver rather than here.
+    /// </para>
+    /// <para>
+    /// <b>The count is not a capacity check.</b> Contexts were opened deliberately past the
+    /// stated maximum of 32, up to 334, every one of them succeeding. A high count means contexts
+    /// have been leaked, which is true and worth knowing; it does not mean the driver has run out.
+    /// </para>
+    /// <para>
+    /// <b>Reported, not advised.</b> What to do about it, and whether to say anything to anyone,
+    /// is the application's business. This is a library.
+    /// </para>
+    /// </remarks>
+    private static string WhyNot(string refusal)
+    {
+        // Not logged here: the session logs the counters either side of every open already, so a
+        // line at this point would be the same numbers twice. This is only about what the caller
+        // is told.
+        //
+        // The numbers, not a conclusion drawn from them. A count above the stated maximum says
+        // contexts have been leaked; it does not say that is why this open failed, and on this
+        // driver it is not -- opens keep succeeding well past that figure.
+        return WintabDiagnostics.ContextTable() is { } counts
+            ? $"{refusal} The driver reports {counts}."
+            : refusal;
+    }
+
     private string? OpenFallback(IntPtr hwnd)
     {
         if (!GetDefaultSystemContext(out var lc))
@@ -94,7 +131,7 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
         if (hCtx == IntPtr.Zero)
         {
             Log("Fallback Open also FAILED");
-            return "Fallback context also failed to open.";
+            return WhyNot("Fallback context also failed to open.");
         }
 
         RefreshContext(hCtx, ref lc);

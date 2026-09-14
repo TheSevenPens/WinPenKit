@@ -108,6 +108,8 @@ See the [Docs/](Docs/) folder for:
 - [HOW_TO_USE.md](Docs/HOW_TO_USE.md) — Usage guide with gotchas and best practices
 - [SCRIBBLE-APPS.md](Docs/SCRIBBLE-APPS.md) — Details on each scribble demo app
 - [SELF-TEST.md](Docs/SELF-TEST.md) — `--selftest` and `--replay`: what they check, and what they do not
+- [WINTAB-CONTEXT-LEAK.md](Docs/WINTAB-CONTEXT-LEAK.md) — a killed process never gives its Wintab context back, and what that costs a developer
+- [Tools/WintabContexts](Tools/WintabContexts/) — a window showing how many Wintab contexts are open, and a button to restart the Wacom driver. Ships in the release.
 - [BUILD.md](Docs/BUILD.md) — Build instructions
 - [CI.md](Docs/CI.md) — CI/Release workflow, versioning, and releasing
 - [Planning/](Docs/Planning/) — NuGet publishing plan

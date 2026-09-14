@@ -17,6 +17,10 @@ x86/
 *.pdb
 *.dll
 *.exe
+
+# Compiler intermediates. The rule above is obj/ as a directory; a hand-compiled sample leaves
+# its .obj beside the source instead.
+*.obj
 *.cache
 
 # Rust

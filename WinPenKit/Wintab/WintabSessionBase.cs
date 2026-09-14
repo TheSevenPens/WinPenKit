@@ -13,6 +13,10 @@ internal abstract class WintabSessionBase : IPenSession
 {
     private WintabMessagePump? _pump;
     private IntPtr _hCtx;
+
+    /// <summary>Paces <see cref="KeepContextAlive"/>, which must not run at the drain rate.</summary>
+    private readonly Stopwatch _sinceStart = Stopwatch.StartNew();
+    private long _nextContextCheckMs;
     private readonly ConcurrentQueue<PenPoint> _points = new();
     private volatile bool _hasNewData;
     /// <summary>
@@ -72,6 +76,9 @@ internal abstract class WintabSessionBase : IPenSession
 
         MaxPressure = QueryMaxPressure();
 
+        // Before anything is opened, so the number is the one this process inherited.
+        LogContexts("before opening");
+
         // Start the message pump first — we need the HWND for WTOpen.
         _pump = new WintabMessagePump(OnWintabMessage);
 
@@ -83,6 +90,8 @@ internal abstract class WintabSessionBase : IPenSession
             return error;
         }
 
+        LogContexts("after opening");
+
         IsRunning = true;
         return null;
     }
@@ -93,6 +102,11 @@ internal abstract class WintabSessionBase : IPenSession
         {
             WintabNative.WTClose(_hCtx);
             _hCtx = IntPtr.Zero;
+
+            // The line whose absence is the interesting one. A session that reaches here has
+            // given its context back; a process that is killed never writes this, and the count
+            // the next run logs as "before opening" is the one it left behind.
+            LogContexts("after closing");
         }
 
         _pump?.Dispose();
@@ -101,13 +115,104 @@ internal abstract class WintabSessionBase : IPenSession
     }
 
     /// <summary>
+    /// Write the driver's context counters to the log, with a note of what was happening.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three of these bracket a session: before the context is opened, after, and after it is
+    /// closed. Together they say what this process cost the driver, and separately they say what
+    /// it inherited -- a machine that has been used normally sits in the low single figures, and
+    /// the "before opening" line is the whole of the evidence for how many contexts were already
+    /// leaked when this run started.
+    /// </para>
+    /// <para>
+    /// A context is leaked by any process that dies without calling <c>WTClose</c>: killed,
+    /// crashed, or stopped from a debugger. On the driver this was measured against, the driver
+    /// never takes it back. So when a log shows an "after opening" with no "after closing", the
+    /// run it came from leaked one, and the next run's first line will be two higher. See
+    /// <c>Docs/WINTAB-CONTEXT-LEAK.md</c>.
+    /// </para>
+    /// <para>
+    /// Facts only. Whether a number is alarming, and what anybody should do about it, is not this
+    /// library's business.
+    /// </para>
+    /// </remarks>
+    private static void LogContexts(string when)
+    {
+        if (Diagnostics.WintabDiagnostics.ContextTable() is not { } table) return;
+
+        Log($"Contexts {when}: {table}" +
+            (table.AboveStatedMaximum ? "  (above the stated maximum)" : ""));
+    }
+
+    /// <summary>
     /// Left abstract so each context states its own. The digitizer's raw units depend on
     /// whether the hi-res context actually opened, which the base class cannot know.
     /// </summary>
     public abstract PenConventions Conventions { get; }
 
+    /// <summary>
+    /// Notice that the driver has taken the context away, and get another one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A context does not only end when it is closed. Restarting the tablet service invalidates
+    /// every context that is open at the time, and the application holding one is told nothing at
+    /// all: measured, a real application kept running with its status line still naming the
+    /// driver, wrote nothing to its log, and simply stopped receiving pen input. That is
+    /// indistinguishable from a broken renderer, which is the failure this whole area keeps
+    /// producing. See <c>Docs/WINTAB-CONTEXT-LEAK.md</c>.
+    /// </para>
+    /// <para>
+    /// <c>WTGetA</c> returns false for a handle the driver no longer knows, so asking is cheap and
+    /// unambiguous. Asking from here because this is what a consumer already calls on its frame
+    /// timer; asking at that rate would be sixty pointless round trips a second, so it is paced to
+    /// one.
+    /// </para>
+    /// <para>
+    /// <b>It reopens rather than only reporting.</b> A new context opens perfectly well once the
+    /// service is back -- that was measured too -- so the pen can simply come back, within a
+    /// second, with no help from the application. When the reopen fails the interval backs off to
+    /// five seconds: a driver that is refusing takes about 90 ms to say so, and doing that once a
+    /// second on the thread that draws would be a visible stutter.
+    /// </para>
+    /// </remarks>
+    private void KeepContextAlive()
+    {
+        if (_pump is null) return;
+        if (_sinceStart.ElapsedMilliseconds < _nextContextCheckMs) return;
+
+        _nextContextCheckMs = _sinceStart.ElapsedMilliseconds + 1000;
+
+        if (_hCtx != IntPtr.Zero)
+        {
+            var probe = default(LogContext);
+            if (WintabNative.WTGetA(_hCtx, ref probe)) return;
+
+            Log($"Context 0x{_hCtx.ToInt64():X} is no longer known to the driver -- it was taken " +
+                "away rather than closed, which is what restarting the tablet service does.");
+
+            _hCtx = IntPtr.Zero;
+            IsRunning = false;
+            LogContexts("after losing the context");
+        }
+
+        if (OpenContext(_pump.Hwnd) is { } error)
+        {
+            Log($"Could not reopen the context: {error}");
+            _nextContextCheckMs = _sinceStart.ElapsedMilliseconds + 5000;
+            return;
+        }
+
+        IsRunning = true;
+        Log("Context reopened; the pen should work again.");
+        LogContexts("after reopening");
+    }
+
     public PenPoint[] DrainPoints()
     {
+        KeepContextAlive();
+
         _hasNewData = false;
         var list = new List<PenPoint>();
         while (_points.TryDequeue(out var pt))
@@ -117,6 +222,8 @@ internal abstract class WintabSessionBase : IPenSession
 
     public int DrainPoints(Span<PenPoint> buffer)
     {
+        KeepContextAlive();
+
         _hasNewData = false;
         int count = 0;
         while (count < buffer.Length && _points.TryDequeue(out var pt))
@@ -140,7 +247,7 @@ internal abstract class WintabSessionBase : IPenSession
     public void Dispose()
     {
         Stop();
-        CloseLog();
+        FlushLog();
     }
 
     // ── Abstract: subclass provides context creation + coord conversion ──
@@ -351,22 +458,124 @@ internal abstract class WintabSessionBase : IPenSession
 
     // ── Logging ──────────────────────────────────────────────────
 
-    private static readonly string LogPath = Path.Combine(
-        Path.GetTempPath(), "WinPenKit.log");
+    /// <summary>Where this process writes its Wintab log.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>One file per process.</b> It used to be one file for every application using the
+    /// library, which failed in two ways at once. A second application could not write to it at
+    /// all -- the first holds the file, the second's writer throws, and the exception went to
+    /// Debug.WriteLine where nobody saw it -- so running two pen applications, which is exactly
+    /// what diagnosing a driver involves, silently logged only one of them. And the file was
+    /// named after nothing, so an appending version of it could not have said which application
+    /// or which run a line came from.
+    /// </para>
+    /// <para>
+    /// The process id is in the name, so both problems go away together and every line keeps the
+    /// shape it had. A log with no "after closing" line is a run that was killed, and the file
+    /// name says which process it was.
+    /// </para>
+    /// </remarks>
+    internal static string LogPath { get; } = Path.Combine(
+        Path.GetTempPath(), $"WinPenKit.{Environment.ProcessId}.log");
+
     private static StreamWriter? _logWriter;
+    private static bool _logOpened;
 
     protected static void Log(string message)
     {
+        // Opened before the line is stamped, not after. The other way round, the first message
+        // carried a time from before the file's own first line and the log was not monotonic --
+        // which is a small thing that costs somebody an hour when they notice it in a log they
+        // are already suspicious of.
+        if (!_logOpened)
+        {
+            _logOpened = true;
+            _logWriter = OpenLog();
+        }
+
         var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
         Debug.WriteLine(line);
+
         try
         {
-            _logWriter ??= new StreamWriter(LogPath, append: false) { AutoFlush = true };
-            _logWriter.WriteLine(line);
+            _logWriter?.WriteLine(line);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[WinPenKit] Log write failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Start this process's log, once, and say what and when it belongs to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Truncating rather than appending, because a process id is reused: a file left by an
+    /// earlier process with the same id is not this process's log and must not be read as one.
+    /// Truncated <b>once</b>, though -- the writer is then kept for the life of the process, so
+    /// that a session being disposed and another started does not wipe what came before it. That
+    /// was the second fault here: closing the writer on Dispose meant every change of pen API
+    /// threw away the log of everything that had happened first.
+    /// </para>
+    /// <para>
+    /// The first line carries the date and the application, which the per-line timestamps do not.
+    /// It is an ordinary log line and not a banner, so anything reading the file line by line
+    /// needs no special case for it.
+    /// </para>
+    /// </remarks>
+    private static StreamWriter? OpenLog()
+    {
+        try
+        {
+            PruneOldLogs();
+
+            var writer = new StreamWriter(LogPath, append: false) { AutoFlush = true };
+
+            string who = Process.GetCurrentProcess().ProcessName;
+            writer.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] Log start: {who} " +
+                             $"pid {Environment.ProcessId}, {DateTime.Now:yyyy-MM-dd}");
+
+            return writer;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[WinPenKit] Could not open {LogPath}: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Drop logs left by processes that ran more than a week ago.</summary>
+    /// <remarks>
+    /// A file per process is a file per run, and nothing would ever remove them. A week is long
+    /// enough to still have the log of the run that went wrong on Friday and short enough that
+    /// the temporary directory does not fill with them. Best effort: a file still held open by a
+    /// living process cannot be deleted, and that is the right outcome anyway.
+    /// </remarks>
+    private static void PruneOldLogs()
+    {
+        try
+        {
+            var cutoff = DateTime.Now.AddDays(-7);
+
+            // The name this used to write to, before there was one file per process. Nothing
+            // writes it any more, so it would sit there forever being read by mistake.
+            var legacy = Path.Combine(Path.GetTempPath(), "WinPenKit.log");
+            try { File.Delete(legacy); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+
+            foreach (var old in Directory.EnumerateFiles(Path.GetTempPath(), "WinPenKit.*.log"))
+            {
+                try
+                {
+                    if (File.GetLastWriteTime(old) < cutoff) File.Delete(old);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[WinPenKit] Could not prune old logs: {ex.Message}");
         }
     }
 
@@ -378,9 +587,12 @@ internal abstract class WintabSessionBase : IPenSession
         Log($"  SysOrg=({lc.lcSysOrgX},{lc.lcSysOrgY}) SysExt=({lc.lcSysExtX},{lc.lcSysExtY})");
     }
 
-    private static void CloseLog()
-    {
-        _logWriter?.Dispose();
-        _logWriter = null;
-    }
+    /// <summary>Flush what has been written, without closing the file.</summary>
+    /// <remarks>
+    /// Closing it here is what made a change of pen API wipe the log: the next write reopened the
+    /// file, and reopening truncates. The writer is left open for the life of the process
+    /// instead, which also means a process that is killed leaves a complete file behind rather
+    /// than a half-written one.
+    /// </remarks>
+    private static void FlushLog() => _logWriter?.Flush();
 }
