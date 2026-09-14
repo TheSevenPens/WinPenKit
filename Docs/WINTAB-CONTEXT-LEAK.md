@@ -238,12 +238,34 @@ across the restart stayed up, kept its status line reading "Wintab (high-res)", 
 to its log — while its context was dead and the driver reported it gone. The pen simply stops
 working, silently, which is the same misleading failure this whole document is about.
 
-**So: restart the application after restarting the service.** Opening a *new* context afterwards
-works normally — the count was back to a healthy 2 and fresh opens succeeded — so anything that
-reopens its session recovers. An application that never reopens one will not.
+### WinPenKit now recovers by itself
 
-This is worth fixing in a pen library rather than documenting: a session could notice that its own
-context has gone and say so, or reopen it. Filed as part of the follow-up work.
+Since that was measured, a Wintab session checks its own context and reopens it. `WTGetA` returns
+false for a handle the driver no longer knows, so the check is cheap and unambiguous; it runs from
+the drain the consumer already calls on its frame timer, paced to once a second.
+
+An application left running across a service restart now does this on its own:
+
+```
+[22:02:17.125] Context 0x202 is no longer known to the driver -- it was taken away rather than
+               closed, which is what restarting the tablet service does.
+[22:02:21.643] BeforeOpen (HiRes): Options=0x00000005 Device=0 ...
+[22:02:21.659] Could not reopen the context: Fallback context also failed to open.
+[22:02:26.679] BeforeOpen (HiRes): Options=0x00008015 Device=4294967295 ...
+[22:02:26.737] Context reopened; the pen should work again.
+[22:02:26.738] Contexts after reopening: 4 open, of a stated maximum of 32
+```
+
+The failed attempt in the middle is worth keeping in view. **While the service is coming back the
+driver answers with degenerate defaults** — `Options=0x5`, `Device=0`, where a healthy answer is
+`0x8015` and `4294967295` — and a context opened from those is refused. A single retry would have
+given up there. The interval backs off to five seconds after a failure, both to get past that
+window and because a refusing driver takes about 90 ms to say so, which is not something to do
+once a second on the thread that draws.
+
+Restarting the application is therefore no longer necessary, though it remains the certain fix. An
+application that never calls one of the drain methods will not recover, since that is where the
+check runs.
 
 ## Other applications leak identically
 

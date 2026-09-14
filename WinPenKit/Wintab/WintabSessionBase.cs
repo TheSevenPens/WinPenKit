@@ -13,6 +13,10 @@ internal abstract class WintabSessionBase : IPenSession
 {
     private WintabMessagePump? _pump;
     private IntPtr _hCtx;
+
+    /// <summary>Paces <see cref="KeepContextAlive"/>, which must not run at the drain rate.</summary>
+    private readonly Stopwatch _sinceStart = Stopwatch.StartNew();
+    private long _nextContextCheckMs;
     private readonly ConcurrentQueue<PenPoint> _points = new();
     private volatile bool _hasNewData;
     /// <summary>
@@ -147,8 +151,68 @@ internal abstract class WintabSessionBase : IPenSession
     /// </summary>
     public abstract PenConventions Conventions { get; }
 
+    /// <summary>
+    /// Notice that the driver has taken the context away, and get another one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A context does not only end when it is closed. Restarting the tablet service invalidates
+    /// every context that is open at the time, and the application holding one is told nothing at
+    /// all: measured, a real application kept running with its status line still naming the
+    /// driver, wrote nothing to its log, and simply stopped receiving pen input. That is
+    /// indistinguishable from a broken renderer, which is the failure this whole area keeps
+    /// producing. See <c>Docs/WINTAB-CONTEXT-LEAK.md</c>.
+    /// </para>
+    /// <para>
+    /// <c>WTGetA</c> returns false for a handle the driver no longer knows, so asking is cheap and
+    /// unambiguous. Asking from here because this is what a consumer already calls on its frame
+    /// timer; asking at that rate would be sixty pointless round trips a second, so it is paced to
+    /// one.
+    /// </para>
+    /// <para>
+    /// <b>It reopens rather than only reporting.</b> A new context opens perfectly well once the
+    /// service is back -- that was measured too -- so the pen can simply come back, within a
+    /// second, with no help from the application. When the reopen fails the interval backs off to
+    /// five seconds: a driver that is refusing takes about 90 ms to say so, and doing that once a
+    /// second on the thread that draws would be a visible stutter.
+    /// </para>
+    /// </remarks>
+    private void KeepContextAlive()
+    {
+        if (_pump is null) return;
+        if (_sinceStart.ElapsedMilliseconds < _nextContextCheckMs) return;
+
+        _nextContextCheckMs = _sinceStart.ElapsedMilliseconds + 1000;
+
+        if (_hCtx != IntPtr.Zero)
+        {
+            var probe = default(LogContext);
+            if (WintabNative.WTGetA(_hCtx, ref probe)) return;
+
+            Log($"Context 0x{_hCtx.ToInt64():X} is no longer known to the driver -- it was taken " +
+                "away rather than closed, which is what restarting the tablet service does.");
+
+            _hCtx = IntPtr.Zero;
+            IsRunning = false;
+            LogContexts("after losing the context");
+        }
+
+        if (OpenContext(_pump.Hwnd) is { } error)
+        {
+            Log($"Could not reopen the context: {error}");
+            _nextContextCheckMs = _sinceStart.ElapsedMilliseconds + 5000;
+            return;
+        }
+
+        IsRunning = true;
+        Log("Context reopened; the pen should work again.");
+        LogContexts("after reopening");
+    }
+
     public PenPoint[] DrainPoints()
     {
+        KeepContextAlive();
+
         _hasNewData = false;
         var list = new List<PenPoint>();
         while (_points.TryDequeue(out var pt))
@@ -158,6 +222,8 @@ internal abstract class WintabSessionBase : IPenSession
 
     public int DrainPoints(Span<PenPoint> buffer)
     {
+        KeepContextAlive();
+
         _hasNewData = false;
         int count = 0;
         while (count < buffer.Length && _points.TryDequeue(out var pt))
