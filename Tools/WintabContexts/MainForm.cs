@@ -27,6 +27,20 @@ internal sealed class MainForm : Form
     private readonly CheckBox _auto = new();
     private readonly System.Windows.Forms.Timer _timer = new();
 
+    /// <summary>What stands where the number goes before anything has been asked.</summary>
+    private const string Nothing = "--";
+
+    /// <summary>
+    /// Said under the number, always, and never rephrased.
+    /// </summary>
+    /// <remarks>
+    /// It used to gain "(the driver claims a maximum of 32)" once a number had been read, which
+    /// widened the window on the first press of Refresh. A window that changes size while it is
+    /// being filmed is a distraction from the number it exists to show, so the maximum is a line
+    /// in the detail block with the driver's other facts, where it belongs anyway.
+    /// </remarks>
+    private const string CountCaption = "contexts open";
+
     public MainForm()
     {
         // Sizes are written at 96 dpi and scaled by hand. A form built in code never gets the
@@ -37,42 +51,37 @@ internal sealed class MainForm : Form
         Font = new Font("Segoe UI", 10f);
 
         Text = "Wintab contexts";
-        ClientSize = new Size(Scaled(620), Scaled(520));
-        MinimumSize = new Size(Scaled(540), Scaled(500));
 
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(28, 20, 28, 16),
+            Padding = new Padding(Scaled(20), Scaled(12), Scaled(20), Scaled(12)),
             ColumnCount = 1,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
         };
 
-        // The number, then what it means, then everything that qualifies it, then the controls.
-        // Only the detail row takes the slack, so the number stays where it is as the window grows.
-        foreach (var style in new[]
-                 {
-                     new RowStyle(SizeType.AutoSize),
-                     new RowStyle(SizeType.AutoSize),
-                     new RowStyle(SizeType.Percent, 100),
-                     new RowStyle(SizeType.AutoSize),
-                     new RowStyle(SizeType.AutoSize),
-                     new RowStyle(SizeType.AutoSize),
-                 })
-        {
-            layout.RowStyles.Add(style);
-        }
+        // Every row sized to its contents, and the window sized to the rows. There used to be a
+        // percentage row absorbing the slack, which put a band of nothing between the detail and
+        // the buttons -- fine on a large display and wasteful on a 1920 by 1080 one, where a
+        // diagnostic sitting beside the thing it is diagnosing wants to be small.
+        for (int row = 0; row < 6; row++)
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         // Nothing else on the form is allowed to be this size. Anchored to nothing, which is how a
         // TableLayoutPanel centres a control that sizes itself.
-        _count.Text = "";
-        _count.Font = new Font("Segoe UI", 64f, FontStyle.Bold);
+        //
+        // Dashes rather than nothing, so that the place a number goes is visibly a place a number
+        // goes. It also stops the row changing height the first time one arrives, which an empty
+        // label would have done.
+        _count.Text = Nothing;
+        _count.Font = new Font("Segoe UI", 46f, FontStyle.Bold);
         _count.AutoSize = true;
         _count.Anchor = AnchorStyles.None;
         _count.Margin = new Padding(0);
-        _count.MinimumSize = new Size(0, Scaled(100));
         _count.TextAlign = ContentAlignment.MiddleCenter;
 
-        _countCaption.Text = "press Refresh";
+        _countCaption.Text = CountCaption;
         _countCaption.AutoSize = true;
         _countCaption.Anchor = AnchorStyles.None;
         _countCaption.ForeColor = SystemColors.GrayText;
@@ -81,7 +90,7 @@ internal sealed class MainForm : Form
         _detail.Font = new Font("Consolas", 10f);
         _detail.AutoSize = true;
         _detail.Dock = DockStyle.Top;
-        _detail.Margin = new Padding(0, 18, 0, 12);
+        _detail.Margin = new Padding(0, Scaled(12), 0, Scaled(10));
 
         var buttons = new FlowLayoutPanel
         {
@@ -108,14 +117,16 @@ internal sealed class MainForm : Form
         _reset.Text = "Restart the Wacom driver";
         _reset.AutoSize = true;
         _reset.Padding = new Padding(18, 6, 18, 6);
-        _reset.Margin = new Padding(0, 10, 0, 0);
+        _reset.Margin = new Padding(0, Scaled(8), 0, 0);
         _reset.Click += (_, _) => ResetDriver();
 
         _status.AutoSize = true;
         _status.Dock = DockStyle.Top;
         _status.ForeColor = SystemColors.GrayText;
-        _status.Margin = new Padding(0, 14, 0, 0);
-        _status.MaximumSize = new Size(Scaled(560), 0);   // so a long sentence wraps, not clips
+        _status.Margin = new Padding(0, Scaled(10), 0, 0);
+        // Narrow enough to wrap inside the width the detail block already takes, so a long
+        // sentence makes the window taller rather than wider.
+        _status.MaximumSize = new Size(Scaled(330), 0);
 
         layout.Controls.Add(_count);
         layout.Controls.Add(_countCaption);
@@ -124,6 +135,12 @@ internal sealed class MainForm : Form
         layout.Controls.Add(_reset);
         layout.Controls.Add(_status);
         Controls.Add(layout);
+
+        // Sized to what the layout asked for, rather than to a guess that then had to be padded.
+        // GrowAndShrink on the form as well, so a longer status line grows the window instead of
+        // being cut off by it.
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
         _timer.Interval = 1000;
         _timer.Tick += (_, _) => Reread(byHand: false);
@@ -140,7 +157,7 @@ internal sealed class MainForm : Form
     {
         if (!Wintab.IsPresent)
         {
-            _count.Text = "-";
+            _count.Text = Nothing;
             _countCaption.Text = "no Wintab on this machine";
             _status.Text = "The tablet driver is not installed, or does not provide Wintab.";
             return;
@@ -148,15 +165,15 @@ internal sealed class MainForm : Form
 
         if (WintabDiagnostics.ContextTable() is not { } table)
         {
-            _count.Text = "?";
-            _countCaption.Text = "the driver would not say";
+            _count.Text = Nothing;
+            _countCaption.Text = "the driver would not say how many";
             return;
         }
 
         _count.Text = table.Open.ToString();
-        _countCaption.Text = $"contexts open   (the driver claims a maximum of {table.Maximum})";
+        _countCaption.Text = CountCaption;
 
-        DescribeDriver();
+        DescribeDriver(table.Maximum);
 
         if (byHand) _status.Text = $"Read at {DateTime.Now:HH:mm:ss}.";
     }
@@ -167,7 +184,7 @@ internal sealed class MainForm : Form
     /// vendor's implementation is installed as the same filename, so the company recorded in that
     /// file is what says whose contexts are being counted.
     /// </remarks>
-    private void DescribeDriver()
+    private void DescribeDriver(uint? maximum = null)
     {
         if (!Wintab.IsPresent)
         {
@@ -179,6 +196,7 @@ internal sealed class MainForm : Form
 
         _detail.Text = string.Join(Environment.NewLine,
             $"system contexts  {Wintab.SystemContexts}",
+            $"driver maximum   {maximum?.ToString() ?? "not read yet"}",
             "",
             $"vendor           {dll?.CompanyName ?? "not reported"}",
             $"wintab32.dll     {dll?.FileVersion ?? "not reported"}",
