@@ -21,8 +21,8 @@ dotnet run --project Tools/WintabContexts
 
 | | |
 |---|---|
-| **contexts open** | every context open on the machine, whoever opened it |
-| **system contexts** | how many of those drive the cursor as well as delivering packets |
+| **contexts open** | every context open on the machine, whoever opened it — `WTI_STATUS / STA_CONTEXTS` |
+| **system contexts** | how many of those drive the cursor as well as delivering packets — `WTI_STATUS / STA_SYSCTXS` |
 | digitising contexts | said in words, not set as a number, because it is **inferred**: Wintab has no counter for these, so it is the two numbers subtracted |
 | driver maximum | what the driver says it supports, and the constant it came from. It does not enforce it |
 | vendor | the company recorded in `wintab32.dll` — whose driver is answering |
@@ -30,6 +30,10 @@ dotnet run --project Tools/WintabContexts
 | implementation | the name Wintab gives itself |
 | spec / impl | the API version it claims, and its own |
 | devices | every device the driver lists, by the name it gives each |
+
+Every number is printed with the Wintab question that produced it, so a figure on screen can be
+traced to a documented constant rather than taken on this tool's word for it. The one without a
+constant is the one that has none: digitising contexts are inferred.
 
 The number starts blank. Until Refresh is pressed nothing has been asked, and a figure whose age
 is unknown is worse than no figure. **every second** keeps it current, which is what to use while

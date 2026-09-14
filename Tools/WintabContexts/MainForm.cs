@@ -22,6 +22,8 @@ internal sealed class MainForm : Form
     private readonly Label _countCaption = new();
     private readonly Label _system = new();
     private readonly Label _systemCaption = new();
+    private readonly Label _countSource = new();
+    private readonly Label _systemSource = new();
     private readonly Label _inferred = new();
     private readonly Label _detail = new();
     private readonly Label _status = new();
@@ -104,13 +106,15 @@ internal sealed class MainForm : Form
         numbers.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         numbers.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        Big(_count, _countCaption, CountCaption);
-        Big(_system, _systemCaption, SystemCaption);
+        Big(_count, _countCaption, _countSource, CountCaption, "WTI_STATUS / STA_CONTEXTS");
+        Big(_system, _systemCaption, _systemSource, SystemCaption, "WTI_STATUS / STA_SYSCTXS");
 
         numbers.Controls.Add(_count, 0, 0);
         numbers.Controls.Add(_system, 1, 0);
         numbers.Controls.Add(_countCaption, 0, 1);
         numbers.Controls.Add(_systemCaption, 1, 1);
+        numbers.Controls.Add(_countSource, 0, 2);
+        numbers.Controls.Add(_systemSource, 1, 2);
 
         // The third number, which the driver does not report and which is therefore said in words
         // rather than set in the same size as the two it is derived from.
@@ -187,8 +191,14 @@ internal sealed class MainForm : Form
         DescribeResetButton();
     }
 
-    /// <summary>Set up one of the two large numbers and the caption under it.</summary>
-    private void Big(Label number, Label caption, string text)
+    /// <summary>Set up one of the two large numbers, its caption, and where it came from.</summary>
+    /// <remarks>
+    /// The question that produced each number is printed under it. Three figures are on this
+    /// window and only two of them were asked of the driver, so saying which constant answered
+    /// which is how a viewer can tell them apart -- and a constant name is something they can go
+    /// and look up, where "contexts open" is only this tool's word for it.
+    /// </remarks>
+    private void Big(Label number, Label caption, Label source, string text, string constant)
     {
         number.Text = Nothing;
         number.Font = new Font("Segoe UI", 46f, FontStyle.Bold);
@@ -202,6 +212,13 @@ internal sealed class MainForm : Form
         caption.Anchor = AnchorStyles.None;
         caption.ForeColor = SystemColors.GrayText;
         caption.Margin = new Padding(Scaled(18), 2, Scaled(18), 0);
+
+        source.Text = constant;
+        source.Font = new Font("Consolas", 8f);
+        source.AutoSize = true;
+        source.Anchor = AnchorStyles.None;
+        source.ForeColor = SystemColors.GrayText;
+        source.Margin = new Padding(Scaled(18), 1, Scaled(18), 0);
     }
 
     /// <summary>A length written at 96 dpi, in the pixels this display actually uses.</summary>
