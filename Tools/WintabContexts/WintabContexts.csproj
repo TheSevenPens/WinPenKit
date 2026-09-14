@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Deliberately not in WinPenKit.slnx.
+
+    CI builds the solution and then stages a named list of projects into the release. A project
+    in neither is excluded from both, which is what this wants: it is a diagnostic for looking at
+    one machine, not something to ship. Build it by hand when it is wanted, by pointing dotnet run
+    at this folder. See the README beside this file.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <RootNamespace>WintabContexts</RootNamespace>
+    <AssemblyName>WintabContexts</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\WinPenKit\WinPenKit.csproj" />
+  </ItemGroup>
+
+</Project>

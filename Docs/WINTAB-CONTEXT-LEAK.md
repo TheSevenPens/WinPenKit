@@ -350,6 +350,23 @@ Two faults were found here while adding this, both of which had been quietly cos
 `WintabDiagnostics.LogPath` names this process's file, for an application that wants to point at
 it in a bug report.
 
+## A window that shows the number
+
+[`Tools/WintabContexts`](../Tools/WintabContexts/) is a small WinForms application whose whole job
+is to display the count, with a button to restart the Wacom driver beside it. Leave it open, kill a
+drawing application, and the number goes up and stays up.
+
+![the tool](images/wintab-contexts.png)
+
+It is **not in the solution and not in any release** — CI builds the solution and stages a named
+list of projects, and this is in neither. Build it when it is wanted:
+
+```
+dotnet run --project Tools/WintabContexts
+```
+
+It opens no contexts of its own: every call is `WTInfoA`, which only reads.
+
 ## Checking a machine you do not own
 
 Anyone can read the counters without installing anything. Paste this into PowerShell — no
