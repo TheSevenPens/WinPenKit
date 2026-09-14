@@ -1,0 +1,19 @@
+{
+  "queried_utc": "2026-09-14T17:56:48.1561857Z",
+  "since_utc": "2026-09-14T17:20:00.0000000Z",
+  "records": [
+    {
+      "ProviderName": "Wacom WUHA Service",
+      "QueryError": "No events were found that match the specified selection criteria."
+    },
+    {
+      "ProviderName": "WacomPen",
+      "QueryError": "No events were found that match the specified selection criteria."
+    },
+    {
+      "ProviderName": "WacomWUHAServiceSource",
+      "QueryError": "No events were found that match the specified selection criteria."
+    }
+  ],
+  "note": "Read-only existing event records; no logging configuration changed."
+}

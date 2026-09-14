@@ -1,0 +1,47 @@
+[
+  {
+    "arguments": "lifecycle 1x kill system",
+    "exit_code": 2,
+    "unexpected_data_rows": 0
+  },
+  {
+    "arguments": "lifecycle 0 kill system",
+    "exit_code": 2,
+    "unexpected_data_rows": 0
+  },
+  {
+    "arguments": "lifecycle 129 kill system",
+    "exit_code": 2,
+    "unexpected_data_rows": 0
+  },
+  {
+    "arguments": "lifecycle 1 clean system abc",
+    "exit_code": 2,
+    "unexpected_data_rows": 0
+  },
+  {
+    "arguments": "lifecycle 1 clean system -1 -1",
+    "exit_code": 2,
+    "unexpected_data_rows": 0
+  },
+  {
+    "arguments": "reclaim kill system 0",
+    "exit_code": 2,
+    "unexpected_data_rows": 0
+  },
+  {
+    "arguments": "reclaim kill system 129",
+    "exit_code": 2,
+    "unexpected_data_rows": 0
+  },
+  {
+    "arguments": "watch 0 1000",
+    "exit_code": 2,
+    "unexpected_data_rows": 0
+  },
+  {
+    "arguments": "watch 1 0",
+    "exit_code": 2,
+    "unexpected_data_rows": 0
+  }
+]

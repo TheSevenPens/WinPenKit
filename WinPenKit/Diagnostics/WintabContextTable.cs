@@ -6,7 +6,7 @@ namespace WinPenKit.Diagnostics;
 /// What the Wintab driver says about its own supply of contexts.
 /// </summary>
 /// <param name="Open">Contexts open across every application, as the driver counts them.</param>
-/// <param name="Maximum">The most the driver says it will have open at once.</param>
+/// <param name="Maximum">The driver's reported supported count, not necessarily an enforced limit.</param>
 public readonly record struct WintabContextTable(uint Open, uint Maximum)
 {
     /// <summary>
@@ -18,9 +18,9 @@ public readonly record struct WintabContextTable(uint Open, uint Maximum)
     /// the way to 334, every one of them succeeding. Whatever <c>IFC_NCONTEXTS</c> is on that
     /// driver, it is not a ceiling.
     /// <para>
-    /// What this is good for is noticing that the count is implausible, which says contexts have
-    /// been leaked -- a process that dies without <c>WTClose</c> never gives its context back.
-    /// That is worth knowing and worth reporting. It is not, on the evidence, a cause of anything.
+    /// A high count can include live contexts as well as contexts retained after process exit.
+    /// It does not by itself prove leakage or rule out other resource limits. A manager can
+    /// reclaim known leaked contexts on the tested Wacom driver; see Docs/WINTAB-CONTEXT-LEAK.md.
     /// </para>
     /// </remarks>
     public bool AboveStatedMaximum => Maximum > 0 && Open > Maximum;
@@ -39,13 +39,11 @@ public readonly record struct WintabContextTable(uint Open, uint Maximum)
 /// worth more than that.
 /// </para>
 /// <para>
-/// <b>What the counts do and do not mean.</b> A context is leaked by any process that dies
-/// without calling <c>WTClose</c> -- killed, crashed, or stopped from a debugger -- and the
-/// driver never takes it back, so a high count is real evidence that this has been happening.
-/// It is <b>not</b> evidence of why an open failed: contexts were opened deliberately past the
-/// stated maximum of 32, up to 334, and every one of them succeeded. The failure being diagnosed
-/// happened at 253 with the counter frozen, which is a driver that has stopped working rather
-/// than a driver that has run out.
+/// <b>What the counts do and do not mean.</b> On the tested Wacom driver, contexts can remain
+/// after a process exits without <c>WTClose</c>. High counts can also represent live contexts,
+/// and virtual-device opens may contribute multiple counted contexts. Successful opens above
+/// the reported 32 do not exclude other allocation limits. The counter alone cannot diagnose
+/// a failed open. See Docs/WINTAB-INVESTIGATION-2026-09.md for independent measurements.
 /// </para>
 /// <para>
 /// <b>This reports and does not advise.</b> What the numbers mean for a particular application,
@@ -64,7 +62,7 @@ public static class WintabDiagnostics
     public static string LogPath => Wintab.WintabSessionBase.LogPath;
 
     /// <summary>
-    /// How many contexts the driver has open and how many it will allow, or null if Wintab is
+    /// How many contexts the driver reports open and supported, or null if Wintab is
     /// not installed or will not say.
     /// </summary>
     public static WintabContextTable? ContextTable()

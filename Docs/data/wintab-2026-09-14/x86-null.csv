@@ -1,0 +1,4 @@
+utc,pid,event,handle,result,elapsed_ms,contexts,contexts_bytes,system,system_bytes,detail
+2026-09-14T17:34:23.036Z,49524,before,00000000,1,0.000,2,4,2,4,clean
+2026-09-14T17:34:23.037Z,49524,open,00000000,0,0.025,2,4,2,4,index=0;device=4294967295;options=0x8015;hwnd=00000000
+2026-09-14T17:34:23.039Z,49524,after,00000000,0,0.000,2,4,2,4,clean

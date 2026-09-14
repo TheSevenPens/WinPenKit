@@ -1,0 +1,7 @@
+{
+  "utc": "2026-09-14T17:36:43.3075139Z",
+  "observer_pid": 43784,
+  "duration_seconds": 3600,
+  "note": "planned fourth cohort failed; retained failure state instead of continuing",
+  "service_pid": 40496
+}

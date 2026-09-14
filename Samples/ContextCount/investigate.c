@@ -1,13 +1,16 @@
 /* Independent Wintab probe for issue #121. Does not use wtcount.h or WinPenKit.
  * Build in a VS developer prompt: cl /nologo /W4 /WX /wd4191 investigate.c user32.lib
  * Read README.md before using the deliberately leaking lifecycle modes.
- * No foreign contexts are closed, no service/settings are changed.
+ * Only reclaim mode closes foreign contexts, restricted to its own exited child.
+ * No service/settings are changed.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <limits.h>
 
 typedef struct {
     char name[40];
@@ -41,7 +44,17 @@ static LARGE_INTEGER frequency;
 static unsigned enumerated;
 static HANDLE candidates[256];
 static unsigned candidateCount;
+static BOOL candidateOverflow;
 static DWORD expectedPid;
+
+static long number(const char *text, long minimum, long maximum)
+{
+    char *end;
+    long value;
+    errno = 0;
+    value = strtol(text, &end, 10);
+    return errno || !*text || *end || value < minimum || value > maximum ? LONG_MIN : value;
+}
 
 static double now(void)
 {
@@ -60,10 +73,16 @@ static void row(const char *event, HANDLE handle, long long result,
     UINT totalBytes = info(2, 1, &total);
     UINT systemBytes = info(2, 2, &system);
     GetSystemTime(&t);
-    printf("%04u-%02u-%02uT%02u:%02u:%02u.%03uZ,%lu,%s,%p,%lld,%.3f,%u,%u,%u,%u,%s\n",
+    printf("%04u-%02u-%02uT%02u:%02u:%02u.%03uZ,%lu,%s,%p,%lld,%.3f,%u,%u,%u,%u,\"",
         t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds,
         GetCurrentProcessId(), event, handle, result, elapsed,
-        total, totalBytes, system, systemBytes, detail);
+        total, totalBytes, system, systemBytes);
+    /* Context names are external text, so quote/escape the CSV field. */
+    while (*detail) {
+        if (*detail == '"') putchar('"');
+        putchar(*detail++);
+    }
+    puts("\"");
     fflush(stdout);
 }
 
@@ -100,8 +119,10 @@ static BOOL WINAPI visit(HANDLE context, LPARAM manager)
         hwnd, IsWindow(hwnd), pid, valid, c.device, c.options, c.name);
     row("enumerated_context", context, pid, 0, detail);
     sprintf_s(prefix, sizeof prefix, "issue121-%lu-", expectedPid);
-    if (expectedPid && valid && !strncmp(c.name, prefix, strlen(prefix)) && candidateCount < 256)
-        candidates[candidateCount++] = context;
+    if (expectedPid && valid && !strncmp(c.name, prefix, strlen(prefix))) {
+        if (candidateCount < 256) candidates[candidateCount++] = context;
+        else candidateOverflow = TRUE;
+    }
     ++enumerated;
     return TRUE;
 }
@@ -252,7 +273,7 @@ static int lifecycle(int count, const char *mode, const char *kind, int device, 
  * names belonging to that child. NULL/invalid HWND alone is NEVER a deletion rule.
  * The sentinel is this parent's live context and must survive foreign closes.
  */
-static int reclaim(const char *mode, const char *kind, int count)
+static int reclaim(const char *mode, const char *kind, int count, HANDLE existingSentinel)
 {
     char exe[MAX_PATH], command[1024];
     STARTUPINFOA startup = {0};
@@ -261,7 +282,7 @@ static int reclaim(const char *mode, const char *kind, int count)
     CloseFn mgrClose = (CloseFn)GetProcAddress(dll, "WTMgrClose");
     EnumFn enumerate = (EnumFn)GetProcAddress(dll, "WTMgrContextEnum");
     HWND hwnd = window();
-    HANDLE manager = NULL, sentinel = NULL;
+    HANDLE manager = NULL, sentinel = existingSentinel;
     Context c = {0};
     unsigned i;
     int failed = 0;
@@ -274,14 +295,16 @@ static int reclaim(const char *mode, const char *kind, int count)
     row("reclaim_before", NULL, count, 0, mode);
     manager = mgrOpen(hwnd, 0x7FF0);
     if (!manager || info(4, 0, &c) != sizeof c) { failed = 1; goto done; }
-    strcpy_s(c.name, sizeof c.name, "issue121-live-sentinel");
-    sentinel = openContext(hwnd, &c, TRUE);
+    if (!sentinel) {
+        strcpy_s(c.name, sizeof c.name, "issue121-live-sentinel");
+        sentinel = openContext(hwnd, &c, TRUE);
+    }
     row("sentinel_open", sentinel, sentinel != NULL, 0, "must_survive");
     if (!sentinel) { failed = 1; goto done; }
-    GetModuleFileNameA(NULL, exe, MAX_PATH);
+    if (!GetModuleFileNameA(NULL, exe, MAX_PATH)) { failed = 1; goto done; }
     sprintf_s(command, sizeof command, "\"%s\" lifecycle %d %s %s", exe, count, mode, kind);
     startup.cb = sizeof startup;
-    if (!CreateProcessA(exe, command, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &startup, &process)) {
+    if (!CreateProcessA(exe, command, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &startup, &process)) {
         row("child_create_failed", NULL, GetLastError(), 0, ""); failed = 1; goto done;
     }
     CloseHandle(process.hThread);
@@ -291,13 +314,21 @@ static int reclaim(const char *mode, const char *kind, int count)
         /* Keep the child alive; do not force a new leak if an API is wedged. */
         CloseHandle(process.hProcess); failed = 1; goto done;
     }
-    GetExitCodeProcess(process.hProcess, &exitCode);
+    if (!GetExitCodeProcess(process.hProcess, &exitCode)) {
+        CloseHandle(process.hProcess); failed = 1; goto done;
+    }
+    if (exitCode != 0) failed = 1;
     expectedPid = process.dwProcessId;
     row("child_exited", NULL, expectedPid, 0, exitCode ? "nonzero_exit" : "exit=0");
     candidateCount = 0;
+    candidateOverflow = FALSE;
     enumerated = 0;
     if (!enumerate(manager, visit, (LPARAM)manager)) failed = 1;
     row("reclaim_candidates", NULL, candidateCount, 0, "matches_confirmed_exited_child_name");
+    if (!candidateCount || candidateOverflow) {
+        row("reclaim_incomplete", NULL, 0, 0, candidateOverflow ? "candidate_capacity_exceeded" : "no_reclamation_demonstrated");
+        failed = 1;
+    }
     for (i = 0; i < candidateCount; ++i) {
         Context check = {0};
         char prefix[48];
@@ -317,12 +348,97 @@ static int reclaim(const char *mode, const char *kind, int count)
         row("sentinel_still_valid", sentinel, valid, 0, "WTGetA");
         if (!valid) failed = 1;
     }
-    enumerate(manager, visit, (LPARAM)manager);
+    if (!enumerate(manager, visit, (LPARAM)manager)) failed = 1;
 done:
-    if (sentinel) row("sentinel_close", sentinel, closeContext(sentinel), 0, "");
-    if (manager) row("manager_close", manager, mgrClose(manager), 0, "reclaim");
+    if (sentinel && !existingSentinel) {
+        BOOL ok = closeContext(sentinel);
+        row("sentinel_close", sentinel, ok, 0, "");
+        if (!ok) failed = 1;
+    }
+    if (manager) {
+        BOOL ok = mgrClose(manager);
+        row("manager_close", manager, ok, 0, "reclaim");
+        if (!ok) failed = 1;
+    }
     DestroyWindow(hwnd);
     row("reclaim_after", NULL, !failed, 0, "");
+    return failed;
+}
+
+/* Manual hardware control: packets must arrive on the SAME context before and
+ * after reclaiming a test child's contexts. Poll a fixed, checked packet layout;
+ * mouse/WM_POINTER messages cannot satisfy this test. No pen input is synthesized.
+ */
+static int packetCheck(void)
+{
+    typedef struct { UINT serial; LONG x, y; UINT pressure; } Packet;
+    typedef int (WINAPI *PacketsFn)(HANDLE, int, void *);
+    typedef int (WINAPI *QueueSizeFn)(HANDLE);
+    PacketsFn packets = (PacketsFn)GetProcAddress(dll, "WTPacketsGet");
+    QueueSizeFn queueSize = (QueueSizeFn)GetProcAddress(dll, "WTQueueSizeGet");
+    HWND hwnd = window(), label;
+    HANDLE context = NULL;
+    Context c = {0};
+    ULONGLONG deadline;
+    unsigned contactPackets = 0, phase = 0;
+    int failed = 1;
+    if (!hwnd) return 2;
+    if (!packets || !queueSize || info(4, 0, &c) != sizeof c) goto done;
+    c.options |= 1u;
+    c.options &= ~4u;
+    c.pktData = c.moveMask = 0x590u; /* SERIAL_NUMBER | X | Y | NORMAL_PRESSURE */
+    c.pktMode = 0;
+    strcpy_s(c.name, sizeof c.name, "issue121-packet-sentinel");
+    context = openContext(hwnd, &c, TRUE);
+    row("packet_context_open", context, context != NULL, 0, "physical_pen_required");
+    if (!context || c.pktData != 0x590u || c.pktMode != 0) goto done;
+    SetWindowTextA(hwnd, "Wintab packet check - draw continuously for a few seconds");
+    label = CreateWindowExA(0, "STATIC",
+        "Draw on the tablet while this window is active.\nKeep drawing when the text changes.\nNo ink is drawn; this checks pressure packets.\nThe window closes when both phases pass.",
+        WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 20, 360, 120, hwnd, NULL, GetModuleHandleA(NULL), NULL);
+    ShowWindow(hwnd, SW_SHOW);
+    SetForegroundWindow(hwnd);
+    deadline = GetTickCount64() + 180000;
+    while (IsWindow(hwnd) && GetTickCount64() < deadline) {
+        Packet data[32];
+        int n, i;
+        pump(10);
+        n = packets(context, 32, data);
+        if (n < 0 || n > 32) break;
+        for (i = 0; i < n; ++i) {
+            char detail[128];
+            sprintf_s(detail, sizeof detail, "phase=%u;serial=%u;x=%ld;y=%ld;pressure=%u",
+                phase, data[i].serial, data[i].x, data[i].y, data[i].pressure);
+            row("hardware_packet", context, data[i].pressure, 0, detail);
+            if (data[i].pressure) ++contactPackets;
+        }
+        if (contactPackets >= 16) {
+            row("packet_phase_pass", context, contactPackets, 0, phase ? "after_reclaim" : "before_reclaim");
+            if (phase) { failed = 0; break; }
+            SetWindowTextA(label, "First phase passed. Reclaiming test contexts...\nKeep drawing for the second phase.");
+            if (reclaim("kill", "system", 3, context) != 0) break;
+            /* Discard queued pre-reclamation packets so they cannot count as
+             * evidence of post-reclamation delivery. */
+            {
+                int capacity = queueSize(context), flushed;
+                if (capacity <= 0) break;
+                flushed = packets(context, capacity, NULL);
+                row("packet_queue_flush", context, flushed, 0, "discard_all_pre_reclamation_packets");
+                if (flushed < 0) break;
+            }
+            contactPackets = 0;
+            phase = 1;
+            SetWindowTextA(label, "Cleanup completed. Keep drawing.\nNow checking packets on the original context.");
+        }
+    }
+    row("packet_check_result", context, !failed, 0, failed ? "timeout_or_incomplete" : "same_context_both_phases");
+done:
+    if (context) {
+        BOOL ok = closeContext(context);
+        row("packet_context_close", context, ok, 0, "");
+        if (!ok) failed = 1;
+    }
+    if (IsWindow(hwnd)) DestroyWindow(hwnd);
     return failed;
 }
 
@@ -341,34 +457,44 @@ int main(int argc, char **argv)
     if (argc == 1 || strcmp(argv[1], "snapshot") == 0) row("snapshot", NULL, 0, 0, "");
     else if (strcmp(argv[1], "info") == 0) metadata();
     else if (strcmp(argv[1], "manager") == 0) result = managerProbe();
-    else if (strcmp(argv[1], "lifecycle") == 0 && argc >= 5) {
-        int count = atoi(argv[2]);
+    else if (strcmp(argv[1], "packet-check") == 0) result = packetCheck();
+    else if (strcmp(argv[1], "lifecycle") == 0 && argc >= 5 && argc <= 7) {
+        int count = (int)number(argv[2], 1, 128);
+        long device = argc > 5 ? number(argv[5], -1, 15) : -1;
+        long hold = argc > 6 ? number(argv[6], 0, 3600000) : 0;
         const char *mode = argv[3], *kind = argv[4];
-        if (count < 1 || count > 128 ||
+        if (count < 1 || device == LONG_MIN || hold == LONG_MIN ||
             (strcmp(mode, "clean") && strcmp(mode, "kill") && strcmp(mode, "return") &&
              strcmp(mode, "destroy-return") && strcmp(mode, "cleanup")) ||
             (strcmp(kind, "system") && strcmp(kind, "digitizer") && strcmp(kind, "mixed") && strcmp(kind, "null") && strcmp(kind, "null-poll"))) return 2;
-        result = lifecycle(count, mode, kind, argc > 5 ? atoi(argv[5]) : -1,
-            argc > 6 ? (DWORD)strtoul(argv[6], NULL, 10) : 0);
+        result = lifecycle(count, mode, kind, (int)device, (DWORD)hold);
         /* return modes deliberately retain the DLL until process shutdown. */
         if (!strcmp(mode, "return") || !strcmp(mode, "destroy-return")) return result;
     }
     else if (strcmp(argv[1], "reclaim") == 0 && argc == 5) {
-        int count = atoi(argv[4]);
-        if (count < 1 || count > 32 ||
+        int count = (int)number(argv[4], 1, 128);
+        if (count < 1 ||
             (strcmp(argv[2], "kill") && strcmp(argv[2], "return") && strcmp(argv[2], "destroy-return")) ||
             (strcmp(argv[3], "system") && strcmp(argv[3], "digitizer"))) return 2;
-        result = reclaim(argv[2], argv[3], count);
+        result = reclaim(argv[2], argv[3], count, NULL);
     }
     else if (strcmp(argv[1], "watch") == 0 && argc == 4) {
-        ULONGLONG end = GetTickCount64() + (ULONGLONG)strtoul(argv[2], NULL, 10) * 1000;
-        DWORD interval = (DWORD)strtoul(argv[3], NULL, 10);
-        if (!interval) return 2;
-        do { row("sample", NULL, 0, 0, "persistent_DLL"); pump(interval); }
+        long seconds = number(argv[2], 1, 7200);
+        long interval = number(argv[3], 1, 60000);
+        ULONGLONG end;
+        if (seconds == LONG_MIN || interval == LONG_MIN) return 2;
+        end = GetTickCount64() + (ULONGLONG)seconds * 1000;
+        do { row("sample", NULL, 0, 0, "persistent_DLL"); pump((DWORD)interval); }
         while (GetTickCount64() < end);
         row("sample_end", NULL, 0, 0, "persistent_DLL");
     }
-    else { fprintf(stderr, "Usage: investigate [snapshot|info|manager|lifecycle N clean|cleanup|kill|return|destroy-return system|digitizer|mixed|null [device|-1] [hold_ms]|watch seconds interval_ms]\n"); result = 2; }
+    else {
+        fprintf(stderr, "Usage:\n  investigate snapshot|info|manager|packet-check\n"
+            "  investigate lifecycle N clean|cleanup|kill|return|destroy-return system|digitizer|mixed|null|null-poll [device|-1] [hold_ms]\n"
+            "  investigate reclaim kill|return|destroy-return system|digitizer N\n"
+            "  investigate watch seconds interval_ms\n");
+        result = 2;
+    }
     FreeLibrary(dll);
     return result;
 }

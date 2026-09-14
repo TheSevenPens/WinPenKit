@@ -1,15 +1,21 @@
 # Wintab contexts are leaked by processes that do not close them
 
-A Wintab context opened by a process that then dies — killed from Task Manager, crashed, or
-stopped from a debugger — is never given back. The driver goes on counting it as open for as long
-as it is running.
+A Wintab context opened by a process that exits without `WTClose` can remain in the
+Wacom driver's tables after its owner is gone. This was reproduced with process termination,
+ordinary return from `main`, and window destruction before exit.
+
+**A service restart is not the only way to reclaim it.** On the tested driver, a Wintab manager
+can enumerate and close known leaked contexts while preserving a live application's context.
+See [Reclaiming known contexts](#reclaiming-known-contexts-without-a-service-restart).
 
 This matters to whoever is **developing** a pen application rather than using one, because
 stopping a debugger is how a developer ends a process fifty times a day. It is invisible until
 something goes wrong, and when something does go wrong it looks like a bug in the application:
 the pen moves, the canvas stays empty, and nothing says the samples never arrived.
 
-Everything below was measured. Where a thing was **not** established, it says so.
+The original measurements and the September 14 independent recheck are distinguished below.
+The recheck corrected several earlier conclusions. Its methods, raw CSVs, and limitations are in
+[the investigation record](WINTAB-INVESTIGATION-2026-09.md).
 
 ## What was tested against
 
@@ -138,29 +144,39 @@ Run three times in a row, then a clean run afterwards:
   after closing it        open  18   system  18
 ```
 
-Each kill costs two and never gives them back. The clean run afterwards still balances, so the
-driver is not broken by this — it is just counting contexts that no longer have an owner.
+Each kill in these runs left two counted contexts behind. The clean run afterwards still
+balanced. These observations establish a retained context, not infinite lifetime or a
+driver-wide failure.
 
 ## What one context costs
 
-**Two**, on this driver. A system context moves both counters by two; a digitising context moves
-`STA_CONTEXTS` by two and `STA_SYSCTXS` by nothing. Whatever the unit is, it is not "one context",
-so do not read `STA_CONTEXTS` as a number of contexts.
+**It depends on device selection.** The default virtual device (`lcDevice = UINT_MAX`)
+produced two manager-enumerated contexts, one for device 0 and one for device 1, per successful
+`WTOpenA`. An explicit device-0 or device-1 open produced one. Three opens in one process
+confirmed that this is a per-open difference, rather than fixed process overhead.
 
-That difference is also the only way to tell the two kinds apart. **Wintab has no counter for
-digitising contexts**: `WTI_STATUS` implements eight indices, confirmed by asking for all of them,
-and none of them is one. Digitising contexts are what is left after the system ones are subtracted
-from the total.
+A system context moves both counters; a digitising context moves only `STA_CONTEXTS`.
+For the virtual device these increments were two; for an explicit device they were one.
+`STA_CONTEXTS` matched the number of enumerated device contexts. It is not a count of application
+sessions or successful `WTOpenA` calls. The two device IDs both report `WACOM Tablet`, although
+`IFC_NDEVICES` reports one; the reason for that topology remains unknown.
 
-## `IFC_NCONTEXTS` is not a ceiling
+There is no separate standard digitizing-context counter among the eight `WTI_STATUS` indices.
+The total minus system count describes the remaining counted contexts. Manager enumeration
+offers an additional per-context view: inspect `lcOptions & CXO_SYSTEM` with `WTGetA`.
 
-The Wintab specification calls it "the number of contexts supported". This driver reports **32**
-and does not enforce it. Contexts were leaked deliberately past that figure — 32, 54, 108, 334 —
-and **every single open still succeeded**, including from the real application.
+## `IFC_NCONTEXTS` is not an enforced ceiling of 32
 
-This is worth stating plainly because it is an easy and wrong inference to draw. A count above the
-stated maximum means contexts have been leaked. It does not mean the driver has run out, and it is
-not a reason for anything.
+The Wintab specification calls it "the number of contexts supported". This driver reports **32**.
+The independent recheck successfully opened beyond that value, including ordinary live contexts
+with no leak. Earlier runs also reported successful opens at 54, 108, and 334.
+
+A count above 32 proves neither a leak nor exhaustion. Conversely, exceeding 32 does **not** prove
+that all other resource limits are absent. The September 14 recheck reached 510 counted contexts;
+the next virtual open returned NULL and increased the count to 511. Closing successful opens
+allowed new opens again. The failed open left one additional enumerated context, despite
+returning no handle. This is a different failure from the historical frozen-counter report.
+See the investigation record for the conditions and subsequent checks.
 
 ## The failure that started this, which is a different thing
 
@@ -169,18 +185,59 @@ context — system, digitising, hi-res, screen-output, to every application on t
 refusal taking about 90 ms. `STA_CONTEXTS` was **frozen at 253**: it did not move when
 applications closed, and it did not move for the refused opens either.
 
-That is a driver that has stopped working, not a driver that has run out. The 253 was a symptom
-sitting next to the fault, and reading it as the cause was wrong — a mistake made twice here
-before the exhaustion test above ruled it out.
+Those observations establish that the tested opens stopped working. They do not identify why.
+The counter alone does not show which resource, if any, was exhausted. The earlier statement
+that high-count successes ruled out exhaustion generally was too strong: they rule out an
+enforced ceiling of 32, not every resource limit or state-dependent failure.
 
 **What cleared it**, in seconds and with no reboot, was restarting the tablet service — see
 [Resetting the driver](#resetting-the-driver) below. The count went straight back to 2 and
 everything worked. Killing and restarting the user-level `Wacom_TabletUser.exe` did **not** help;
 the counts live in the service.
 
-**Why the driver wedges is not known.** It had been running for two days and had accumulated a
-great many leaked contexts, so the leak is a plausible contributor, but it is not proven and the
-exhaustion test argues against a simple "ran out of slots" explanation.
+**Why the historical driver-wide refusal occurred is not known.** Its relation to leaked
+contexts, the independently observed allocation limit, and IPC timeouts remains unproven.
+The old 1074 observation has not been independently reproduced by the same opening sequence.
+
+## What the specification says
+
+Read September 14, 2026: [Wintab 1.4 specification](https://www.wacomeng.com/windows/docs/Wintab_v140.htm),
+sections 4.2, 5.1, 5.5, 5.6 and tables 7.4-7.6.
+
+- External manager support is optional; exported functions may return failure when unsupported.
+- `WTMgrContextEnum` enumerates context handles. `WTMgrContextOwner` returns an **HWND**, not a
+  process ID. `WTMgrDefContext` provides a read-only default context, not an orphan list.
+- `WTClose` destroys a valid context. The counters describe open contexts and supported counts;
+  the specification does not promise an unlimited context supply.
+- `WTOpen` identifies its HWND as the owning window and message recipient. It does not document
+  NULL as a supported headless input mechanism.
+
+Wacom's current [shutdown guidance](https://developer-docs.wacom.com/docs/icbt/windows/wintab/wintab-basics/)
+also recommends `WacomCleanup()` after closing the application's contexts. That is not a documented
+foreign-context collector. In our test, the caller subsequently read zero while a fresh process
+still saw the original count; always cross-check post-cleanup readings independently.
+
+## Reclaiming known contexts without a service restart
+
+The independent plain-C probe in [Samples/ContextCount](../Samples/ContextCount/README.md)
+demonstrates this on both x64 and x86:
+
+1. Open a manager handle against a real, optionally hidden window.
+2. Retain the Windows process handle for a test child and confirm its exit.
+3. Enumerate contexts and identify only that child's deliberately named test contexts.
+4. Recheck identity and `WTClose` each selected device context.
+5. Verify a live sentinel with `WTGetA`, then close that sentinel normally.
+
+Three leaked virtual opens generated six entries; closing those entries reduced the count by
+one each. A live sentinel remained valid and its own close restored the original baseline.
+This worked for system and digitizer contexts, killed children, ordinary process return without
+`WTClose`, and window destruction before process exit. None needed a service restart.
+
+**Do not turn `!IsWindow(owner)` into a cleanup button.** Our initial two built-in system
+contexts had NULL owners. A destroyed window also does not prove its process has exited, and
+Windows can reuse HWNDs. The sample therefore reclaims only its own identified child contexts.
+Safe retrospective identification of arbitrary old orphans is not established. This result also
+does not prove that manager cleanup cures the historical wedged state.
 
 ## Resetting the driver
 
@@ -335,7 +392,8 @@ check runs.
 
 ## Other applications leak identically
 
-Measured the same way, on the same machine, in the same session:
+Reported by the original investigation on the same machine; Clip Studio Paint and Krita were
+not rerun in the September 14 independent C recheck:
 
 | Application | On launch | Closed by its window | Killed |
 |---|---|---|---|
@@ -343,8 +401,9 @@ Measured the same way, on the same machine, in the same session:
 | Clip Studio Paint | +2 | returns | **leaks 2** |
 | Krita | +2 | returns | **leaks 2** |
 
-Clip Studio and Krita are long-established painting applications and neither goes anywhere near
-WinPenKit. This is the driver's behaviour, not any application's.
+The independent C reproduction also leaves entries without loading WinPenKit. That establishes
+that WinPenKit is not required for the retention; the per-application figures above remain the
+original report, not independent replications.
 
 ## Automated tests are the fastest way to leak contexts
 
@@ -352,7 +411,7 @@ This is the part most likely to matter to somebody writing a Wintab application,
 obvious until it has already happened.
 
 A test that builds a window and drops it costs a context every time. On this driver that is two
-units that never come back, and a test suite runs far more often than a person opens an
+units left after exit in these runs, and a test suite runs far more often than a person opens an
 application. On the machine this was written on, one afternoon looked like this:
 
 | | contexts |
@@ -369,27 +428,24 @@ contexts between them, and two launches of the application, which opened **two**
 back. The application was not what filled the driver up. At 2 contexts a launch it would have taken
 261 launches to do what the tests did in eight minutes.
 
-### The window does not have to exist
+### The null-window explanation was not reproduced
 
-This is the part that makes it invisible, and it is worth stating on its own.
+An earlier version asserted that `WTOpenA(NULL, ...)` succeeded and explained the test-suite
+leaks. Independent x64 and x86 programs on September 14 instead received NULL, without any
+counter increase, both with `CXO_MESSAGES` enabled and in polling configuration. Valid-window
+controls succeeded. The unqualified null-window claim is withdrawn.
 
-A headless test window has **no window handle**. Avalonia's headless platform returns a
-`PlatformHandle` whose descriptor is `STUB` and whose value is **0**, so what reaches `WTOpenA` is
-a null `HWND`.
+A hidden real HWND and a NULL HWND are different cases. In
+[`WintabSessionBase.Start`](../WinPenKit/Wintab/WintabSessionBase.cs), the application HWND sets
+capture scope. The method creates a [`WintabMessagePump`](../WinPenKit/Wintab/WintabMessagePump.cs)
+and passes `_pump.Hwnd` to `OpenContext`; the pump creates a real hidden top-level Win32 window.
+Consequently `session.Start(IntPtr.Zero)` can allocate a context in a headless test without ever
+calling `WTOpenA(NULL, ...)`. This source path explains why headless tests are not automatically
+isolated from the physical driver.
 
-**The driver allocates a context anyway.** `WTOpenA(NULL, ...)` returns a valid handle, the counter
-moves by two, and those two are as leaked as any other if the context is not closed. Nothing
-appears on any screen, no tablet is touched, and nobody launched an application.
-
-That is why a climbing context count is so hard to attribute: there is no window to associate it
-with. It is also worth knowing if you are wondering whether a headless CI job on a machine that
-*does* have a tablet is safe. It is not.
-
-Only Wacom was tested, here as everywhere else in this document.
-
-At 1074 the driver stopped handing out contexts altogether and the application could not see the
-pen. That reads exactly like a broken tablet or a bug in your own rendering, which is what makes it
-expensive: the cause is a test suite that finished successfully eight minutes earlier.
+The earlier prose also alternated between successful opens at 1074 and
+a global refusal there; that historical state was not captured sufficiently to resolve the
+conflict. Neither assertion should be used as a reproduction recipe.
 
 ### What to do about it
 
@@ -461,9 +517,10 @@ Worth recording because it contradicts the simple story. After the runs above th
 1074. Nine minutes later, with those processes long exited and no service restart and nothing else
 done, it read **538** — almost exactly half of them had been returned.
 
-Every deliberate measurement in this document says a leaked context stays leaked. Half of these did
-not. Whether the driver reclaims one of the two units per session on some delay, or whether
-something else was at work, is not established.
+This was observed once and the cause was not captured. It is not evidence of a guaranteed timer
+or reclamation policy. A virtual context expanding into two device contexts provides a testable
+alternative hypothesis (one device's entries disappearing), but has not established what happened.
+See the independent timed observation in [the investigation record](WINTAB-INVESTIGATION-2026-09.md).
 
 ## What WinPenKit does, and what it does not cause
 
@@ -509,9 +566,9 @@ That is a run that closed properly. This is a run that was killed:
 [21:40:01.446] Contexts before opening: 20 open, of a stated maximum of 32
 ```
 
-So the first line of any log answers "how many contexts had already been leaked when this process
-started", which is the question that identifies a leaking application without needing to have been
-watching at the time.
+The first line records all counted contexts when the process starts, including live contexts and
+driver defaults. It cannot by itself identify leaks or their owner. Consecutive baselines can
+show retention when other applications and driver state are controlled.
 
 The first line of each file carries the date and the application, which the per-line timestamps do
 not:
@@ -632,7 +689,8 @@ the vendors nothing has been tested against, where a silent 0 would read as "doe
 
 ### Testing whether a particular driver leaks
 
-The count alone says how much has accumulated. This says whether the driver is the cause:
+The count includes both live and retained contexts. With other applications and driver state
+held constant, this lifecycle comparison tests whether contexts survive a killed owner:
 
 1. Run the script. Note the `contexts` number.
 2. Open a drawing application, then **close it normally**. Run the script again.
@@ -642,7 +700,7 @@ The count alone says how much has accumulated. This says whether the driver is t
 If the third number is higher than the first, that driver leaks contexts from killed processes.
 On Wacom 6.4.14-1 it goes up by two and stays up.
 
-What is worth reporting back: all four lines from step 1, and the three `contexts` numbers.
+What is worth reporting back: all five lines from step 1, and the three `contexts` numbers.
 
 ## How to check a machine
 
@@ -675,26 +733,33 @@ refusal now says what the driver thinks of itself rather than only that it said 
 - Whether any other vendor's driver behaves this way. Nothing but Wacom was tested.
 - What actually wedges the driver.
 - Whether the leak contributes to the wedge at all.
-- Whether logging off, or any lighter action than restarting the service, reclaims leaked
-  contexts.
+- Whether logging off reclaims leaked contexts. Manager closure of known test contexts is
+  established; safe automatic identification of arbitrary old orphans is not.
 - Why about half of a large number of leaked contexts came back on their own, minutes after the
   processes holding them had exited, when every deliberate measurement here says a leaked context
   stays leaked. Seen once, at 1074 falling to 538. Not reproduced on purpose.
 - Whether a context leaked by one user's process is visible to another user's session.
-- Whether a context opened on a null `HWND` can deliver packets at all, or only occupies a slot.
-  Only that the driver allocates one was measured.
+- Whether any configuration on this driver accepts a null `HWND`. Independent x64/x86 attempts
+  with default virtual-device settings were refused; the original successful-open claim was
+  not reproduced.
+- Why two enumerated device IDs coexist with `IFC_NDEVICES=1`, and whether the topology changes
+  after hardware, driver, or user-session changes.
+- The exact resource and scope of the allocation limit observed near 510 counted contexts,
+  and its relation, if any, to the historical 253/90 ms refusal.
 - Whether older or newer Wacom driver versions differ. One version was tested.
 
 ## Related public reports
 
-Neither is the same fault, but both are the same shape — a Wintab driver that has stopped
-behaving, with no cause identified:
+These reports need to be distinguished from this investigation:
 
 - Blender [#111152](https://projects.blender.org/blender/blender/issues/111152), "Wintab rarely
   gets into a bad state and prevents Blender startup". Theirs crashes inside `WTOpenA` rather than
   returning NULL. The workaround offered is to switch to Windows Ink.
-- Godot [#38533](https://github.com/godotengine/godot/issues/38533), "WinTab context creation
-  failed". Unresolved.
+- Godot [#38533](https://github.com/godotengine/godot/issues/38533) was **closed** by
+  [#38535](https://github.com/godotengine/godot/pull/38535) in May 2020. The discussion confirms
+  no crash; the patch makes a failure message verbose-only when a driver cannot open a tablet.
+  It does not report measured context leakage or establish a wedged Wacom service. The previous
+  description of it as unresolved supporting evidence was incorrect (rechecked September 14, 2026).
 
 Restarting the tablet service is folk knowledge across support pages for
 [Maxon](https://support.maxon.net/hc/en-us/articles/7945504326044-WinTab-Service-Not-Available)

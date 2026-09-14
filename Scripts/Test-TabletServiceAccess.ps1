@@ -4,7 +4,8 @@
 
 .DESCRIPTION
     Restarting the tablet service is the cure for a driver that has stopped handing out Wintab
-    contexts, and it is the only way to clear leaked ones. By default it needs administrator
+    contexts. A manager can also close known leaked contexts on the tested driver; a service
+    restart resets all contexts. By default it needs administrator
     rights, so every restart raises a prompt -- which is fine once and a nuisance in a test run
     that wants to reset the driver between cases.
 

@@ -1,0 +1,32 @@
+[
+  {
+    "Id": 34844,
+    "ProcessName": "Wacom_Tablet",
+    "HandleCount": 730,
+    "ThreadCount": 69,
+    "PrivateMemorySize64": 45723648,
+    "WorkingSet64": 91983872,
+    "CPU": null,
+    "Responding": true
+  },
+  {
+    "Id": 55636,
+    "ProcessName": "Wacom_TabletUser",
+    "HandleCount": 309,
+    "ThreadCount": 5,
+    "PrivateMemorySize64": 3006464,
+    "WorkingSet64": 23318528,
+    "CPU": 0.046875,
+    "Responding": true
+  },
+  {
+    "Id": 40496,
+    "ProcessName": "WTabletServicePro",
+    "HandleCount": 204,
+    "ThreadCount": 4,
+    "PrivateMemorySize64": 2187264,
+    "WorkingSet64": 12652544,
+    "CPU": null,
+    "Responding": true
+  }
+]

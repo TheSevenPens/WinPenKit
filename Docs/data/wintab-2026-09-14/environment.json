@@ -1,0 +1,60 @@
+{
+  "utc": "2026-09-14T17:33:42.9743258Z",
+  "os": {
+    "Caption": "Microsoft Windows 11 Pro",
+    "BuildNumber": "26200",
+    "LastBootUpTime": "2026-09-11T14:05:53.5-07:00"
+  },
+  "service": {
+    "Name": "WTabletServicePro",
+    "State": "Running",
+    "ProcessId": 40496
+  },
+  "devices": [
+    {
+      "Status": "OK",
+      "FriendlyName": "Wacom Cintiq 24 touch"
+    },
+    {
+      "Status": "OK",
+      "FriendlyName": "Wacom Cintiq 24touch Billboard"
+    },
+    {
+      "Status": "OK",
+      "FriendlyName": "Generic Monitor (Wacom DTH246)"
+    },
+    {
+      "Status": "OK",
+      "FriendlyName": "Wacom Pointer"
+    },
+    {
+      "Status": "OK",
+      "FriendlyName": "Wacom Tablet"
+    },
+    {
+      "Status": "OK",
+      "FriendlyName": "Wacom Tablet"
+    },
+    {
+      "Status": "OK",
+      "FriendlyName": "Wacom Windows Update Helper App Component"
+    }
+  ],
+  "versions": [
+    {
+      "FileName": "C:\\Program Files\\Tablet\\Wacom\\WTabletServicePro.exe",
+      "FileVersion": "6.4.14-1",
+      "CompanyName": "Wacom Co. Ltd."
+    },
+    {
+      "FileName": "C:\\Program Files\\Tablet\\Wacom\\Wacom_Tablet.exe",
+      "FileVersion": "6.4.14-1",
+      "CompanyName": "Wacom Co. Ltd."
+    },
+    {
+      "FileName": "C:\\Windows\\System32\\wintab32.dll",
+      "FileVersion": "1.0.5-10",
+      "CompanyName": "Wacom Co. Ltd."
+    }
+  ]
+}
