@@ -264,6 +264,71 @@ Two faults were found here while adding this, both of which had been quietly cos
 `WintabDiagnostics.LogPath` names this process's file, for an application that wants to point at
 it in a bug report.
 
+## Checking a machine you do not own
+
+Anyone can read the counters without installing anything. Paste this into PowerShell — no
+administrator rights, nothing downloaded, and it only reads:
+
+```powershell
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class WT {
+  [DllImport("Wintab32.dll", CharSet=CharSet.Ansi)]
+  public static extern uint WTInfoA(uint c, uint i, System.Text.StringBuilder o);
+  [DllImport("Wintab32.dll")]
+  public static extern uint WTInfoA(uint c, uint i, out uint o);
+}
+'@
+function N($c,$i){ $v=0; if([WT]::WTInfoA($c,$i,[ref]$v) -eq 0){ "not reported" } else { $v } }
+function S($c,$i){ $b=New-Object Text.StringBuilder 256; if([WT]::WTInfoA($c,$i,$b) -eq 0){"not reported"}else{$b.ToString()} }
+try {
+  $dll = (Get-Item C:\Windows\System32\wintab32.dll -ErrorAction SilentlyContinue).VersionInfo.FileVersion
+  "wintab   : {0}   (wintab32.dll {1})" -f (S 1 1), $dll
+  "tablet   : {0}" -f (S 100 1)
+  "contexts : {0} open, {1} system, driver claims a maximum of {2}" -f (N 2 1), (N 2 2), (N 1 6)
+  "uptime   : {0:0.0} hours" -f ((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalHours
+} catch [EntryPointNotFoundException] {
+  "No Wintab on this machine - the tablet driver either is not installed or does not provide it."
+} catch {
+  if ($_.Exception.InnerException -is [DllNotFoundException] -or $_.Exception -is [DllNotFoundException]) {
+    "No Wintab on this machine - the tablet driver either is not installed or does not provide it."
+  } else { "Could not read Wintab: $($_.Exception.Message)" }
+}
+```
+
+It prints five lines:
+
+```
+wintab   : Wintab Digitizer Services   (wintab32.dll 1.0.5-10)
+tablet   : WACOM Tablet
+contexts : 22 open, 22 system, driver claims a maximum of 32
+uptime   : 55.7 hours
+```
+
+Tested on Windows PowerShell 5.1 and PowerShell 7. The uptime is there because a count means
+nothing without it: twenty after three weeks is unremarkable, twenty after two hours is not.
+
+**"not reported" is not the same as zero.** A driver that does not implement one of these counters
+returns no bytes at all, and the script says so rather than printing 0 — which matters most for
+the vendors nothing has been tested against, where a silent 0 would read as "does not leak".
+
+### Testing whether a particular driver leaks
+
+The count alone says how much has accumulated. This says whether the driver is the cause:
+
+1. Run the script. Note the `contexts` number.
+2. Open a drawing application, then **close it normally**. Run the script again.
+   The number should be back where it started.
+3. Open it again, then **End Task** it from Task Manager. Run the script a third time.
+
+If the third number is higher than the first, that driver leaks contexts from killed processes.
+On Wacom 6.4.14-1 it goes up by two and stays up.
+
+What is worth reporting back: all five lines from step 1, the three `contexts` numbers, and the
+tablet make and model. The first two lines identify the vendor's Wintab implementation, which is
+the thing that actually varies.
+
 ## How to check a machine
 
 Read the two counters — `WintabDiagnostics.ContextTable()` does it from C#, and the sample
