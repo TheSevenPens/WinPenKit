@@ -10,9 +10,12 @@ and stays up. Close one properly and the number comes back down. That is the who
 
 ## Getting it
 
-It is built by the solution and **shipped in the release** as a single self-contained file:
-download `WintabContexts.exe`, double-click it, nothing to install. About 49 MB, which is what
-carrying its own copy of .NET costs.
+It ships as a single self-contained file: download `WintabContexts.exe`, double-click it, nothing
+to install. About 49 MB, which is what carrying its own copy of .NET costs.
+
+**It has its own release, on its own tag** -- `wintab-contexts/v*` rather than `release/v*` -- so
+that the library's frequent releases are not 50 MB heavier for a tool that rarely changes. It is
+still built by the solution on every push, so it cannot break unnoticed between releases.
 
 Self-contained unlike the sample applications beside it, and for a reason particular to what it
 is for: it is reached for at the moment something has already gone wrong with the pen, and

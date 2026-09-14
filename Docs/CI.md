@@ -6,7 +6,15 @@ GitHub Actions builds all projects on every push to main and on pull requests. T
 
 ### Triggers
 - **Push to main** and **pull requests** — CI build (no artifacts)
-- **`release/v*` tags** — full build + upload artifacts + create GitHub Release
+- **`release/v*` tags** — the library and the samples: build, upload artifacts, create a Release
+- **`wintab-contexts/v*` tags** — the Wintab context viewer, by itself
+
+Two release tags because the two change at very different rates. The viewer carries its own copy
+of .NET and is about 50 MB; the library is tagged often and the viewer rarely, so tagging them
+together made every ordinary release 50 MB heavier for a tool that had not changed.
+
+Everything still **builds** on every push and pull request — the viewer is in the solution — so
+neither can break unnoticed between releases. Only the publishing is split.
 
 ### Build order
 1. **C++ first** — `msbuild WinPenKitNative.sln` (produces WinPenKit.Native.dll/.lib)
@@ -15,11 +23,18 @@ GitHub Actions builds all projects on every push to main and on pull requests. T
 4. **Rust** — `cargo build --release` in Scribble.Rust (links against WinPenKit.Native.lib)
 
 ### Release artifacts
-On tagged releases, the workflow uploads:
+
+One zip per top-level folder, so each is its own download on the Release page.
+
+On a **`release/v*`** tag:
 - WinPenKit.Native (DLL + lib + header)
+- WinPenKit.Managed (the managed DLLs, a pre-NuGet stopgap)
 - Scribble.Win32 (exe + DLL)
 - Scribble.Rust (exe + DLL)
 - Scribble.WinUI, Scribble.Wpf, Scribble.WinForms, Scribble.Avalonia (build output)
+
+On a **`wintab-contexts/v*`** tag:
+- WintabContexts — one self-contained `WintabContexts.exe`, no runtime needed
 
 ### Solution files
 
@@ -54,12 +69,26 @@ Pre-release tags are automatically marked as prerelease on GitHub (won't show as
 
 ## Releasing
 
+The library and the samples:
+
 ```bash
 git tag release/v1.0.0
 git push origin release/v1.0.0
 ```
 
-The workflow creates a GitHub Release named after the tag with auto-generated release notes and downloadable artifacts.
+The context viewer, on its own and on its own version numbers:
+
+```bash
+git tag wintab-contexts/v1.0.0
+git push origin wintab-contexts/v1.0.0
+```
+
+Either creates a GitHub Release named after the tag, with auto-generated notes and the artifacts
+for that kind of tag and no others.
+
+One wrinkle worth knowing: the generated notes list commits since the previous tag of **any**
+kind, so a viewer release will list library commits and the other way round. The assets are
+right; only the prose is broad.
 
 ## Debug builds
 
