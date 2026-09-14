@@ -104,15 +104,16 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
     /// </remarks>
     private static string WhyNot(string refusal)
     {
-        var table = WintabDiagnostics.ContextTable();
-        if (table is not { } counts) return refusal;
-
-        Log($"Context table: {counts}");
-
+        // Not logged here: the session logs the counters either side of every open already, so a
+        // line at this point would be the same numbers twice. This is only about what the caller
+        // is told.
+        //
         // The numbers, not a conclusion drawn from them. A count above the stated maximum says
         // contexts have been leaked; it does not say that is why this open failed, and on this
         // driver it is not -- opens keep succeeding well past that figure.
-        return $"{refusal} The driver reports {counts}.";
+        return WintabDiagnostics.ContextTable() is { } counts
+            ? $"{refusal} The driver reports {counts}."
+            : refusal;
     }
 
     private string? OpenFallback(IntPtr hwnd)

@@ -211,6 +211,37 @@ levels:
 Nor does history matter. A process killed after forty switches leaks exactly what a process killed
 immediately leaks: whatever it held at the moment it died, and nothing more.
 
+## What WinPenKit writes to its log
+
+Every Wintab session brackets itself with the driver's context counters, in
+`%TEMP%\WinPenKit.log`:
+
+```
+[21:39:34.684] Contexts before opening: 18 open, of a stated maximum of 32
+[21:39:34.925] Contexts after opening: 20 open, of a stated maximum of 32
+[21:39:42.523] Contexts after closing: 18 open, of a stated maximum of 32
+```
+
+That is a run that closed properly. This is a run that was killed:
+
+```
+[21:39:49.389] Contexts before opening: 18 open, of a stated maximum of 32
+[21:39:49.614] Contexts after opening: 20 open, of a stated maximum of 32
+```
+
+**The missing third line is the whole signal.** And the next run says what that cost:
+
+```
+[21:40:01.446] Contexts before opening: 20 open, of a stated maximum of 32
+```
+
+So the first line of any log answers "how many contexts had already been leaked when this process
+started", which is the question that identifies a leaking application without needing to have been
+watching at the time.
+
+One limitation: the log is truncated at the start of each run, so it holds the most recent session
+and no history. The *number* carries the history even though the file does not.
+
 ## How to check a machine
 
 Read the two counters — `WintabDiagnostics.ContextTable()` does it from C#, and the sample

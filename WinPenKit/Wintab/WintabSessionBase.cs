@@ -72,6 +72,9 @@ internal abstract class WintabSessionBase : IPenSession
 
         MaxPressure = QueryMaxPressure();
 
+        // Before anything is opened, so the number is the one this process inherited.
+        LogContexts("before opening");
+
         // Start the message pump first — we need the HWND for WTOpen.
         _pump = new WintabMessagePump(OnWintabMessage);
 
@@ -83,6 +86,8 @@ internal abstract class WintabSessionBase : IPenSession
             return error;
         }
 
+        LogContexts("after opening");
+
         IsRunning = true;
         return null;
     }
@@ -93,11 +98,47 @@ internal abstract class WintabSessionBase : IPenSession
         {
             WintabNative.WTClose(_hCtx);
             _hCtx = IntPtr.Zero;
+
+            // The line whose absence is the interesting one. A session that reaches here has
+            // given its context back; a process that is killed never writes this, and the count
+            // the next run logs as "before opening" is the one it left behind.
+            LogContexts("after closing");
         }
 
         _pump?.Dispose();
         _pump = null;
         IsRunning = false;
+    }
+
+    /// <summary>
+    /// Write the driver's context counters to the log, with a note of what was happening.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three of these bracket a session: before the context is opened, after, and after it is
+    /// closed. Together they say what this process cost the driver, and separately they say what
+    /// it inherited -- a machine that has been used normally sits in the low single figures, and
+    /// the "before opening" line is the whole of the evidence for how many contexts were already
+    /// leaked when this run started.
+    /// </para>
+    /// <para>
+    /// A context is leaked by any process that dies without calling <c>WTClose</c>: killed,
+    /// crashed, or stopped from a debugger. On the driver this was measured against, the driver
+    /// never takes it back. So when a log shows an "after opening" with no "after closing", the
+    /// run it came from leaked one, and the next run's first line will be two higher. See
+    /// <c>Docs/WINTAB-CONTEXT-LEAK.md</c>.
+    /// </para>
+    /// <para>
+    /// Facts only. Whether a number is alarming, and what anybody should do about it, is not this
+    /// library's business.
+    /// </para>
+    /// </remarks>
+    private static void LogContexts(string when)
+    {
+        if (Diagnostics.WintabDiagnostics.ContextTable() is not { } table) return;
+
+        Log($"Contexts {when}: {table}" +
+            (table.AboveStatedMaximum ? "  (above the stated maximum)" : ""));
     }
 
     /// <summary>
