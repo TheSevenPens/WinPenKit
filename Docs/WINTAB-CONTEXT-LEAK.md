@@ -168,18 +168,54 @@ That is a driver that has stopped working, not a driver that has run out. The 25
 sitting next to the fault, and reading it as the cause was wrong — a mistake made twice here
 before the exhaustion test above ruled it out.
 
-**What cleared it**, in seconds, with no reboot:
-
-```powershell
-Restart-Service WTabletServicePro -Force    # needs an elevated shell
-```
-
-The count went straight back to 2 and everything worked. Killing and restarting the user-level
-`Wacom_TabletUser.exe` did **not** help; the counts live in the service.
+**What cleared it**, in seconds and with no reboot, was restarting the tablet service — see
+[Resetting the driver](#resetting-the-driver) below. The count went straight back to 2 and
+everything worked. Killing and restarting the user-level `Wacom_TabletUser.exe` did **not** help;
+the counts live in the service.
 
 **Why the driver wedges is not known.** It had been running for two days and had accumulated a
 great many leaked contexts, so the leak is a plausible contributor, but it is not proven and the
 exhaustion test argues against a simple "ran out of slots" explanation.
+
+## Resetting the driver
+
+The fix when the pen has stopped working. It takes seconds and does not need a reboot.
+
+**1. Open PowerShell as administrator.** Press Start, type `powershell`, and choose *Run as
+administrator*. The commands below will not work in an ordinary window — stopping a service needs
+the elevation, and without it you get "cannot open service on computer".
+
+**2. Find the tablet's service.** The name differs by vendor:
+
+```powershell
+Get-Service | Where-Object {
+  $_.Name -match 'wacom|wtablet|huion|xp-?pen|gaomon|xencelabs|veikk|ugee|parblo|tablet|pentablet' -and
+  $_.Name -ne 'TabletInputService'
+} | Select-Object Status, Name, DisplayName
+```
+
+On a Wacom machine that finds one:
+
+```
+Status  Name               DisplayName
+------  ----               -----------
+Running WTabletServicePro  Wacom Professional Service
+```
+
+**3. Restart it by name:**
+
+```powershell
+Restart-Service WTabletServicePro -Force
+```
+
+The count drops back to its floor within a few seconds. Measured twice on the day this was
+written: 253 to 2, and 334 to 2.
+
+**Not `TabletInputService`.** That is Windows' own pen and touch service and has nothing to do with
+Wintab. It is excluded from the search above deliberately.
+
+Rebooting does the same thing, more slowly. Whether an application that was *already running* picks
+the driver up again on its own, or has to be restarted, was not tested.
 
 ## Other applications leak identically
 
@@ -372,8 +408,9 @@ refusal now says what the driver thinks of itself rather than only that it said 
 
 - **Close pen applications by their window.** `Stop-Process`, Task Manager's End Task, and a
   debugger's stop button all leak.
-- **When the pen stops working, restart the tablet service before suspecting your own code.** The
-  symptom is indistinguishable from a broken renderer, which is what cost two sessions here.
+- **When the pen stops working, [restart the tablet service](#resetting-the-driver) before
+  suspecting your own code.** The symptom is indistinguishable from a broken renderer, which is
+  what cost two sessions here.
 - Do not treat the counters as a capacity check.
 
 ## Not established
