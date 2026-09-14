@@ -1,3 +1,5 @@
+using WinPenKit.Diagnostics;
+
 namespace WinPenKit.Wintab;
 
 /// <summary>
@@ -79,6 +81,35 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
         return null;
     }
 
+    /// <summary>
+    /// Add whatever the driver will say about why, to a refusal that says nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "Fallback context also failed to open" names no cause, and a pen that has stopped working
+    /// looks exactly like a drawing bug, so the cause is what a caller needs. The driver knows one
+    /// of them: whether it has any context left to give. Seen in the wild at 253 open against a
+    /// stated maximum of 32, refusing every kind of context to every application, after a run of
+    /// development in which processes had been killed rather than closed -- a context is leaked by
+    /// any process that dies without calling WTClose.
+    /// </para>
+    /// <para>
+    /// <b>Reported, not advised.</b> What to do about it, and whether to say anything to anyone,
+    /// is the application's business. This is a library.
+    /// </para>
+    /// </remarks>
+    private static string WhyNot(string refusal)
+    {
+        var table = WintabDiagnostics.ContextTable();
+        if (table is not { } counts) return refusal;
+
+        Log($"Context table: {counts}");
+
+        return counts.IsFull
+            ? $"{refusal} The driver has {counts} contexts open, so it has none left to give."
+            : refusal;
+    }
+
     private string? OpenFallback(IntPtr hwnd)
     {
         if (!GetDefaultSystemContext(out var lc))
@@ -94,7 +125,7 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
         if (hCtx == IntPtr.Zero)
         {
             Log("Fallback Open also FAILED");
-            return "Fallback context also failed to open.";
+            return WhyNot("Fallback context also failed to open.");
         }
 
         RefreshContext(hCtx, ref lc);

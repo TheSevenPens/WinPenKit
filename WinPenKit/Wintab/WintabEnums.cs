@@ -18,8 +18,27 @@ internal static class WintabMessages
 /// <summary>WTInfo category indices.</summary>
 internal static class WTI
 {
+    public const uint INTERFACE = 1;
+    public const uint STATUS    = 2;
     public const uint DEFSYSCTX = 4;
     public const uint DEVICES   = 100;
+}
+
+/// <summary>WTI_INTERFACE sub-indices. What the driver is, rather than what it is doing.</summary>
+internal static class IFC
+{
+    /// <summary>The most contexts the driver will have open at one time.</summary>
+    public const uint NCONTEXTS = 6;
+}
+
+/// <summary>WTI_STATUS sub-indices. What the driver is doing right now.</summary>
+internal static class STA
+{
+    /// <summary>Contexts open across every application.</summary>
+    public const uint CONTEXTS = 1;
+
+    /// <summary>How many of those are system contexts.</summary>
+    public const uint SYSCTXS = 2;
 }
 
 /// <summary>WTI_DEVICES sub-indices.</summary>
