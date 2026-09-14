@@ -283,9 +283,14 @@ public class WT {
 function N($c,$i){ $v=0; if([WT]::WTInfoA($c,$i,[ref]$v) -eq 0){ "not reported" } else { $v } }
 function S($c,$i){ $b=New-Object Text.StringBuilder 256; if([WT]::WTInfoA($c,$i,$b) -eq 0){"not reported"}else{$b.ToString()} }
 try {
-  $dll = (Get-Item C:\Windows\System32\wintab32.dll -ErrorAction SilentlyContinue).VersionInfo.FileVersion
-  "wintab   : {0}   (wintab32.dll {1})" -f (S 1 1), $dll
-  "tablet   : {0}" -f (S 100 1)
+  $v = (Get-Item C:\Windows\System32\wintab32.dll -ErrorAction SilentlyContinue).VersionInfo
+  $hw = (Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object {
+           $_.Status -eq 'OK' -and
+           $_.FriendlyName -match 'wacom|huion|xp-?pen|gaomon|xencelabs|veikk|ugee|parblo|tablet|pen display' -and
+           $_.FriendlyName -notmatch 'billboard|monitor|helper|update|component|pointer|composite|hub|audio'
+         } | Select-Object -ExpandProperty FriendlyName -Unique) -join ', '
+  "wintab   : {0}   (wintab32.dll {1}, {2})" -f (S 1 1), $v.FileVersion, $v.CompanyName
+  "tablet   : {0}" -f $(if ($hw) { $hw } else { S 100 1 })
   "contexts : {0} open, {1} system, driver claims a maximum of {2}" -f (N 2 1), (N 2 2), (N 1 6)
   "uptime   : {0:0.0} hours" -f ((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalHours
 } catch [EntryPointNotFoundException] {
@@ -300,14 +305,22 @@ try {
 It prints five lines:
 
 ```
-wintab   : Wintab Digitizer Services   (wintab32.dll 1.0.5-10)
-tablet   : WACOM Tablet
+wintab   : Wintab Digitizer Services   (wintab32.dll 1.0.5-10, Wacom Co. Ltd.)
+tablet   : Wacom Cintiq 24 touch, Wacom Tablet
 contexts : 22 open, 22 system, driver claims a maximum of 32
 uptime   : 55.7 hours
 ```
 
-Tested on Windows PowerShell 5.1 and PowerShell 7. The uptime is there because a count means
-nothing without it: twenty after three weeks is unremarkable, twenty after two hours is not.
+Tested on Windows PowerShell 5.1 and PowerShell 7, by extracting the block from this file and
+running it, so what is printed here is what the published copy does.
+
+The first two lines are the ones that matter for collecting reports from other people. The Wintab
+implementation name and `wintab32.dll`'s company identify **whose** Wintab this is — a Huion
+machine has Huion's DLL under the same filename — and the tablet line names the actual model,
+which `WTI_DEVICES` alone does not: it answers "WACOM Tablet" whatever is plugged in.
+
+The uptime is there because a count means nothing without it: twenty after three weeks is
+unremarkable, twenty after two hours is not.
 
 **"not reported" is not the same as zero.** A driver that does not implement one of these counters
 returns no bytes at all, and the script says so rather than printing 0 — which matters most for
@@ -325,9 +338,7 @@ The count alone says how much has accumulated. This says whether the driver is t
 If the third number is higher than the first, that driver leaks contexts from killed processes.
 On Wacom 6.4.14-1 it goes up by two and stays up.
 
-What is worth reporting back: all five lines from step 1, the three `contexts` numbers, and the
-tablet make and model. The first two lines identify the vendor's Wintab implementation, which is
-the thing that actually varies.
+What is worth reporting back: all four lines from step 1, and the three `contexts` numbers.
 
 ## How to check a machine
 
