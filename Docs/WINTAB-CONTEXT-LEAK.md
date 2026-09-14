@@ -214,8 +214,36 @@ written: 253 to 2, and 334 to 2.
 **Not `TabletInputService`.** That is Windows' own pen and touch service and has nothing to do with
 Wintab. It is excluded from the search above deliberately.
 
-Rebooting does the same thing, more slowly. Whether an application that was *already running* picks
-the driver up again on its own, or has to be restarted, was not tested.
+Rebooting does the same thing, more slowly.
+
+### Applications running at the time do not survive it
+
+Tested, because the answer matters and is not the comfortable one. A program was left holding a
+context and re-checking it once a second with `WTGetA`, which returns FALSE for a handle the driver
+no longer knows:
+
+```
+   9s  WTGetA TRUE    open  26   system  26
+  10s  WTGetA FALSE   open   2   system   0     <- the service restarted here
+  11s  WTGetA FALSE   open   2   system   2
+  ...
+  25s  WTGetA FALSE   open   2   system   2
+```
+
+The context is invalidated at the moment of the restart and **never becomes valid again**. Fifteen
+further seconds changed nothing.
+
+Worse, from the application's point of view nothing happened. A real application left running
+across the restart stayed up, kept its status line reading "Wintab (high-res)", and wrote nothing
+to its log — while its context was dead and the driver reported it gone. The pen simply stops
+working, silently, which is the same misleading failure this whole document is about.
+
+**So: restart the application after restarting the service.** Opening a *new* context afterwards
+works normally — the count was back to a healthy 2 and fresh opens succeeded — so anything that
+reopens its session recovers. An application that never reopens one will not.
+
+This is worth fixing in a pen library rather than documenting: a session could notice that its own
+context has gone and say so, or reopen it. Filed as part of the follow-up work.
 
 ## Other applications leak identically
 
