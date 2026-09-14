@@ -221,6 +221,67 @@ Wintab. It is excluded from the search above deliberately.
 
 Rebooting does the same thing, more slowly.
 
+### Restarting it without a prompt every time
+
+Stopping a service needs administrator rights, so every reset raises a UAC prompt. That is fine
+once. It is a nuisance when a test run wants to reset the driver between cases, and it rules out
+resetting it from anything unattended.
+
+A service's permissions can be widened so that **one account may start and stop that one service**
+and nothing else. No general elevation, no standing "run as administrator" anything: three rights
+on one service.
+
+Whether that is worth doing is a judgement about the machine. On a development machine with a
+tablet, where the driver is reset several times a day, it removes a prompt that is otherwise
+answered without reading it, which is its own small argument. On a shared or production machine,
+leave it alone.
+
+**To find out how a machine is currently configured**, run
+[`Scripts/Test-TabletServiceAccess.ps1`](../Scripts/Test-TabletServiceAccess.ps1). It finds the
+tablet service by itself, asks Windows whether this account may start and stop it, and prints both
+commands if it may not:
+
+```
+service   WTabletServicePro
+account   MACHINE\you
+elevated  False
+
+This account can start and stop the service with no prompt.
+Restart-Service will work from an ordinary window:
+    Restart-Service WTabletServicePro -Force
+```
+
+It asks the service control manager rather than reading the descriptor and interpreting it: the
+service is opened for `SERVICE_START | SERVICE_STOP` and the answer is whether that succeeded.
+Opening a service neither starts, stops nor changes it, so the script is safe to run at any time,
+and it needs no elevation itself. Run it from an **ordinary** window: from an elevated one the
+answer is yes whatever the permissions say, and the script says so rather than reporting a false
+result.
+
+**To grant it**, run the line the script prints, once, in an elevated PowerShell. It is the
+descriptor the service already has with one entry appended:
+
+```
+sc.exe sdset WTabletServicePro "<the descriptor now>(A;;LCRPWP;;;<your SID>)"
+```
+
+`LCRPWP` is query status, start, stop. Not change-configuration, not change-permissions, not
+delete. The worst that account can then do to the service is stop your own tablet.
+
+**To put it back**, the script prints that line too — the descriptor as it was, with nothing
+appended. Keep it. Reverting is not "remove the entry"; it is "set the descriptor back to this",
+and the only reliable copy of *this* is the one taken before the change.
+
+**It must be `sc.exe`, not `sc`.** In PowerShell `sc` is an alias for `Set-Content`, so the bare
+name quietly does something else entirely.
+
+**A driver update will probably undo it.** The installer recreates the service with a fresh
+descriptor and the entry goes with it. If prompts come back one day that is why: run the script
+again and reapply the line it prints.
+
+Only Wacom was tested. The mechanism is not vendor-specific — it is a Windows service permission,
+and the script takes any service name — but no other vendor's service has been tried.
+
 ### Applications running at the time do not survive it
 
 Tested, because the answer matters and is not the comfortable one. A program was left holding a
@@ -603,6 +664,10 @@ refusal now says what the driver thinks of itself rather than only that it said 
   drops shown windows will leak faster than any human use of the application, and it is the
   developer machine with the tablet on it that pays. See
   [Automated tests are the fastest way to leak contexts](#automated-tests-are-the-fastest-way-to-leak-contexts).
+- **If you reset the driver often, check whether this machine needs a prompt for it** with
+  `Scripts/Test-TabletServiceAccess.ps1`. One service permission removes the prompt without
+  granting anything else: see
+  [Restarting it without a prompt every time](#restarting-it-without-a-prompt-every-time).
 - Do not treat the counters as a capacity check.
 
 ## Not established
