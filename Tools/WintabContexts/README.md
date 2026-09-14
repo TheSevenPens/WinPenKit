@@ -21,10 +21,10 @@ dotnet run --project Tools/WintabContexts
 
 | | |
 |---|---|
-| the large number | contexts open, across every application on the machine |
-| of those, system | how many drive the cursor as well as delivering packets |
-| of those, digitising | the rest. Wintab has no counter for these, so it is the total less the system ones |
-| driver maximum | what the driver says it supports, which it does not enforce |
+| **contexts open** | every context open on the machine, whoever opened it |
+| **system contexts** | how many of those drive the cursor as well as delivering packets |
+| digitising contexts | said in words, not set as a number, because it is **inferred**: Wintab has no counter for these, so it is the two numbers subtracted |
+| driver maximum | what the driver says it supports, and the constant it came from. It does not enforce it |
 | vendor | the company recorded in `wintab32.dll` — whose driver is answering |
 | wintab32.dll | that file's version |
 | implementation | the name Wintab gives itself |

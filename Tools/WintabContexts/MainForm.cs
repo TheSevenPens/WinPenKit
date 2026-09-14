@@ -20,6 +20,9 @@ internal sealed class MainForm : Form
 {
     private readonly Label _count = new();
     private readonly Label _countCaption = new();
+    private readonly Label _system = new();
+    private readonly Label _systemCaption = new();
+    private readonly Label _inferred = new();
     private readonly Label _detail = new();
     private readonly Label _status = new();
     private readonly Button _refresh = new();
@@ -40,6 +43,19 @@ internal sealed class MainForm : Form
     /// in the detail block with the driver's other facts, where it belongs anyway.
     /// </remarks>
     private const string CountCaption = "contexts open";
+
+    private const string SystemCaption = "system contexts";
+
+    /// <summary>
+    /// The third number, said in words because the driver does not report it.
+    /// </summary>
+    /// <remarks>
+    /// Wintab counts contexts and it counts system contexts. It has no counter for the other kind
+    /// -- WTI_STATUS implements eight indices and none of them is one -- so this is arithmetic on
+    /// the two numbers above rather than something the driver was asked. Saying so is the point:
+    /// somebody reading it should know which of the three came from the driver.
+    /// </remarks>
+    private const string InferredUnread = "digitising contexts: not read yet";
 
     /// <summary>The last total read, so the digitising count can be worked out from it.</summary>
     private uint? _lastOpen;
@@ -71,24 +87,38 @@ internal sealed class MainForm : Form
         for (int row = 0; row < 6; row++)
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        // Nothing else on the form is allowed to be this size. Anchored to nothing, which is how a
-        // TableLayoutPanel centres a control that sizes itself.
+        // Two numbers rather than one. The total on its own does not say which kind of context
+        // appeared, and which kind it is is most of what a demonstration is showing.
         //
         // Dashes rather than nothing, so that the place a number goes is visibly a place a number
         // goes. It also stops the row changing height the first time one arrives, which an empty
         // label would have done.
-        _count.Text = Nothing;
-        _count.Font = new Font("Segoe UI", 46f, FontStyle.Bold);
-        _count.AutoSize = true;
-        _count.Anchor = AnchorStyles.None;
-        _count.Margin = new Padding(0);
-        _count.TextAlign = ContentAlignment.MiddleCenter;
+        var numbers = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            Anchor = AnchorStyles.None,
+            Margin = new Padding(0),
+        };
+        numbers.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        numbers.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        _countCaption.Text = CountCaption;
-        _countCaption.AutoSize = true;
-        _countCaption.Anchor = AnchorStyles.None;
-        _countCaption.ForeColor = SystemColors.GrayText;
-        _countCaption.Margin = new Padding(0, 2, 0, 0);
+        Big(_count, _countCaption, CountCaption);
+        Big(_system, _systemCaption, SystemCaption);
+
+        numbers.Controls.Add(_count, 0, 0);
+        numbers.Controls.Add(_system, 1, 0);
+        numbers.Controls.Add(_countCaption, 0, 1);
+        numbers.Controls.Add(_systemCaption, 1, 1);
+
+        // The third number, which the driver does not report and which is therefore said in words
+        // rather than set in the same size as the two it is derived from.
+        _inferred.AutoSize = true;
+        _inferred.Anchor = AnchorStyles.None;
+        _inferred.ForeColor = SystemColors.GrayText;
+        _inferred.Margin = new Padding(0, Scaled(8), 0, 0);
+        _inferred.Text = InferredUnread;
 
         _detail.Font = new Font("Consolas", 10f);
         _detail.AutoSize = true;
@@ -131,8 +161,8 @@ internal sealed class MainForm : Form
         // sentence makes the window taller rather than wider.
         _status.MaximumSize = new Size(Scaled(330), 0);
 
-        layout.Controls.Add(_count);
-        layout.Controls.Add(_countCaption);
+        layout.Controls.Add(numbers);
+        layout.Controls.Add(_inferred);
         layout.Controls.Add(_detail);
         layout.Controls.Add(buttons);
         layout.Controls.Add(_reset);
@@ -145,11 +175,33 @@ internal sealed class MainForm : Form
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
+        // Half again as wide as the contents need. Nothing is re-centred to fill it: the room is
+        // there so that a long implementation name or device list has somewhere to go instead of
+        // widening the window the first time one appears.
+        MinimumSize = new Size(Scaled(590), 0);
+
         _timer.Interval = 1000;
         _timer.Tick += (_, _) => Reread(byHand: false);
 
         DescribeDriver();
         DescribeResetButton();
+    }
+
+    /// <summary>Set up one of the two large numbers and the caption under it.</summary>
+    private void Big(Label number, Label caption, string text)
+    {
+        number.Text = Nothing;
+        number.Font = new Font("Segoe UI", 46f, FontStyle.Bold);
+        number.AutoSize = true;
+        number.Anchor = AnchorStyles.None;
+        number.Margin = new Padding(Scaled(18), 0, Scaled(18), 0);
+        number.TextAlign = ContentAlignment.MiddleCenter;
+
+        caption.Text = text;
+        caption.AutoSize = true;
+        caption.Anchor = AnchorStyles.None;
+        caption.ForeColor = SystemColors.GrayText;
+        caption.Margin = new Padding(Scaled(18), 2, Scaled(18), 0);
     }
 
     /// <summary>A length written at 96 dpi, in the pixels this display actually uses.</summary>
@@ -160,22 +212,27 @@ internal sealed class MainForm : Form
     {
         if (!Wintab.IsPresent)
         {
-            _count.Text = Nothing;
-            _countCaption.Text = "no Wintab on this machine";
+            _count.Text = _system.Text = Nothing;
+            _inferred.Text = "no Wintab on this machine";
             _status.Text = "The tablet driver is not installed, or does not provide Wintab.";
             return;
         }
 
         if (WintabDiagnostics.ContextTable() is not { } table)
         {
-            _count.Text = Nothing;
-            _countCaption.Text = "the driver would not say how many";
+            _count.Text = _system.Text = Nothing;
+            _inferred.Text = "the driver would not say how many";
             return;
         }
 
-        _lastOpen = table.Open;
+        uint? system = Wintab.SystemContexts;
+
         _count.Text = table.Open.ToString();
-        _countCaption.Text = CountCaption;
+        _system.Text = system?.ToString() ?? Nothing;
+
+        _inferred.Text = system is { } known && table.Open >= known
+            ? $"digitising contexts: {table.Open - known} inferred, being the two above subtracted"
+            : "digitising contexts: cannot be worked out without both numbers";
 
         DescribeDriver(table.Maximum);
 
@@ -198,20 +255,15 @@ internal sealed class MainForm : Form
 
         var dll = Wintab.Library;
 
-        // The split, because the total on its own does not say which kind of context appeared.
-        // Wintab counts the system ones and does not count the other kind, so digitising is what
-        // is left when they are taken off the total.
-        uint? system = Wintab.SystemContexts;
-        string systemText = system?.ToString() ?? "not reported";
-        string digitisingText = maximum is null ? "not read yet"
-            : system is { } known && _lastOpen is { } total && total >= known
-                ? (total - known).ToString()
-                : "not reported";
+        // Each number with the question that produced it, so that a figure on screen can be
+        // traced to a documented constant rather than taken on trust. The maximum is the one that
+        // most invites the question, since it is the only number here the driver does not enforce.
+        string maximumText = maximum is { } max
+            ? $"{max}   (WTI_INTERFACE / IFC_NCONTEXTS)"
+            : "not read yet";
 
         _detail.Text = string.Join(Environment.NewLine,
-            $"of those, system      {systemText}",
-            $"of those, digitising  {digitisingText}",
-            $"driver maximum        {maximum?.ToString() ?? "not read yet"}",
+            $"driver maximum        {maximumText}",
             "",
             $"vendor                {dll?.CompanyName ?? "not reported"}",
             $"wintab32.dll          {dll?.FileVersion ?? "not reported"}",
