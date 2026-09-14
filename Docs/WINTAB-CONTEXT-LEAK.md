@@ -363,8 +363,8 @@ drawing application, and the number goes up and stays up.
 
 ![the tool](images/wintab-contexts.png)
 
-It ships in the release as its own download, so it can be run without building anything. From a
-clone:
+It ships in the release as a single self-contained file, so it can be downloaded and
+double-clicked with nothing to install. From a clone:
 
 ```
 dotnet run --project Tools/WintabContexts

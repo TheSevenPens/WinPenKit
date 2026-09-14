@@ -10,8 +10,13 @@ and stays up. Close one properly and the number comes back down. That is the who
 
 ## Getting it
 
-It is built by the solution and **shipped in the release**, as its own download beside the
-Scribble samples. Somebody whose pen has stopped working wants to run this, not build it.
+It is built by the solution and **shipped in the release** as a single self-contained file:
+download `WintabContexts.exe`, double-click it, nothing to install. About 49 MB, which is what
+carrying its own copy of .NET costs.
+
+Self-contained unlike the sample applications beside it, and for a reason particular to what it
+is for: it is reached for at the moment something has already gone wrong with the pen, and
+"first install the .NET runtime" is a poor thing to say to somebody in that position.
 
 It is **not** in the NuGet package, which is a library for people writing applications rather
 than a bag of tools.

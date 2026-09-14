@@ -59,9 +59,6 @@ internal sealed class MainForm : Form
     /// </remarks>
     private const string InferredUnread = "digitising contexts: not read yet";
 
-    /// <summary>The last total read, so the digitising count can be worked out from it.</summary>
-    private uint? _lastOpen;
-
     public MainForm()
     {
         // Sizes are written at 96 dpi and scaled by hand. A form built in code never gets the

@@ -60,6 +60,24 @@ jobs:
 
       # --- Artifacts ---
 
+      # The context viewer ships self-contained, unlike the sample applications beside it, and
+      # for a reason particular to what it is for: it is reached for at the moment something has
+      # already gone wrong with the pen, and "first install the .NET runtime" is a poor thing to
+      # say to somebody in that position. One file, no dependencies, double-click.
+      #
+      # Compressed, which roughly halves it -- about 49 MB rather than about 100. Not trimmed:
+      # WinForms finds a great deal by reflection and a trimmer cannot see that, so trimming buys
+      # download size with a risk of a dialog that does not appear.
+      - name: Publish the context viewer
+        if: startsWith(github.ref, 'refs/tags/release/v')
+        run: >
+          dotnet publish Tools/WintabContexts/WintabContexts.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -o publish/WintabContexts
+
       - name: Stage release artifacts
         if: startsWith(github.ref, 'refs/tags/release/v')
         shell: bash
@@ -118,11 +136,8 @@ jobs:
             cp -r "$app"/bin/Release/net10.0-windows*/* "artifacts/$app/"
           done
 
-          # The context viewer. A diagnostic rather than a sample, and it ships in the release
-          # for the same reason the samples do: somebody looking at a driver that has stopped
-          # handing out contexts wants to run it, not build it. It is deliberately not part of
-          # the NuGet package, which is a library for consumers rather than a bag of tools.
-          cp -r Tools/WintabContexts/bin/Release/net10.0-windows*/* artifacts/WintabContexts/
+          # The context viewer, published above as one self-contained file.
+          cp -r publish/WintabContexts/* artifacts/WintabContexts/
           cp -r Scribble.WinUI/bin/x64/Release/net10.0-windows*/* artifacts/Scribble.WinUI/
 
       - name: Upload build artifacts
