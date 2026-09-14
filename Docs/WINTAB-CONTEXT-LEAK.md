@@ -298,10 +298,33 @@ application. On the machine this was written on, one afternoon looked like this:
 |---|---|
 | after restarting the tablet service | **4** |
 | two launches of the application, used and closed normally | +2 each |
-| **forty test-suite runs over eight minutes** | 22 → **1074** |
+| **forty-one test-suite runs over eight minutes** | 22 → **1074** |
 
 Each run showed thirteen windows and closed four of them, so each run cost **26** units. Nothing in
 that was unusual: a change was being checked by running the suite, which is what a suite is for.
+
+Counted from the logs, 43 processes ran in that window: 41 test hosts, which opened **522**
+contexts between them, and two launches of the application, which opened **two** and gave both
+back. The application was not what filled the driver up. At 2 contexts a launch it would have taken
+261 launches to do what the tests did in eight minutes.
+
+### The window does not have to exist
+
+This is the part that makes it invisible, and it is worth stating on its own.
+
+A headless test window has **no window handle**. Avalonia's headless platform returns a
+`PlatformHandle` whose descriptor is `STUB` and whose value is **0**, so what reaches `WTOpenA` is
+a null `HWND`.
+
+**The driver allocates a context anyway.** `WTOpenA(NULL, ...)` returns a valid handle, the counter
+moves by two, and those two are as leaked as any other if the context is not closed. Nothing
+appears on any screen, no tablet is touched, and nobody launched an application.
+
+That is why a climbing context count is so hard to attribute: there is no window to associate it
+with. It is also worth knowing if you are wondering whether a headless CI job on a machine that
+*does* have a tablet is safe. It is not.
+
+Only Wacom was tested, here as everywhere else in this document.
 
 At 1074 the driver stopped handing out contexts altogether and the application could not see the
 pen. That reads exactly like a broken tablet or a bug in your own rendering, which is what makes it
@@ -593,6 +616,8 @@ refusal now says what the driver thinks of itself rather than only that it said 
   processes holding them had exited, when every deliberate measurement here says a leaked context
   stays leaked. Seen once, at 1074 falling to 538. Not reproduced on purpose.
 - Whether a context leaked by one user's process is visible to another user's session.
+- Whether a context opened on a null `HWND` can deliver packets at all, or only occupies a slot.
+  Only that the driver allocates one was measured.
 - Whether older or newer Wacom driver versions differ. One version was tested.
 
 ## Related public reports
