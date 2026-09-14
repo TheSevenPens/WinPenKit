@@ -283,7 +283,7 @@ public class WT {
 function N($c,$i){ $v=0; if([WT]::WTInfoA($c,$i,[ref]$v) -eq 0){ "not reported" } else { $v } }
 function S($c,$i){ $b=New-Object Text.StringBuilder 256; if([WT]::WTInfoA($c,$i,$b) -eq 0){"not reported"}else{$b.ToString()} }
 try {
-  $v = (Get-Item C:\Windows\System32\wintab32.dll -ErrorAction SilentlyContinue).VersionInfo
+  $v = (Get-Item "$env:SystemRoot\System32\wintab32.dll" -ErrorAction SilentlyContinue).VersionInfo
   $hw = (Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object {
            $_.Status -eq 'OK' -and
            $_.FriendlyName -match 'wacom|huion|xp-?pen|gaomon|xencelabs|veikk|ugee|parblo|tablet|pen display' -and
@@ -321,6 +321,25 @@ which `WTI_DEVICES` alone does not: it answers "WACOM Tablet" whatever is plugge
 
 The uptime is there because a count means nothing without it: twenty after three weeks is
 unremarkable, twenty after two hours is not.
+
+**It asks for Wintab, not for Wacom.** `Wintab32.dll` is the standard entry point and every vendor
+installs their own implementation under that one filename, so the `DllImport` resolves to whatever
+is on the machine — checked here by asking the running process which file it loaded:
+
+```
+ModuleName  : Wintab32.dll
+FileName    : C:\Windows\SYSTEM32\Wintab32.dll
+FileVersion : 1.0.5-10
+Company     : Wacom Co. Ltd.
+```
+
+On a Huion machine that same line loads Huion's DLL, which is exactly why the company name is
+worth printing. **Untested against any other vendor**, though, like everything else here.
+
+The one part that does name vendors is the tablet-model lookup, which searches the device list for
+a handful of known makers or the words "tablet" and "pen display". A vendor not in that list falls
+back to the name Wintab itself gives, so an unrecognised tablet still reports — just less
+precisely.
 
 **"not reported" is not the same as zero.** A driver that does not implement one of these counters
 returns no bytes at all, and the script says so rather than printing 0 — which matters most for
