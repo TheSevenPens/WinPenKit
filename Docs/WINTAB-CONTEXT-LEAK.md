@@ -221,6 +221,67 @@ Wintab. It is excluded from the search above deliberately.
 
 Rebooting does the same thing, more slowly.
 
+### Restarting it without a prompt every time
+
+Stopping a service needs administrator rights, so every reset raises a UAC prompt. That is fine
+once. It is a nuisance when a test run wants to reset the driver between cases, and it rules out
+resetting it from anything unattended.
+
+A service's permissions can be widened so that **one account may start and stop that one service**
+and nothing else. No general elevation, no standing "run as administrator" anything: three rights
+on one service.
+
+Whether that is worth doing is a judgement about the machine. On a development machine with a
+tablet, where the driver is reset several times a day, it removes a prompt that is otherwise
+answered without reading it, which is its own small argument. On a shared or production machine,
+leave it alone.
+
+**To find out how a machine is currently configured**, run
+[`Scripts/Test-TabletServiceAccess.ps1`](../Scripts/Test-TabletServiceAccess.ps1). It finds the
+tablet service by itself, asks Windows whether this account may start and stop it, and prints both
+commands if it may not:
+
+```
+service   WTabletServicePro
+account   MACHINE\you
+elevated  False
+
+This account can start and stop the service with no prompt.
+Restart-Service will work from an ordinary window:
+    Restart-Service WTabletServicePro -Force
+```
+
+It asks the service control manager rather than reading the descriptor and interpreting it: the
+service is opened for `SERVICE_START | SERVICE_STOP` and the answer is whether that succeeded.
+Opening a service neither starts, stops nor changes it, so the script is safe to run at any time,
+and it needs no elevation itself. Run it from an **ordinary** window: from an elevated one the
+answer is yes whatever the permissions say, and the script says so rather than reporting a false
+result.
+
+**To grant it**, run the line the script prints, once, in an elevated PowerShell. It is the
+descriptor the service already has with one entry appended:
+
+```
+sc.exe sdset WTabletServicePro "<the descriptor now>(A;;LCRPWP;;;<your SID>)"
+```
+
+`LCRPWP` is query status, start, stop. Not change-configuration, not change-permissions, not
+delete. The worst that account can then do to the service is stop your own tablet.
+
+**To put it back**, the script prints that line too — the descriptor as it was, with nothing
+appended. Keep it. Reverting is not "remove the entry"; it is "set the descriptor back to this",
+and the only reliable copy of *this* is the one taken before the change.
+
+**It must be `sc.exe`, not `sc`.** In PowerShell `sc` is an alias for `Set-Content`, so the bare
+name quietly does something else entirely.
+
+**A driver update will probably undo it.** The installer recreates the service with a fresh
+descriptor and the entry goes with it. If prompts come back one day that is why: run the script
+again and reapply the line it prints.
+
+Only Wacom was tested. The mechanism is not vendor-specific — it is a Windows service permission,
+and the script takes any service name — but no other vendor's service has been tried.
+
 ### Applications running at the time do not survive it
 
 Tested, because the answer matters and is not the comfortable one. A program was left holding a
@@ -284,6 +345,125 @@ Measured the same way, on the same machine, in the same session:
 
 Clip Studio and Krita are long-established painting applications and neither goes anywhere near
 WinPenKit. This is the driver's behaviour, not any application's.
+
+## Automated tests are the fastest way to leak contexts
+
+This is the part most likely to matter to somebody writing a Wintab application, and it is not
+obvious until it has already happened.
+
+A test that builds a window and drops it costs a context every time. On this driver that is two
+units that never come back, and a test suite runs far more often than a person opens an
+application. On the machine this was written on, one afternoon looked like this:
+
+| | contexts |
+|---|---|
+| after restarting the tablet service | **4** |
+| two launches of the application, used and closed normally | +2 each |
+| **forty-one test-suite runs over eight minutes** | 22 → **1074** |
+
+Each run showed thirteen windows and closed four of them, so each run cost **26** units. Nothing in
+that was unusual: a change was being checked by running the suite, which is what a suite is for.
+
+Counted from the logs, 43 processes ran in that window: 41 test hosts, which opened **522**
+contexts between them, and two launches of the application, which opened **two** and gave both
+back. The application was not what filled the driver up. At 2 contexts a launch it would have taken
+261 launches to do what the tests did in eight minutes.
+
+### The window does not have to exist
+
+This is the part that makes it invisible, and it is worth stating on its own.
+
+A headless test window has **no window handle**. Avalonia's headless platform returns a
+`PlatformHandle` whose descriptor is `STUB` and whose value is **0**, so what reaches `WTOpenA` is
+a null `HWND`.
+
+**The driver allocates a context anyway.** `WTOpenA(NULL, ...)` returns a valid handle, the counter
+moves by two, and those two are as leaked as any other if the context is not closed. Nothing
+appears on any screen, no tablet is touched, and nobody launched an application.
+
+That is why a climbing context count is so hard to attribute: there is no window to associate it
+with. It is also worth knowing if you are wondering whether a headless CI job on a machine that
+*does* have a tablet is safe. It is not.
+
+Only Wacom was tested, here as everywhere else in this document.
+
+At 1074 the driver stopped handing out contexts altogether and the application could not see the
+pen. That reads exactly like a broken tablet or a bug in your own rendering, which is what makes it
+expensive: the cause is a test suite that finished successfully eight minutes earlier.
+
+### What to do about it
+
+**Close the windows your tests open.** A window that is merely constructed costs nothing; the
+context is taken when it is shown, and given back when it closes. So the rule is only about shown
+windows, and it is worth enforcing in the harness rather than at each call site — the test written
+next is the one that will forget.
+
+The shape that works: have tests take their windows from something that remembers them, and close
+whatever is outstanding when the test body ends, passed or failed. In this repository's own
+application that is thirty-odd lines in the test host and one `finally`.
+
+**Two things are worth asserting**, and they are different: that a tracked window really closes,
+and that something actually calls the close. The second cannot be checked from inside a test body,
+because it happens afterwards — make the window in one dispatch and look at it in the next.
+
+### How to measure whether it worked
+
+Do not take it on trust. Any application built on WinPenKit writes a per-process log to the
+temporary folder with a reading before and after every context it opens (see
+[What WinPenKit writes to its log](#what-winpenkit-writes-to-its-log)), so the cost of a run is
+already recorded.
+
+**Compare the first reading of consecutive runs**, not the first and last reading within one run.
+The last line of a run is written just before its final window closes, so a run whose true cost is
+zero still shows a residue of two.
+
+```powershell
+Get-ChildItem $env:TEMP\WinPenKit.*.log |
+  Sort-Object LastWriteTime |
+  ForEach-Object {
+    $lines = Select-String 'Contexts (before|after) opening: (\d+)' $_.FullName
+    if ($lines) {
+      [pscustomobject]@{
+        Log   = $_.Name
+        Opens = ($lines | Where-Object { $_ -match 'after' }).Count
+        First = [int]($lines[0].Matches.Groups[2].Value)
+        Last  = [int]($lines[-1].Matches.Groups[2].Value)
+      }
+    }
+  } | Format-Table -AutoSize
+```
+
+Run the suite twice and read the `First` column of the two runs. Equal means the runs cost nothing.
+Rising by a constant means that is what each run leaks.
+
+Measured here, three runs each way on the same machine and driver:
+
+| | first reading, three consecutive runs |
+|---|---|
+| before closing the windows | 4, 30, 56 — **+26 a run** |
+| after closing the windows | 56, 56, 56 — **no cost** |
+
+### It does not fix the leak
+
+Nothing above changes what the driver does. A context that is not closed is still not returned, a
+killed process still leaks whatever it was holding, and the counts still climb for every
+application on the machine that misbehaves. This only stops your own tests being the thing that
+drives the number up — which, on a machine where the suite runs dozens of times a day, they
+otherwise will be, faster than any human use of the application.
+
+**A build machine with no tablet is unaffected.** No Wintab driver means no context to take, so
+this costs nothing where there is nothing to leak. It matters exactly on the developer machine
+with the tablet attached, which is also the machine where losing the pen hurts most.
+
+### Some leaked contexts came back
+
+Worth recording because it contradicts the simple story. After the runs above the count stood at
+1074. Nine minutes later, with those processes long exited and no service restart and nothing else
+done, it read **538** — almost exactly half of them had been returned.
+
+Every deliberate measurement in this document says a leaked context stays leaked. Half of these did
+not. Whether the driver reclaims one of the two units per session on some delay, or whether
+something else was at work, is not established.
 
 ## What WinPenKit does, and what it does not cause
 
@@ -480,6 +660,14 @@ refusal now says what the driver thinks of itself rather than only that it said 
 - **When the pen stops working, [restart the tablet service](#resetting-the-driver) before
   suspecting your own code.** The symptom is indistinguishable from a broken renderer, which is
   what cost two sessions here.
+- **Close the windows your tests open**, in the harness rather than test by test. A suite that
+  drops shown windows will leak faster than any human use of the application, and it is the
+  developer machine with the tablet on it that pays. See
+  [Automated tests are the fastest way to leak contexts](#automated-tests-are-the-fastest-way-to-leak-contexts).
+- **If you reset the driver often, check whether this machine needs a prompt for it** with
+  `Scripts/Test-TabletServiceAccess.ps1`. One service permission removes the prompt without
+  granting anything else: see
+  [Restarting it without a prompt every time](#restarting-it-without-a-prompt-every-time).
 - Do not treat the counters as a capacity check.
 
 ## Not established
@@ -489,7 +677,12 @@ refusal now says what the driver thinks of itself rather than only that it said 
 - Whether the leak contributes to the wedge at all.
 - Whether logging off, or any lighter action than restarting the service, reclaims leaked
   contexts.
+- Why about half of a large number of leaked contexts came back on their own, minutes after the
+  processes holding them had exited, when every deliberate measurement here says a leaked context
+  stays leaked. Seen once, at 1074 falling to 538. Not reproduced on purpose.
 - Whether a context leaked by one user's process is visible to another user's session.
+- Whether a context opened on a null `HWND` can deliver packets at all, or only occupies a slot.
+  Only that the driver allocates one was measured.
 - Whether older or newer Wacom driver versions differ. One version was tested.
 
 ## Related public reports
