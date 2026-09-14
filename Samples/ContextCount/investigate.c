@@ -39,6 +39,9 @@ static GetFn getContext;
 static OwnerFn owner;
 static LARGE_INTEGER frequency;
 static unsigned enumerated;
+static HANDLE candidates[256];
+static unsigned candidateCount;
+static DWORD expectedPid;
 
 static double now(void)
 {
@@ -89,12 +92,16 @@ static BOOL WINAPI visit(HANDLE context, LPARAM manager)
     DWORD pid = 0;
     HWND hwnd = owner ? owner((HANDLE)manager, context) : NULL;
     Context c = {0};
-    char detail[256];
+    char detail[256], prefix[48];
     BOOL valid = getContext ? getContext(context, &c) : FALSE;
     GetWindowThreadProcessId(hwnd, &pid);
-    sprintf_s(detail, sizeof detail, "owner=%p;isWindow=%d;ownerPid=%lu;get=%d;device=%u;options=0x%X",
-        hwnd, IsWindow(hwnd), pid, valid, c.device, c.options);
+    c.name[sizeof c.name - 1] = 0;
+    sprintf_s(detail, sizeof detail, "owner=%p;isWindow=%d;ownerPid=%lu;get=%d;device=%u;options=0x%X;name=%s",
+        hwnd, IsWindow(hwnd), pid, valid, c.device, c.options, c.name);
     row("enumerated_context", context, pid, 0, detail);
+    sprintf_s(prefix, sizeof prefix, "issue121-%lu-", expectedPid);
+    if (expectedPid && valid && !strncmp(c.name, prefix, strlen(prefix)) && candidateCount < 256)
+        candidates[candidateCount++] = context;
     ++enumerated;
     return TRUE;
 }
@@ -113,9 +120,17 @@ static void metadata(void)
             char event[40], detail[80];
             UINT size = info(categories[k], i, &value);
             sprintf_s(event, sizeof event, "info_%u_%u", categories[k], i);
-            sprintf_s(detail, sizeof detail, "bytes=%u", size);
+            if (k == 0 && i == 1) sprintf_s(detail, sizeof detail, "bytes=%u;name=%.60s", size, (char *)value.bytes);
+            else sprintf_s(detail, sizeof detail, "bytes=%u", size);
             row(event, NULL, size ? value.number : -1LL, 0, detail);
         }
+    }
+    for (i = 0; i < 3; ++i) {
+        char name[256] = {0}, event[40], detail[320];
+        UINT size = info(100 + i, 1, name);
+        sprintf_s(event, sizeof event, "device_%u", i);
+        sprintf_s(detail, sizeof detail, "name=%.250s", name);
+        row(event, NULL, size, 0, detail);
     }
 }
 
@@ -170,7 +185,7 @@ static int lifecycle(int count, const char *mode, const char *kind, int device, 
     HANDLE contexts[128] = {0};
     HWND hwnd = window();
     int i, opened = 0, failed = 0;
-    BOOL nullWindow = strcmp(kind, "null") == 0;
+    BOOL nullWindow = strncmp(kind, "null", 4) == 0;
     if (!hwnd) return 2;
     row("before", NULL, count, 0, mode);
     for (i = 0; i < count; ++i) {
@@ -182,6 +197,7 @@ static int lifecycle(int count, const char *mode, const char *kind, int device, 
         if (bytes != sizeof c) { row("defaults_failed", NULL, bytes, 0, ""); failed = 1; break; }
         if (system) c.options |= 1u; else c.options &= ~1u;
         c.options |= 4u;
+        if (strcmp(kind, "null-poll") == 0) c.options &= ~4u;
         if (device >= 0) c.device = (UINT)device;
         c.pktData = c.moveMask = 0x1FFFu;
         c.btnDnMask = c.btnUpMask = 0xFFFFFFFFu;
@@ -231,6 +247,85 @@ static int lifecycle(int count, const char *mode, const char *kind, int device, 
     return failed;
 }
 
+/* The sole foreign-close experiment. The parent launches its own child, keeps
+ * the Windows process handle, waits for confirmed exit, and only accepts context
+ * names belonging to that child. NULL/invalid HWND alone is NEVER a deletion rule.
+ * The sentinel is this parent's live context and must survive foreign closes.
+ */
+static int reclaim(const char *mode, const char *kind, int count)
+{
+    char exe[MAX_PATH], command[1024];
+    STARTUPINFOA startup = {0};
+    PROCESS_INFORMATION process = {0};
+    MgrOpenFn mgrOpen = (MgrOpenFn)GetProcAddress(dll, "WTMgrOpen");
+    CloseFn mgrClose = (CloseFn)GetProcAddress(dll, "WTMgrClose");
+    EnumFn enumerate = (EnumFn)GetProcAddress(dll, "WTMgrContextEnum");
+    HWND hwnd = window();
+    HANDLE manager = NULL, sentinel = NULL;
+    Context c = {0};
+    unsigned i;
+    int failed = 0;
+    DWORD exitCode, waitResult;
+    owner = (OwnerFn)GetProcAddress(dll, "WTMgrContextOwner");
+    if (!hwnd || !mgrOpen || !mgrClose || !enumerate || !owner || !getContext) {
+        if (hwnd) DestroyWindow(hwnd);
+        return 2;
+    }
+    row("reclaim_before", NULL, count, 0, mode);
+    manager = mgrOpen(hwnd, 0x7FF0);
+    if (!manager || info(4, 0, &c) != sizeof c) { failed = 1; goto done; }
+    strcpy_s(c.name, sizeof c.name, "issue121-live-sentinel");
+    sentinel = openContext(hwnd, &c, TRUE);
+    row("sentinel_open", sentinel, sentinel != NULL, 0, "must_survive");
+    if (!sentinel) { failed = 1; goto done; }
+    GetModuleFileNameA(NULL, exe, MAX_PATH);
+    sprintf_s(command, sizeof command, "\"%s\" lifecycle %d %s %s", exe, count, mode, kind);
+    startup.cb = sizeof startup;
+    if (!CreateProcessA(exe, command, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &startup, &process)) {
+        row("child_create_failed", NULL, GetLastError(), 0, ""); failed = 1; goto done;
+    }
+    CloseHandle(process.hThread);
+    waitResult = WaitForSingleObject(process.hProcess, 30000);
+    row("child_wait", process.hProcess, waitResult, 0, "requires_WAIT_OBJECT_0");
+    if (waitResult != WAIT_OBJECT_0) {
+        /* Keep the child alive; do not force a new leak if an API is wedged. */
+        CloseHandle(process.hProcess); failed = 1; goto done;
+    }
+    GetExitCodeProcess(process.hProcess, &exitCode);
+    expectedPid = process.dwProcessId;
+    row("child_exited", NULL, expectedPid, 0, exitCode ? "nonzero_exit" : "exit=0");
+    candidateCount = 0;
+    enumerated = 0;
+    if (!enumerate(manager, visit, (LPARAM)manager)) failed = 1;
+    row("reclaim_candidates", NULL, candidateCount, 0, "matches_confirmed_exited_child_name");
+    for (i = 0; i < candidateCount; ++i) {
+        Context check = {0};
+        char prefix[48];
+        BOOL ok;
+        sprintf_s(prefix, sizeof prefix, "issue121-%lu-", expectedPid);
+        if (!getContext(candidates[i], &check) || strncmp(check.name, prefix, strlen(prefix))) {
+            row("foreign_close_skipped", candidates[i], 0, 0, "identity_changed"); failed = 1; continue;
+        }
+        ok = closeContext(candidates[i]);
+        row("foreign_close", candidates[i], ok, 0, "known_child_only");
+        if (!ok) failed = 1;
+    }
+    expectedPid = 0;
+    CloseHandle(process.hProcess);
+    {
+        BOOL valid = getContext(sentinel, &c);
+        row("sentinel_still_valid", sentinel, valid, 0, "WTGetA");
+        if (!valid) failed = 1;
+    }
+    enumerate(manager, visit, (LPARAM)manager);
+done:
+    if (sentinel) row("sentinel_close", sentinel, closeContext(sentinel), 0, "");
+    if (manager) row("manager_close", manager, mgrClose(manager), 0, "reclaim");
+    DestroyWindow(hwnd);
+    row("reclaim_after", NULL, !failed, 0, "");
+    return failed;
+}
+
 int main(int argc, char **argv)
 {
     int result = 0;
@@ -252,11 +347,18 @@ int main(int argc, char **argv)
         if (count < 1 || count > 128 ||
             (strcmp(mode, "clean") && strcmp(mode, "kill") && strcmp(mode, "return") &&
              strcmp(mode, "destroy-return") && strcmp(mode, "cleanup")) ||
-            (strcmp(kind, "system") && strcmp(kind, "digitizer") && strcmp(kind, "mixed") && strcmp(kind, "null"))) return 2;
+            (strcmp(kind, "system") && strcmp(kind, "digitizer") && strcmp(kind, "mixed") && strcmp(kind, "null") && strcmp(kind, "null-poll"))) return 2;
         result = lifecycle(count, mode, kind, argc > 5 ? atoi(argv[5]) : -1,
             argc > 6 ? (DWORD)strtoul(argv[6], NULL, 10) : 0);
         /* return modes deliberately retain the DLL until process shutdown. */
         if (!strcmp(mode, "return") || !strcmp(mode, "destroy-return")) return result;
+    }
+    else if (strcmp(argv[1], "reclaim") == 0 && argc == 5) {
+        int count = atoi(argv[4]);
+        if (count < 1 || count > 32 ||
+            (strcmp(argv[2], "kill") && strcmp(argv[2], "return") && strcmp(argv[2], "destroy-return")) ||
+            (strcmp(argv[3], "system") && strcmp(argv[3], "digitizer"))) return 2;
+        result = reclaim(argv[2], argv[3], count);
     }
     else if (strcmp(argv[1], "watch") == 0 && argc == 4) {
         ULONGLONG end = GetTickCount64() + (ULONGLONG)strtoul(argv[2], NULL, 10) * 1000;
