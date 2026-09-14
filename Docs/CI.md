@@ -86,6 +86,24 @@ git push origin wintab-contexts/v1.0.0
 Either creates a GitHub Release named after the tag, with auto-generated notes and the artifacts
 for that kind of tag and no others.
 
+### How the two appear on GitHub
+
+In one list, newest first. GitHub does not group releases by tag prefix, so they interleave, and
+the title is the tag:
+
+```
+wintab-contexts/v1.0.0            wintab-contexts/v1.0.0    14 Sep 2026
+release/v0.11.0          Latest   release/v0.11.0           13 Sep 2026
+release/v0.10.0                   release/v0.10.0           13 Sep 2026
+```
+
+**The "Latest" badge stays on the library.** Whichever release is newest and not a prerelease
+would normally take it, and that badge drives the repository's front page and the
+`/releases/latest` URL -- so a viewer release would otherwise make a diagnostic tool the thing a
+casual visitor downloads. `make_latest: false` on viewer releases prevents it. This is not
+theoretical: a throwaway `wintab-contexts` tag took the badge off `release/v0.11.0` before the
+setting was added.
+
 One wrinkle worth knowing: the generated notes list commits since the previous tag of **any**
 kind, so a viewer release will list library commits and the other way round. The assets are
 right; only the prose is broad.

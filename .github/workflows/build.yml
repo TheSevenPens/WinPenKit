@@ -197,3 +197,15 @@ jobs:
           files: '*.zip'
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-rc') || contains(github.ref, '-alpha') }}
+
+          # The viewer never takes the "Latest" badge. Both kinds of release sit in one list
+          # sorted by date -- GitHub does not group by tag prefix -- and whichever is newest and
+          # not a prerelease becomes Latest. That badge drives the repository's front page and
+          # the /releases/latest URL, so without this a viewer release would quietly make a
+          # diagnostic tool the thing a casual visitor downloads instead of the library.
+          #
+          # Seen happening: a throwaway wintab-contexts tag took the badge off release/v0.11.0.
+          #
+          # "legacy" for the library is the behaviour it already had, by date, which keeps
+          # prereleases from claiming it.
+          make_latest: ${{ env.TOOL_RELEASE == 'true' && 'false' || 'legacy' }}
