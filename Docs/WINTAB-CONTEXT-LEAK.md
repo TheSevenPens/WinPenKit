@@ -213,8 +213,11 @@ immediately leaks: whatever it held at the moment it died, and nothing more.
 
 ## What WinPenKit writes to its log
 
-Every Wintab session brackets itself with the driver's context counters, in
-`%TEMP%\WinPenKit.log`:
+**One file per process**, `%TEMP%\WinPenKit.<pid>.log`, named so that two pen applications running
+at once both get one — which is exactly the situation diagnosing a driver puts you in. Files older
+than a week are removed when a new one is created.
+
+Every Wintab session brackets itself with the driver's context counters:
 
 ```
 [21:39:34.684] Contexts before opening: 18 open, of a stated maximum of 32
@@ -239,8 +242,27 @@ So the first line of any log answers "how many contexts had already been leaked 
 started", which is the question that identifies a leaking application without needing to have been
 watching at the time.
 
-One limitation: the log is truncated at the start of each run, so it holds the most recent session
-and no history. The *number* carries the history even though the file does not.
+The first line of each file carries the date and the application, which the per-line timestamps do
+not:
+
+```
+[21:44:29.193] Log start: PenDynamicsPaint pid 54472, 2026-09-13
+```
+
+It is an ordinary log line rather than a banner, so anything reading the file line by line needs no
+special case for it.
+
+Two faults were found here while adding this, both of which had been quietly costing information:
+
+- **A second application could not log at all.** With one shared file, the first process holds it,
+  the second's writer throws, and the exception went somewhere nobody reads. Running two pen
+  applications logged one of them and said nothing about the other.
+- **Changing pen API wiped the log.** Disposing a session closed the writer, and the next write
+  reopened the file — which truncates. Everything logged before the switch was lost, which is why
+  the log never seemed to show more than one session.
+
+`WintabDiagnostics.LogPath` names this process's file, for an application that wants to point at
+it in a bug report.
 
 ## How to check a machine
 

@@ -181,7 +181,7 @@ internal abstract class WintabSessionBase : IPenSession
     public void Dispose()
     {
         Stop();
-        CloseLog();
+        FlushLog();
     }
 
     // ── Abstract: subclass provides context creation + coord conversion ──
@@ -392,22 +392,124 @@ internal abstract class WintabSessionBase : IPenSession
 
     // ── Logging ──────────────────────────────────────────────────
 
-    private static readonly string LogPath = Path.Combine(
-        Path.GetTempPath(), "WinPenKit.log");
+    /// <summary>Where this process writes its Wintab log.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>One file per process.</b> It used to be one file for every application using the
+    /// library, which failed in two ways at once. A second application could not write to it at
+    /// all -- the first holds the file, the second's writer throws, and the exception went to
+    /// Debug.WriteLine where nobody saw it -- so running two pen applications, which is exactly
+    /// what diagnosing a driver involves, silently logged only one of them. And the file was
+    /// named after nothing, so an appending version of it could not have said which application
+    /// or which run a line came from.
+    /// </para>
+    /// <para>
+    /// The process id is in the name, so both problems go away together and every line keeps the
+    /// shape it had. A log with no "after closing" line is a run that was killed, and the file
+    /// name says which process it was.
+    /// </para>
+    /// </remarks>
+    internal static string LogPath { get; } = Path.Combine(
+        Path.GetTempPath(), $"WinPenKit.{Environment.ProcessId}.log");
+
     private static StreamWriter? _logWriter;
+    private static bool _logOpened;
 
     protected static void Log(string message)
     {
+        // Opened before the line is stamped, not after. The other way round, the first message
+        // carried a time from before the file's own first line and the log was not monotonic --
+        // which is a small thing that costs somebody an hour when they notice it in a log they
+        // are already suspicious of.
+        if (!_logOpened)
+        {
+            _logOpened = true;
+            _logWriter = OpenLog();
+        }
+
         var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
         Debug.WriteLine(line);
+
         try
         {
-            _logWriter ??= new StreamWriter(LogPath, append: false) { AutoFlush = true };
-            _logWriter.WriteLine(line);
+            _logWriter?.WriteLine(line);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[WinPenKit] Log write failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Start this process's log, once, and say what and when it belongs to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Truncating rather than appending, because a process id is reused: a file left by an
+    /// earlier process with the same id is not this process's log and must not be read as one.
+    /// Truncated <b>once</b>, though -- the writer is then kept for the life of the process, so
+    /// that a session being disposed and another started does not wipe what came before it. That
+    /// was the second fault here: closing the writer on Dispose meant every change of pen API
+    /// threw away the log of everything that had happened first.
+    /// </para>
+    /// <para>
+    /// The first line carries the date and the application, which the per-line timestamps do not.
+    /// It is an ordinary log line and not a banner, so anything reading the file line by line
+    /// needs no special case for it.
+    /// </para>
+    /// </remarks>
+    private static StreamWriter? OpenLog()
+    {
+        try
+        {
+            PruneOldLogs();
+
+            var writer = new StreamWriter(LogPath, append: false) { AutoFlush = true };
+
+            string who = Process.GetCurrentProcess().ProcessName;
+            writer.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] Log start: {who} " +
+                             $"pid {Environment.ProcessId}, {DateTime.Now:yyyy-MM-dd}");
+
+            return writer;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[WinPenKit] Could not open {LogPath}: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Drop logs left by processes that ran more than a week ago.</summary>
+    /// <remarks>
+    /// A file per process is a file per run, and nothing would ever remove them. A week is long
+    /// enough to still have the log of the run that went wrong on Friday and short enough that
+    /// the temporary directory does not fill with them. Best effort: a file still held open by a
+    /// living process cannot be deleted, and that is the right outcome anyway.
+    /// </remarks>
+    private static void PruneOldLogs()
+    {
+        try
+        {
+            var cutoff = DateTime.Now.AddDays(-7);
+
+            // The name this used to write to, before there was one file per process. Nothing
+            // writes it any more, so it would sit there forever being read by mistake.
+            var legacy = Path.Combine(Path.GetTempPath(), "WinPenKit.log");
+            try { File.Delete(legacy); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+
+            foreach (var old in Directory.EnumerateFiles(Path.GetTempPath(), "WinPenKit.*.log"))
+            {
+                try
+                {
+                    if (File.GetLastWriteTime(old) < cutoff) File.Delete(old);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[WinPenKit] Could not prune old logs: {ex.Message}");
         }
     }
 
@@ -419,9 +521,12 @@ internal abstract class WintabSessionBase : IPenSession
         Log($"  SysOrg=({lc.lcSysOrgX},{lc.lcSysOrgY}) SysExt=({lc.lcSysExtX},{lc.lcSysExtY})");
     }
 
-    private static void CloseLog()
-    {
-        _logWriter?.Dispose();
-        _logWriter = null;
-    }
+    /// <summary>Flush what has been written, without closing the file.</summary>
+    /// <remarks>
+    /// Closing it here is what made a change of pen API wipe the log: the next write reopened the
+    /// file, and reopening truncates. The writer is left open for the life of the process
+    /// instead, which also means a process that is killed leaves a complete file behind rather
+    /// than a half-written one.
+    /// </remarks>
+    private static void FlushLog() => _logWriter?.Flush();
 }

@@ -55,6 +55,15 @@ public readonly record struct WintabContextTable(uint Open, uint Maximum)
 public static class WintabDiagnostics
 {
     /// <summary>
+    /// Where this process writes its Wintab log, whether or not it has written anything yet.
+    /// </summary>
+    /// <remarks>
+    /// One file per process, named with the process id. Worth being able to name from an
+    /// application: it is the file to attach to a bug report about the pen.
+    /// </remarks>
+    public static string LogPath => Wintab.WintabSessionBase.LogPath;
+
+    /// <summary>
     /// How many contexts the driver has open and how many it will allow, or null if Wintab is
     /// not installed or will not say.
     /// </summary>
