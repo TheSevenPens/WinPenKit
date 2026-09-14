@@ -54,6 +54,9 @@ The `reclaim` command creates its own child and retains its Windows process hand
 After confirming that child exited, it enumerates contexts and selects only names
 with that child's generated prefix, rechecks identity, and closes each selected
 handle. It does not reclaim contexts from arbitrary applications.
+The final probe adds a per-run performance-counter tag to the child PID in that prefix;
+PID reuse must not cause an earlier run's contexts to match. The initial CSVs predate
+that extra identity guard. Final hardware validation uses the tagged implementation.
 
 - Three virtual system contexts leaked by a killed child produced six enumerated
   entries, with device IDs 0 and 1. Counter: 4 baseline, 6 with a live sentinel,
@@ -88,6 +91,48 @@ not a universal cost per `WTOpenA` call. Why two device IDs exist while
 
 Raw records: `balanced-mixed.csv`, `balanced-device0.csv`, `balanced-device1.csv`
 under [the data directory](data/wintab-2026-09-14/).
+
+At 18:13-18:17 UTC, read-only x86 capability queries further distinguished the two profiles.
+The user confirmed only the Cintiq was physically connected, and a fresh present-device
+inventory listed that display. Device 0 reports six cursor types starting at 0, 200 Hz,
+X/Y maxima 53084/30034, hardware flags 13, and a nonempty hardware identifier. Device 1
+reports six cursor types starting at 6, 100 Hz, X/Y maxima 30930/17398, hardware flags 5,
+and an empty identifier. Both axes use 1000 units/cm, giving approximately 531 by 300 mm
+and 309 by 174 mm respectively. These are reported capabilities, not measured packet rates.
+Hardware identifier text is deliberately omitted from the CSV.
+
+The persistent reader loads both `Wintab32.dll` ("Wintab Coordinator") and
+`Wacom_Tablet.dll` ("WINTAB32", 6.4.14-1). A separate `investigate direct-info` process
+loaded the latter directly for read-only queries: it reported the same 405/405 counters,
+one connected device, twelve cursors, and both distinct profiles. Its module check confirmed
+the coordinator was not loaded. Thus the duplicate profile/counter behavior is also exposed
+by the backend, not solely introduced by coordinator aggregation. Direct backend loading is
+an investigation technique, not a recommended application API.
+
+Raw files: `device-capabilities-x86.csv`, `direct-backend-info-x86.csv`, `reader-modules.json`.
+All twelve `CSR_ACTIVE` reads returned 1, including both profiles' puck/stylus/eraser entries,
+so that flag did not distinguish the source of profile 1. The user later recalled that a
+Cintiq Pro 32 may have been connected a few weeks earlier. This makes a retained profile a
+plausible lead, but neither these queries nor that recollection identifies profile 1 as that
+tablet. The origin of profile 1
+(for example a remembered device or an internal virtual device)
+remains unproven. The older [Wacom developer FAQ](https://www.wacomeng.com/windows/docs/WacomWindevFAQ.html),
+version 1.4 updated January 2, 2014 and read September 14, 2026, says in section 3.22 that
+`IFC_NDEVICES` counts connected tablets; section 3.27 warns that Wintab is not a model lookup.
+This helps interpret the metadata without identifying the second profile's origin.
+
+At 18:41 UTC, a read-only examination of selected fields in the existing Wacom preference
+file found two tablet entries: **Wacom Cintiq 24 touch**, physically on, dimensions
+53085/30035; and **Wacom One 14**, physically off, dimensions 30931/17399. Each pair is
+exactly one greater than the corresponding Wintab X/Y maxima, as expected when comparing
+size with a zero-based maximum coordinate. This strongly supports a retained Wacom One 14
+profile as the source of device 1, rather than the recalled Pro 32. It remains an inference
+from matching metadata, not a proven internal mapping or evidence that the One 14 was
+previously physically connected. No preferences were removed or modified to test causality.
+
+The selected metadata is in [preference-profiles.json](data/wintab-2026-09-14/preference-profiles.json).
+`read-preference-profiles.ps1` reproduces the extraction without loading Wintab or copying
+serials, sensor identifiers, button mappings, or per-application settings.
 
 ### Null HWND did not reproduce
 
@@ -159,6 +204,13 @@ They do not yet identify the internal exhausted resource. The numerical proximit
 handle index is a hypothesis only. Critically, successful opens above 32 cannot rule out a
 different allocation limit. No service restart was used to recover these control opens.
 
+Successful cohort opens ranged approximately 42-57 ms. The first two cohorts averaged about
+44 ms, the third about 48 ms, and the fourth's successful opens about 54 ms. Early balanced
+explicit-device opens took approximately 22-24 ms. The 27.113 ms refusal is shorter than these
+successful virtual opens; it does not reproduce the historical 90 ms signature. Count and
+elapsed time both increased during the sequence, so this is not an isolated causal test of
+latency versus count.
+
 Raw data: [hour-observation](data/wintab-2026-09-14/hour-observation/), especially `cohort-0.csv`
 through `cohort-3.csv`, `failure-info.csv`, `failure-manager.csv`, `failure-processes.json`,
 and the four `failure-*-control.csv` files. The original orchestration stopped as soon as
@@ -170,7 +222,24 @@ The observation started at 17:36:43 UTC with 405 retained counted contexts, imme
 the failure capture. `observe.ps1` records one persistent reader and a fresh-process reader
 about every 10 seconds, along with process IDs, memory, thread and handle counts for the Wacom
 processes. The four balanced controls above occurred during the first second; subsequent
-observation is read-only. Completion and interpretation will be added when the hour ends.
+observation is read-only.
+
+The observation completed normally at 18:36:48.813 UTC. The persistent reader produced
+361 valid rows over 3605.173 seconds, including `sample_end`; the fresh readers produced
+359 valid rows over 3597.151 seconds. Every total and system reading was **405**, with
+four bytes returned. Maximum sampling gaps were 10.028 and 10.072 seconds respectively.
+All three Wacom process IDs remained unchanged and every service-status sample was Running.
+No observer or persistent-reader error text was emitted.
+
+The main Wacom process had 727-742 handles, 68-73 threads, and 45,748,224-47,292,416
+private bytes across the recorded samples. These ranges are observations, not a diagnosis
+of a memory leak. Full metrics, timing summaries, and reader validity are in
+[summary.json](data/wintab-2026-09-14/hour-observation/summary.json).
+
+This run found no spontaneous count decrease. It does not reproduce or explain the original
+1074-to-538 observation: the allocation failure changed the starting population to 405,
+and continuous queries could themselves affect driver cleanup. A separate ten-minute control
+with all investigation readers closed started at 18:37:40.475 UTC; its result follows below.
 
 ### Follow-up protocol prepared during the quiet interval
 
@@ -203,13 +272,21 @@ These addresses belong only to the inspected binary (SHA-256
 `6E1E9188C67AB96273F70C9E2BCEE38932BD5CBBCEC8F39EB94CB7037585D7C9`), not a supported API.
 The numerical handle-boundary lead remains a hypothesis; binary inspection has not proved it.
 
-The C probe compiles with MSVC `/W4 /WX /wd4191` on x86 and x64. The current x64 observer
-keeps the earlier executable loaded until its deadline; the final source will be rebuilt on
-both architectures after it exits. Nine malformed or out-of-range numeric argument cases
-returned exit code 2 without emitting an operation row (`argument-validation.json`). Both
-PowerShell scripts passed the PowerShell syntax parser. The CSV summarizer uses Python's
-standard library and was checked against the growing observation; interim output correctly
-reported no `sample_end` marker.
+The backend's `WTOpenA` export was also followed to its implementation at
+`0x1800E3AA0` (backend SHA-256
+`8DF25A88AF1A2FB8D7A7DCBEF2800CCE9D0E0C087815B9768C25A207B7FA74CB`). It contains an
+explicit NULL-HWND return at `0x1800E3AE8`, corroborating the measured fast refusals. Its
+allocation path crosses several internal request/validation calls; the bounded inspection
+did not establish which failed at count 511. No private entry point was invoked.
+
+The C probe compiles with MSVC `/W4 /WX /wd4191` on x86 and x64. Both architectures were rebuilt
+after the hour's observer exited, including the later child-identity guard.
+Nine malformed or out-of-range numeric argument cases
+returned exit code 2 without emitting an operation row (`argument-validation.json`). All
+three PowerShell scripts passed the PowerShell syntax parser. The CSV summarizer uses Python's
+standard library; interim output correctly reported no `sample_end` marker, and the completed
+output reports the final marker and all 720 reader rows as valid. Build and syntax results are
+recorded in `final-validation.json`.
 
 ## External research: what helps and what does not
 

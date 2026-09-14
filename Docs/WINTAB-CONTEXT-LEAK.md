@@ -161,6 +161,14 @@ For the virtual device these increments were two; for an explicit device they we
 sessions or successful `WTOpenA` calls. The two device IDs both report `WACOM Tablet`, although
 `IFC_NDEVICES` reports one; the reason for that topology remains unknown.
 
+Read-only queries distinguish the profiles by axis extents, packet-rate capabilities, cursor
+ranges, and identifier presence. Direct queries to the installed Wacom backend expose the same
+two profiles even without the coordinator loaded. Only one tablet was connected during the
+recheck. The existing preferences contain a disconnected **Wacom One 14** entry whose dimensions
+match device 1's maxima plus one. This strongly suggests a retained profile; the mapping is an
+inference, and preferences were not modified to prove causality. See the capability CSVs and
+selected preference metadata in the investigation record.
+
 There is no separate standard digitizing-context counter among the eight `WTI_STATUS` indices.
 The total minus system count describes the remaining counted contexts. Manager enumeration
 offers an additional per-context view: inspect `lcOptions & CXO_SYSTEM` with `WTGetA`.
@@ -661,8 +669,8 @@ implementation name and `wintab32.dll`'s company identify **whose** Wintab this 
 machine has Huion's DLL under the same filename — and the tablet line names the actual model,
 which `WTI_DEVICES` alone does not: it answers "WACOM Tablet" whatever is plugged in.
 
-The uptime is there because a count means nothing without it: twenty after three weeks is
-unremarkable, twenty after two hours is not.
+Uptime supplies context, but neither count nor uptime alone establishes a leak. Compare against
+a baseline and known application lifecycles; the counter includes live and built-in contexts.
 
 **It asks for Wintab, not for Wacom.** `Wintab32.dll` is the standard entry point and every vendor
 installs their own implementation under that one filename, so the `DllImport` resolves to whatever
@@ -705,8 +713,8 @@ What is worth reporting back: all five lines from step 1, and the three `context
 ## How to check a machine
 
 Read the two counters — `WintabDiagnostics.ContextTable()` does it from C#, and the sample
-programs do it from C. A machine that has been used normally sits in the low single figures. A
-machine in the middle of a development session does not.
+programs do it from C. This machine returned to two after service restart. Other live applications,
+driver versions, and device profiles may have different baselines.
 
 WinPenKit puts both numbers into the message it returns when a context will not open, so a
 refusal now says what the driver thinks of itself rather than only that it said no.
@@ -715,9 +723,9 @@ refusal now says what the driver thinks of itself rather than only that it said 
 
 - **Close pen applications by their window.** `Stop-Process`, Task Manager's End Task, and a
   debugger's stop button all leak.
-- **When the pen stops working, [restart the tablet service](#resetting-the-driver) before
-  suspecting your own code.** The symptom is indistinguishable from a broken renderer, which is
-  what cost two sessions here.
+- **Capture a driver refusal before recovery.** Record fresh counters, open timings and results,
+  and driver process metrics. A [tablet service restart](#resetting-the-driver) recovered this
+  machine, but invalidates every application's context and erases the rare failure state.
 - **Close the windows your tests open**, in the harness rather than test by test. A suite that
   drops shown windows will leak faster than any human use of the application, and it is the
   developer machine with the tablet on it that pays. See

@@ -1,7 +1,7 @@
 /* Independent Wintab probe for issue #121. Does not use wtcount.h or WinPenKit.
  * Build in a VS developer prompt: cl /nologo /W4 /WX /wd4191 investigate.c user32.lib
  * Read README.md before using the deliberately leaking lifecycle modes.
- * Only reclaim mode closes foreign contexts, restricted to its own exited child.
+ * Foreign closes are restricted to the probe's own identified, exited child.
  * No service/settings are changed.
  */
 #define WIN32_LEAN_AND_MEAN
@@ -46,6 +46,7 @@ static HANDLE candidates[256];
 static unsigned candidateCount;
 static BOOL candidateOverflow;
 static DWORD expectedPid;
+static char expectedTag[17];
 
 static long number(const char *text, long minimum, long maximum)
 {
@@ -118,7 +119,7 @@ static BOOL WINAPI visit(HANDLE context, LPARAM manager)
     sprintf_s(detail, sizeof detail, "owner=%p;isWindow=%d;ownerPid=%lu;get=%d;device=%u;options=0x%X;name=%s",
         hwnd, IsWindow(hwnd), pid, valid, c.device, c.options, c.name);
     row("enumerated_context", context, pid, 0, detail);
-    sprintf_s(prefix, sizeof prefix, "issue121-%lu-", expectedPid);
+    sprintf_s(prefix, sizeof prefix, "i121-%lu-%s-", expectedPid, expectedTag);
     if (expectedPid && valid && !strncmp(c.name, prefix, strlen(prefix))) {
         if (candidateCount < 256) candidates[candidateCount++] = context;
         else candidateOverflow = TRUE;
@@ -134,6 +135,8 @@ static void metadata(void)
     char path[MAX_PATH] = {0};
     GetModuleFileNameA(dll, path, MAX_PATH);
     row("dll", dll, sizeof(void *) * 8, 0, path);
+    row("coordinator_module_loaded", GetModuleHandleA("Wintab32.dll"),
+        GetModuleHandleA("Wintab32.dll") != NULL, 0, "after_first_WTInfo_queries");
     row("context_struct_bytes", NULL, sizeof(Context), 0, "expected=172");
     for (k = 0; k < 2; ++k) {
         for (i = 1; i <= (k ? 8u : 10u); ++i) {
@@ -149,9 +152,50 @@ static void metadata(void)
     for (i = 0; i < 3; ++i) {
         char name[256] = {0}, event[40], detail[320];
         UINT size = info(100 + i, 1, name);
+        UINT index;
         sprintf_s(event, sizeof event, "device_%u", i);
         sprintf_s(detail, sizeof detail, "name=%.250s", name);
         row(event, NULL, size, 0, detail);
+        if (!size || !name[0]) continue;
+        memset(name, 0, sizeof name);
+        size = info(100 + i, 19, name); /* DVC_PNPID can contain a hardware serial. */
+        sprintf_s(event, sizeof event, "device_%u_pnpid", i);
+        row(event, NULL, size, 0, name[0] ? "nonempty_identifier_not_recorded" : "empty_identifier");
+        for (index = 2; index <= 18; ++index) {
+            typedef struct { LONG minimum, maximum; UINT units; DWORD resolution; } Axis;
+            union { UINT number; Axis axes[3]; } value = {0};
+            UINT expected = index <= 11 ? 4u : index <= 16 ? 16u : 48u;
+            size = info(100 + i, index, &value);
+            sprintf_s(event, sizeof event, "device_%u_index_%u", i, index);
+            if (size != expected) {
+                sprintf_s(detail, sizeof detail, "bytes=%u;expected=%u;unavailable", size, expected);
+                row(event, NULL, -1, 0, detail);
+            } else if (index <= 11) {
+                row(event, NULL, value.number, 0, "bytes=4");
+            } else {
+                unsigned axis, length = 0;
+                for (axis = 0; axis < size / sizeof(Axis); ++axis) {
+                    Axis a = value.axes[axis];
+                    length += (unsigned)sprintf_s(detail + length, sizeof detail - length,
+                        "axis%u=min:%ld/max:%ld/units:%u/resolution:%lu;",
+                        axis, a.minimum, a.maximum, a.units, a.resolution);
+                }
+                row(event, NULL, size, 0, detail);
+            }
+        }
+    }
+    {
+        UINT count = 0;
+        if (info(1, 5, &count) != 4) return;
+        for (i = 0; i < count && i < 32; ++i) {
+            char name[256] = {0}, event[40], detail[320];
+            UINT active = 0xFFFFFFFFu;
+            UINT nameBytes = info(200 + i, 1, name);
+            UINT activeBytes = info(200 + i, 2, &active);
+            sprintf_s(event, sizeof event, "cursor_%u_active", i);
+            sprintf_s(detail, sizeof detail, "name=%.250s;name_bytes=%u;active_bytes=%u", name, nameBytes, activeBytes);
+            row(event, NULL, activeBytes == 4 ? active : -1LL, 0, detail);
+        }
     }
 }
 
@@ -201,7 +245,7 @@ static int managerProbe(void)
     return 0;
 }
 
-static int lifecycle(int count, const char *mode, const char *kind, int device, DWORD hold)
+static int lifecycle(int count, const char *mode, const char *kind, int device, DWORD hold, const char *tag)
 {
     HANDLE contexts[128] = {0};
     HWND hwnd = window();
@@ -222,7 +266,8 @@ static int lifecycle(int count, const char *mode, const char *kind, int device, 
         if (device >= 0) c.device = (UINT)device;
         c.pktData = c.moveMask = 0x1FFFu;
         c.btnDnMask = c.btnUpMask = 0xFFFFFFFFu;
-        sprintf_s(c.name, sizeof c.name, "issue121-%lu-%d", GetCurrentProcessId(), i);
+        if (tag) sprintf_s(c.name, sizeof c.name, "i121-%lu-%s-%d", GetCurrentProcessId(), tag, i);
+        else sprintf_s(c.name, sizeof c.name, "issue121-%lu-%d", GetCurrentProcessId(), i);
         start = now();
         contexts[i] = openContext(nullWindow ? NULL : hwnd, &c, TRUE);
         elapsed = now() - start;
@@ -276,6 +321,7 @@ static int lifecycle(int count, const char *mode, const char *kind, int device, 
 static int reclaim(const char *mode, const char *kind, int count, HANDLE existingSentinel)
 {
     char exe[MAX_PATH], command[1024];
+    LARGE_INTEGER nonce;
     STARTUPINFOA startup = {0};
     PROCESS_INFORMATION process = {0};
     MgrOpenFn mgrOpen = (MgrOpenFn)GetProcAddress(dll, "WTMgrOpen");
@@ -302,7 +348,9 @@ static int reclaim(const char *mode, const char *kind, int count, HANDLE existin
     row("sentinel_open", sentinel, sentinel != NULL, 0, "must_survive");
     if (!sentinel) { failed = 1; goto done; }
     if (!GetModuleFileNameA(NULL, exe, MAX_PATH)) { failed = 1; goto done; }
-    sprintf_s(command, sizeof command, "\"%s\" lifecycle %d %s %s", exe, count, mode, kind);
+    QueryPerformanceCounter(&nonce);
+    sprintf_s(expectedTag, sizeof expectedTag, "%016llX", (unsigned long long)nonce.QuadPart);
+    sprintf_s(command, sizeof command, "\"%s\" lifecycle %d %s %s -1 0 %s", exe, count, mode, kind, expectedTag);
     startup.cb = sizeof startup;
     if (!CreateProcessA(exe, command, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &startup, &process)) {
         row("child_create_failed", NULL, GetLastError(), 0, ""); failed = 1; goto done;
@@ -333,7 +381,7 @@ static int reclaim(const char *mode, const char *kind, int count, HANDLE existin
         Context check = {0};
         char prefix[48];
         BOOL ok;
-        sprintf_s(prefix, sizeof prefix, "issue121-%lu-", expectedPid);
+        sprintf_s(prefix, sizeof prefix, "i121-%lu-%s-", expectedPid, expectedTag);
         if (!getContext(candidates[i], &check) || strncmp(check.name, prefix, strlen(prefix))) {
             row("foreign_close_skipped", candidates[i], 0, 0, "identity_changed"); failed = 1; continue;
         }
@@ -371,7 +419,7 @@ done:
  */
 static int packetCheck(void)
 {
-    typedef struct { UINT serial; LONG x, y; UINT pressure; } Packet;
+    typedef struct { UINT serial, cursor; LONG x, y; UINT pressure; } Packet;
     typedef int (WINAPI *PacketsFn)(HANDLE, int, void *);
     typedef int (WINAPI *QueueSizeFn)(HANDLE);
     PacketsFn packets = (PacketsFn)GetProcAddress(dll, "WTPacketsGet");
@@ -386,12 +434,12 @@ static int packetCheck(void)
     if (!packets || !queueSize || info(4, 0, &c) != sizeof c) goto done;
     c.options |= 1u;
     c.options &= ~4u;
-    c.pktData = c.moveMask = 0x590u; /* SERIAL_NUMBER | X | Y | NORMAL_PRESSURE */
+    c.pktData = c.moveMask = 0x5B0u; /* SERIAL_NUMBER | CURSOR | X | Y | NORMAL_PRESSURE */
     c.pktMode = 0;
     strcpy_s(c.name, sizeof c.name, "issue121-packet-sentinel");
     context = openContext(hwnd, &c, TRUE);
     row("packet_context_open", context, context != NULL, 0, "physical_pen_required");
-    if (!context || c.pktData != 0x590u || c.pktMode != 0) goto done;
+    if (!context || c.pktData != 0x5B0u || c.pktMode != 0) goto done;
     SetWindowTextA(hwnd, "Wintab packet check - draw continuously for a few seconds");
     label = CreateWindowExA(0, "STATIC",
         "Draw on the tablet while this window is active.\nKeep drawing when the text changes.\nNo ink is drawn; this checks pressure packets.\nThe window closes when both phases pass.",
@@ -407,8 +455,8 @@ static int packetCheck(void)
         if (n < 0 || n > 32) break;
         for (i = 0; i < n; ++i) {
             char detail[128];
-            sprintf_s(detail, sizeof detail, "phase=%u;serial=%u;x=%ld;y=%ld;pressure=%u",
-                phase, data[i].serial, data[i].x, data[i].y, data[i].pressure);
+            sprintf_s(detail, sizeof detail, "phase=%u;serial=%u;cursor=%u;x=%ld;y=%ld;pressure=%u",
+                phase, data[i].serial, data[i].cursor, data[i].x, data[i].y, data[i].pressure);
             row("hardware_packet", context, data[i].pressure, 0, detail);
             if (data[i].pressure) ++contactPackets;
         }
@@ -446,7 +494,10 @@ int main(int argc, char **argv)
 {
     int result = 0;
     QueryPerformanceFrequency(&frequency);
-    dll = LoadLibraryExA("Wintab32.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    /* direct-info is a read-only diagnostic of this Wacom installation's
+     * backend, not an alternative application API or a path for context opens. */
+    dll = LoadLibraryExA(argc == 2 && !strcmp(argv[1], "direct-info") ?
+        "Wacom_Tablet.dll" : "Wintab32.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!dll) { fprintf(stderr, "Wintab load failed: %lu\n", GetLastError()); return 2; }
     info = (InfoFn)GetProcAddress(dll, "WTInfoA");
     openContext = (OpenFn)GetProcAddress(dll, "WTOpenA");
@@ -455,19 +506,21 @@ int main(int argc, char **argv)
     if (!info || !openContext || !closeContext) return 2;
     puts("utc,pid,event,handle,result,elapsed_ms,contexts,contexts_bytes,system,system_bytes,detail");
     if (argc == 1 || strcmp(argv[1], "snapshot") == 0) row("snapshot", NULL, 0, 0, "");
-    else if (strcmp(argv[1], "info") == 0) metadata();
+    else if (strcmp(argv[1], "info") == 0 || (argc == 2 && strcmp(argv[1], "direct-info") == 0)) metadata();
     else if (strcmp(argv[1], "manager") == 0) result = managerProbe();
     else if (strcmp(argv[1], "packet-check") == 0) result = packetCheck();
-    else if (strcmp(argv[1], "lifecycle") == 0 && argc >= 5 && argc <= 7) {
+    else if (strcmp(argv[1], "lifecycle") == 0 && argc >= 5 && argc <= 8) {
         int count = (int)number(argv[2], 1, 128);
         long device = argc > 5 ? number(argv[5], -1, 15) : -1;
         long hold = argc > 6 ? number(argv[6], 0, 3600000) : 0;
         const char *mode = argv[3], *kind = argv[4];
+        const char *tag = argc > 7 ? argv[7] : NULL;
         if (count < 1 || device == LONG_MIN || hold == LONG_MIN ||
+            (tag && (strlen(tag) != 16 || strspn(tag, "0123456789ABCDEF") != 16)) ||
             (strcmp(mode, "clean") && strcmp(mode, "kill") && strcmp(mode, "return") &&
              strcmp(mode, "destroy-return") && strcmp(mode, "cleanup")) ||
             (strcmp(kind, "system") && strcmp(kind, "digitizer") && strcmp(kind, "mixed") && strcmp(kind, "null") && strcmp(kind, "null-poll"))) return 2;
-        result = lifecycle(count, mode, kind, (int)device, (DWORD)hold);
+        result = lifecycle(count, mode, kind, (int)device, (DWORD)hold, tag);
         /* return modes deliberately retain the DLL until process shutdown. */
         if (!strcmp(mode, "return") || !strcmp(mode, "destroy-return")) return result;
     }
@@ -489,8 +542,8 @@ int main(int argc, char **argv)
         row("sample_end", NULL, 0, 0, "persistent_DLL");
     }
     else {
-        fprintf(stderr, "Usage:\n  investigate snapshot|info|manager|packet-check\n"
-            "  investigate lifecycle N clean|cleanup|kill|return|destroy-return system|digitizer|mixed|null|null-poll [device|-1] [hold_ms]\n"
+        fprintf(stderr, "Usage:\n  investigate snapshot|info|direct-info|manager|packet-check\n"
+            "  investigate lifecycle N clean|cleanup|kill|return|destroy-return system|digitizer|mixed|null|null-poll [device|-1] [hold_ms] [run_tag]\n"
             "  investigate reclaim kill|return|destroy-return system|digitizer N\n"
             "  investigate watch seconds interval_ms\n");
         result = 2;

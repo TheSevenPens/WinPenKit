@@ -62,6 +62,10 @@ investigate packet-check
 
 - `snapshot`, `info`, and `watch` only read Wintab information. `watch` uses one persistent DLL
   connection; its arguments are duration in seconds and sampling interval in milliseconds.
+- `info` also reports device capabilities, checking the returned sizes for numeric and axis
+  fields. Hardware identifier text is omitted. `direct-info` performs the same read-only
+  queries against the installed Wacom backend DLL to compare it with the public coordinator;
+  this is a diagnostic experiment, not a supported replacement API for applications.
 - `manager` opens and closes manager handles, enumerates without closing contexts, and compares
   hidden, visible, and NULL manager windows. A visible test window appears briefly.
 - `lifecycle N MODE KIND [DEVICE] [HOLD_MS]` opens up to 128 contexts. `clean` closes them;
@@ -70,9 +74,12 @@ investigate packet-check
   Kinds are `system`, `digitizer`, `mixed`, `null`, and `null-poll`. Device -1 preserves the
   driver's default virtual selection. The optional hold pumps window messages before exit
   or cleanup, including after an open fails. On failure, successful opens are closed normally.
+  An optional final 16-digit uppercase hexadecimal run tag is used internally by `reclaim`.
 - `reclaim MODE KIND N` creates its own child, confirms its exit through a retained process
   handle, then closes only enumerated test contexts named for that child. A separate live
-  sentinel must remain valid. It never treats a NULL or invalid owner HWND as sufficient
+  sentinel must remain valid. The final probe also requires a per-run performance-counter tag
+  in each name, preventing a reused process ID from matching a previous probe's contexts.
+  It never treats a NULL or invalid owner HWND as sufficient
   evidence to close an arbitrary context. Zero candidates returns nonzero: no reclamation
   was demonstrated. Candidate overflow also returns nonzero rather than claiming full recovery.
 - `packet-check` is an interactive hardware test. Keep drawing while its window is active.
@@ -102,6 +109,17 @@ the same driver session as the applications under investigation.
 standard library and reports durations, gaps, counter ranges, invalid reads, and process metrics.
 The persistent reader's final `sample_end` row distinguishes completion from an interim summary.
 Distinct PID counts can be lower than fresh launches because Windows reuses process IDs.
+
+`observe-idle.ps1 -OutputDirectory <new-directory>` compares fresh counters across ten minutes
+with no investigation readers running. Run it only after the other probes have exited, and
+do not launch probes during its wait. It records the interval and driver process IDs, opens
+no contexts, and changes no services. Unrelated clients are not stopped, so this is specifically
+a control for the investigation readers, not proof that the entire system makes no Wintab calls.
+
+`read-preference-profiles.ps1 -OutputPath <new-file>` extracts only tablet names, dimensions,
+and selected flags from existing Wacom preferences. It does not load Wintab, alter preferences,
+or include sensor IDs, serials, or application settings. Saved entries need not represent
+currently connected hardware; matching them to Wintab profiles requires interpretation.
 
 `probe-capacity.ps1 -OutputDirectory <new-directory>` performs a bounded allocation experiment:
 one process attempts 128 virtual system opens and holds its successful handles for two minutes.

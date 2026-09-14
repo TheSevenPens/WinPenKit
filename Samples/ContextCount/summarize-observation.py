@@ -8,6 +8,7 @@ separately and never silently converted into zero or discarded from the record.
 import argparse
 import csv
 import json
+import statistics
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -70,9 +71,30 @@ def summarize(directory):
             field: bounds([int(row[field]) for row in rows])
             for field in ("private_bytes", "working_set_bytes", "handles", "threads")
         }
+    cohorts = []
+    for path in sorted(directory.glob("cohort-*.csv")):
+        rows = read_csv(path)
+        opens = [row for row in rows if row["event"] == "open"]
+        succeeded = [float(row["elapsed_ms"]) for row in opens if row["result"] == "1"]
+        cohort = {
+            "file": path.name,
+            "attempts": len(opens),
+            "successful_opens": len(succeeded),
+            "failed_opens": [
+                {"utc": row["utc"], "contexts": int(row["contexts"]),
+                 "elapsed_ms": float(row["elapsed_ms"]), "detail": row["detail"]}
+                for row in opens if row["result"] != "1"
+            ],
+        }
+        if succeeded:
+            cohort["successful_open_ms"] = bounds(succeeded) | {
+                "mean": statistics.mean(succeeded), "median": statistics.median(succeeded)
+            }
+        cohorts.append(cohort)
     return {
         "readers": {name: reader_summary(rows) for name, rows in readers.items()},
         "processes": process_results,
+        "allocation_cohorts": cohorts,
         "scope": "Sampled counters and process metrics only; no inference about unobserved intervals or driver internals.",
     }
 
