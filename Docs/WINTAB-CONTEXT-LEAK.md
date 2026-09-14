@@ -357,18 +357,15 @@ it in a bug report.
 
 ## A window that shows the number
 
-[`Tools/WintabContexts`](../Tools/WintabContexts/) is a small WinForms application whose whole job
-is to display the count, with a button to restart the Wacom driver beside it. Leave it open, kill a
-drawing application, and the number goes up and stays up.
+[**WinTabUtils**](https://github.com/TheSevenPens/WinTabUtils) has a small application whose whole
+job is to display the count, with a button to restart the Wacom driver beside it. Leave it open,
+kill a drawing application, and the number goes up and stays up.
 
 ![the tool](images/wintab-contexts.png)
 
-It ships in the release as a single self-contained file, so it can be downloaded and
-double-clicked with nothing to install. From a clone:
-
-```
-dotnet run --project Tools/WintabContexts
-```
+It lives in its own repository rather than here, because it is for somebody whose pen has stopped
+working rather than for somebody writing an application, and a shared release list would sooner or
+later have had one downloading the other. Its releases are a single self-contained executable.
 
 It opens no contexts of its own: every call is `WTInfoA`, which only reads.
 
