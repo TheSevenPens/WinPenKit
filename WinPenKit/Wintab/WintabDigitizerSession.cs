@@ -87,11 +87,15 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
     /// <remarks>
     /// <para>
     /// "Fallback context also failed to open" names no cause, and a pen that has stopped working
-    /// looks exactly like a drawing bug, so the cause is what a caller needs. The driver knows one
-    /// of them: whether it has any context left to give. Seen in the wild at 253 open against a
-    /// stated maximum of 32, refusing every kind of context to every application, after a run of
-    /// development in which processes had been killed rather than closed -- a context is leaked by
-    /// any process that dies without calling WTClose.
+    /// looks exactly like a drawing bug, so anything the driver will say about itself is worth
+    /// passing on. Seen in the wild refusing every kind of context to every application, with its
+    /// context count frozen at 253 -- which the count alone would not have revealed, but the two
+    /// numbers together made it obvious that something was wrong at the driver rather than here.
+    /// </para>
+    /// <para>
+    /// <b>The count is not a capacity check.</b> Contexts were opened deliberately past the
+    /// stated maximum of 32, up to 334, every one of them succeeding. A high count means contexts
+    /// have been leaked, which is true and worth knowing; it does not mean the driver has run out.
     /// </para>
     /// <para>
     /// <b>Reported, not advised.</b> What to do about it, and whether to say anything to anyone,
@@ -105,9 +109,10 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
 
         Log($"Context table: {counts}");
 
-        return counts.IsFull
-            ? $"{refusal} The driver has {counts} contexts open, so it has none left to give."
-            : refusal;
+        // The numbers, not a conclusion drawn from them. A count above the stated maximum says
+        // contexts have been leaked; it does not say that is why this open failed, and on this
+        // driver it is not -- opens keep succeeding well past that figure.
+        return $"{refusal} The driver reports {counts}.";
     }
 
     private string? OpenFallback(IntPtr hwnd)

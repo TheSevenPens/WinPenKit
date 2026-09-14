@@ -9,15 +9,23 @@ namespace WinPenKit.Diagnostics;
 /// <param name="Maximum">The most the driver says it will have open at once.</param>
 public readonly record struct WintabContextTable(uint Open, uint Maximum)
 {
-    /// <summary>True when the driver has no context left to give anyone.</summary>
+    /// <summary>
+    /// True when the driver reports more open than it says it supports.
+    /// </summary>
     /// <remarks>
-    /// Written as "at or over" rather than "equal to", because the count seen in the wild was
-    /// 253 against a maximum of 32. A driver that has lost count of its own contexts is still a
-    /// driver that will not open another one.
+    /// <b>Not a capacity check, and not a reason for anything.</b> Measured on a Wacom driver
+    /// that reports a maximum of 32: contexts were opened past that figure without complaint, all
+    /// the way to 334, every one of them succeeding. Whatever <c>IFC_NCONTEXTS</c> is on that
+    /// driver, it is not a ceiling.
+    /// <para>
+    /// What this is good for is noticing that the count is implausible, which says contexts have
+    /// been leaked -- a process that dies without <c>WTClose</c> never gives its context back.
+    /// That is worth knowing and worth reporting. It is not, on the evidence, a cause of anything.
+    /// </para>
     /// </remarks>
-    public bool IsFull => Maximum > 0 && Open >= Maximum;
+    public bool AboveStatedMaximum => Maximum > 0 && Open > Maximum;
 
-    public override string ToString() => $"{Open} of a maximum of {Maximum}";
+    public override string ToString() => $"{Open} open, of a stated maximum of {Maximum}";
 }
 
 /// <summary>
@@ -27,17 +35,21 @@ public readonly record struct WintabContextTable(uint Open, uint Maximum)
 /// <para>
 /// Here because of a day lost to the answer. Both applications stopped taking pen input, and what
 /// the session could say about it was "Fallback context also failed to open" -- which names no
-/// cause, so the drawing code was searched instead. The driver knew: it had 253 contexts open
-/// against a stated maximum of 32, and was refusing every kind of context to everyone.
+/// cause, so the drawing code was searched instead. Anything the driver will say about itself is
+/// worth more than that.
 /// </para>
 /// <para>
-/// A context is leaked by any process that dies without calling <c>WTClose</c> -- killed from a
-/// task manager, crashed, or stopped from a debugger -- and the driver does not appear to reclaim
-/// them. Over a couple of days of development that is enough to fill the table.
+/// <b>What the counts do and do not mean.</b> A context is leaked by any process that dies
+/// without calling <c>WTClose</c> -- killed, crashed, or stopped from a debugger -- and the
+/// driver never takes it back, so a high count is real evidence that this has been happening.
+/// It is <b>not</b> evidence of why an open failed: contexts were opened deliberately past the
+/// stated maximum of 32, up to 334, and every one of them succeeded. The failure being diagnosed
+/// happened at 253 with the counter frozen, which is a driver that has stopped working rather
+/// than a driver that has run out.
 /// </para>
 /// <para>
-/// <b>This reports and does not advise.</b> What to do about a full table, and whether to say
-/// anything to anyone, belongs to the application.
+/// <b>This reports and does not advise.</b> What the numbers mean for a particular application,
+/// and whether to say anything to anyone, belongs to the application.
 /// </para>
 /// </remarks>
 public static class WintabDiagnostics
