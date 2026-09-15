@@ -218,7 +218,9 @@ the counts live in the service.
 
 **Why the historical driver-wide refusal occurred is not known.** Its relation to leaked
 contexts, the independently observed allocation failure, and IPC timeouts remains unproven.
-The old 1074 observation has not been independently reproduced by the same opening sequence.
+The 1074 to 538 drop that accompanied it is no longer mysterious: see
+[Half of a leak comes back](#half-of-a-leak-comes-back-once-the-next-time-the-pen-is-used). That
+explains the drop and not the refusal, which remains unexplained.
 
 ## What the specification says
 
@@ -538,21 +540,73 @@ otherwise will be, faster than any human use of the application.
 this costs nothing where there is nothing to leak. It matters exactly on the developer machine
 with the tablet attached, which is also the machine where losing the pen hurts most.
 
-### Some leaked contexts came back
+### Half of a leak comes back, once, the next time the pen is used
 
-Worth recording because it contradicts the simple story. After the runs above the count stood at
-1074. Nine minutes later, with those processes long exited and no service restart and nothing else
-done, it read **538** — almost exactly half of them had been returned.
+**This is now reproducible on demand and it is the explanation for the 1074 to 538 drop.** The
+driver does not collect leaked contexts on a timer. It collects them from the packet-delivery
+path, so nothing happens while the tablet is idle, and the collection happens within a fraction of
+a second of the first pen input after the leak.
 
-This was observed once and the cause was not captured. It is not evidence of a guaranteed timer
-or reclamation policy. A virtual context expanding into two device contexts provides a testable
-alternative hypothesis (one device's entries disappearing), but has not established what happened.
-See the independent timed observation in [the investigation record](WINTAB-INVESTIGATION-2026-09.md).
+Measured on 2026-09-15 with `investigate lifecycle 6 kill system` and a read-only sampler taking
+the counter four times a second. Raw captures in
+[`data/wintab-2026-09-15`](data/wintab-2026-09-15/).
 
-That recheck recorded 405 throughout 361 persistent and 359 fresh-reader samples over an hour,
-then 405 before and after a separate ten-minute interval with all investigation readers closed.
-The Wacom process IDs were unchanged. No decrease was reproduced, but the starting population
-was different from 1074, so this does not establish a universal retention policy.
+| round | what happened | counter |
+|---|---|---|
+| 1, idle | six contexts leaked by a self-terminating process, tablet untouched for a minute | **14**, flat over 121 samples |
+| 1, first input | first pen packet arrives | 16 to **10** within 6 ms |
+| 2 | the pen used again, seventeen pressure packets | **10, no change** |
+| 3, idle | six more contexts leaked, tablet untouched | **20**, flat over 279 samples |
+| 3, input | the pen used again | 20 to **14** |
+
+Each leak of six contexts costs twelve counter units. Six come back at the next pen input and six
+stay. The end state of **14** is the baseline 2 plus a residue of 6 from each of the two leaks,
+which is the arithmetic those rows require.
+
+Four things follow, and the third is the one that changes what a developer should do:
+
+- **Idle machines do not recover.** The count can sit at a leaked value indefinitely. Every earlier
+  measurement in this document that says a leaked context is never returned was taken on an idle
+  tablet, and on an idle tablet it is correct.
+- **Half of each leak is permanent**, until the tablet service is restarted. The collection happens
+  once per leak. Drawing again does not reduce the residue, which is what round 2 shows.
+- **It needs no application.** Round 3 had no test window, no context of its own, and nothing else
+  holding one. The driver's own packet handling was enough, so a machine with no drawing
+  application open still collects when the pen is touched.
+- **A leaked context is therefore worth one unit, not two**, in the long run. A process killed while
+  holding one context costs the driver two units immediately and one unit permanently.
+
+The 1074 to 538 observation fits exactly: a single large leak, halved at the next packet. The
+application running at the time held a live Wintab session, so packets were flowing.
+
+**What this does not establish.** Whether the residue is truly permanent or merely survives a great
+many packets; the residues here were watched across seventeen pressure packets and one further
+round, not for hours. Why half rather than all: a virtual open occupies two device entries, so one
+entry per context being collected would give exactly this ratio, but that mapping is inferred from
+the ratio rather than measured per entry. And whether hover alone is enough, since every round here
+used real pressure.
+
+### Why the reclamation crash happened, and the rule that follows
+
+The manager reclamation recorded in [the investigation record](WINTAB-INVESTIGATION-2026-09.md)
+succeeded repeatedly on an idle tablet and was followed by a driver crash the one time it was run
+while the pen was in contact. Exception `0xc0000374` is `STATUS_HEAP_CORRUPTION`, raised in
+`ntdll.dll` inside `Wacom_Tablet.exe` about 147 ms after the last foreign `WTClose`.
+
+The finding above supplies a mechanism. The packet path frees entries whose owner is dead. An
+external `WTClose` on those same entries at that moment is a second free of the same allocation.
+
+The fingerprint was in the capture before the mechanism was known. In the crashing run the counter
+fell from 10 to 9 **during enumeration, with no close issued**, and one enumerated handle had
+disappeared by the time the probe tried to close it. None of the five idle reclamation runs,
+including one with sixteen contexts, shows a single spontaneous drop.
+
+**The rule: do not close a context belonging to another process while the pen is in use.** Which
+is awkward, because it makes a "clean up leaked contexts" tool safe only while nobody is drawing,
+and that is precisely when nobody needs it.
+
+This mechanism is an inference from timing and from the idle-versus-live contrast, not a proof.
+Proving it would mean deliberately corrupting the driver's heap again, which was not done.
 
 ## What WinPenKit does, and what it does not cause
 
@@ -758,6 +812,12 @@ refusal now says what the driver thinks of itself rather than only that it said 
   `Scripts/Test-TabletServiceAccess.ps1`. One service permission removes the prompt without
   granting anything else: see
   [Restarting it without a prompt every time](#restarting-it-without-a-prompt-every-time).
+- **Do not close another process's context while the pen is in use.** On an idle tablet it
+  works; during input it raced the driver's own collection and corrupted its heap. See
+  [Why the reclamation crash happened](#why-the-reclamation-crash-happened-and-the-rule-that-follows).
+- **Expect half of a leak to come back by itself the next time the pen is touched, and the other
+  half not to.** A count taken on an idle machine is not the count you will have after the next
+  stroke.
 - Do not treat the counters as a capacity check.
 
 ## Not established
@@ -767,9 +827,14 @@ refusal now says what the driver thinks of itself rather than only that it said 
 - Whether the leak contributes to the wedge at all.
 - Whether logging off reclaims leaked contexts. Manager closure of known test contexts is
   established; safe automatic identification of arbitrary old orphans is not.
-- Why about half of a large number of leaked contexts came back on their own, minutes after the
-  processes holding them had exited, when every deliberate measurement here says a leaked context
-  stays leaked. Seen once, at 1074 falling to 538. Not reproduced on purpose.
+- Whether the half of a leak that is not collected at the next pen input is permanent, or merely
+  survives a large number of packets. It was watched across one further round of drawing, not for
+  hours.
+- Why exactly half is collected rather than all of it. One entry per context being taken, of the
+  two a virtual open occupies, would give this ratio; that is inferred from the ratio rather than
+  measured entry by entry.
+- Whether hover alone triggers the collection, or whether pressure is needed. Every round used
+  real pressure.
 - Whether a context leaked by one user's process is visible to another user's session.
 - Whether any configuration on this driver accepts a null `HWND`. Independent x64/x86 attempts
   with default virtual-device settings were refused; the original successful-open claim was
