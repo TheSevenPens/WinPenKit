@@ -551,6 +551,12 @@ Measured on 2026-09-15 with `investigate lifecycle 6 kill system` and a read-onl
 the counter four times a second. Raw captures in
 [`data/wintab-2026-09-15`](data/wintab-2026-09-15/).
 
+One further reader ran continuously across the whole session, in its own process with one
+persistent connection to the driver, and recorded the same nine transitions and nothing else in
+1199 samples: the two leaks, the two collections at first input, the test contexts opening and
+closing, and the service restart at the end. See
+[`continuous-sampler.csv`](data/wintab-2026-09-15/continuous-sampler.csv).
+
 | round | what happened | counter |
 |---|---|---|
 | 1, idle | six contexts leaked by a self-terminating process, tablet untouched for a minute | **14**, flat over 121 samples |
