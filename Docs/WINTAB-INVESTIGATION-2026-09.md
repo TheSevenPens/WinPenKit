@@ -496,6 +496,42 @@ No further attempt to reproduce the driver crash was made. Follow-up final state
 in this capture directory's `final-state.json`; the older root `final-state.json` is the
 daytime session's historical state.
 
+## Follow-up, 2026-09-15: the collection is packet-driven
+
+The crash trigger was investigated by asking what the driver does on its own, rather than by
+repeating the sequence that crashed it. Three rounds with a read-only sampler at four readings a
+second, contexts leaked with `investigate lifecycle 6 kill system`, raw data in
+[data/wintab-2026-09-15](data/wintab-2026-09-15/):
+
+| round | condition | counter |
+|---|---|---|
+| 1 | six contexts leaked, tablet idle for a minute | 14, flat across 121 samples |
+| 1 | first pen packet | 16 to 10, within 6 ms of the packet |
+| 2 | pen used again, seventeen pressure packets | 10, unchanged |
+| 3 | six more leaked, tablet idle | 20, flat across 279 samples |
+| 3 | pen used again, no application holding a context | 20 to 14 |
+
+**The driver collects leaked contexts from the packet-delivery path, not on a timer.** Half of each
+leak is collected at the next pen input; the other half remains. The end state of 14 is the
+baseline 2 plus a residue of 6 from each leak. Round 3 had no application context open at all, so
+the driver's own packet handling is sufficient.
+
+This reproduces the 1074 to 538 drop as a mechanism rather than an anomaly, and it removes the
+timed-observation puzzle recorded above: that hour was idle, which is exactly when nothing is
+collected.
+
+It also supplies a mechanism for the crash. The packet path frees entries whose owner is dead; an
+external `WTClose` on the same entries during input frees them a second time, which is what
+`STATUS_HEAP_CORRUPTION` describes. The evidence was already in the crash capture and was not
+recognised at the time: the counter fell from 10 to 9 during enumeration with no close issued, and
+an enumerated handle vanished before its close. None of the five idle reclamation captures contains
+a single spontaneous drop. This remains an inference from timing and from the idle-versus-live
+contrast. The crashing sequence was not repeated.
+
+Not established by this follow-up: whether the uncollected half is permanent or merely long-lived;
+why half rather than all, though one entry per context of the two a virtual open occupies would
+give the ratio; and whether hover alone suffices, since every round used real pressure.
+
 ## Status
 
 The bounded investigation is complete. Known-child manager reclamation, counter semantics,
