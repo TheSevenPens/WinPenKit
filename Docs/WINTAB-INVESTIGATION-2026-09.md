@@ -6,7 +6,11 @@ Started 2026-09-14. This is the experiment record; settled guidance belongs in
 
 ## Findings
 
-- **Known leaked contexts can be reclaimed without service restart.** The independent x64/x86
+**Follow-up correction:** the later live-pen test was followed by a Wacom driver crash.
+The idle manager successes below establish a reclamation capability, not safe production use.
+See [the live-input follow-up](#live-input-follow-up-september-14-evening) before attempting it.
+
+- **Idle tests reclaimed known leaked contexts without service restart.** The independent x64/x86
   probe enumerated and closed its exited children's contexts while a live sentinel remained
   valid. Arbitrary old orphan identification is not solved.
 - **The counter reflects device-context expansion.** Default virtual opens added two entries;
@@ -422,15 +426,87 @@ outside this repository, installing software, or changing tablet/security settin
   were changed. Only diagnostic comments, samples, and documentation changed in WinPenKit;
   no library behavior was patched and no broad .NET test run was used as hardware evidence.
 
+## Live-input follow-up, September 14 evening
+
+At 2026-09-15 01:28 UTC (September 14 evening PDT), the user returned for the manual test.
+The first placement was incorrectly on the primary monitor. After the user pointed this out,
+the test window was moved to the active Wacom display (`DISPLAY3`, monitor ID `WAC1105`).
+The user then drew in it. This also makes the earlier absence of input unsuitable evidence
+for any conclusion about packet delivery.
+
+The [follow-up capture](data/wintab-2026-09-14/manual-followup-20260915-012835/) records:
+
+- The live virtual context `0x202` received **19 positive-pressure packets** and passed phase 0
+  at 01:30:21.996 UTC. Packets identified cursor 1, within profile 0's cursor range.
+- A tagged child opened three virtual contexts and exited with code 0. The counter reached 10.
+- During enumeration, before any logged foreign close, the counter changed from 10 to 9.
+  The later identity recheck for child handle `0xA05` failed, so the probe skipped it and
+  marked reclamation incomplete. The reason for the disappearance is not established.
+- The other five known-child handles closed successfully, returning the counter to 4.
+  The live sentinel still passed `WTGetA`, but reclamation returned failure, so the test
+  **did not** flush the queue or enter the post-reclamation packet phase.
+- Closing the sentinel took approximately three seconds. `WTClose` returned success but
+  its immediate counter read was 3. Later fresh readers returned **zero bytes**, meaning
+  unavailable counters, not zero contexts. `WTMgrOpen` also failed.
+- `Wacom_Tablet.exe` PID 44964 was no longer running. `WTabletServicePro` and
+  `Wacom_TabletUser` retained their earlier PIDs, and the service still reported Running.
+  Thus service status alone did not establish an operational Wintab backend.
+- Application Error event 1000 at 01:30:22.3646537 UTC records `Wacom_Tablet.exe` 6.4.14.1,
+  faulting module `ntdll.dll` 10.0.26100.9444, exception **0xc0000374**, offset `0x117eb5`.
+  Windows Error Reporting event 1001 followed at 01:30:29.5357012 UTC. Both messages were
+  captured before recovery. `crash-events.json` contains selected fault fields; full Windows
+  event messages are retained locally, with WER attachment paths and report identifiers omitted
+  from the repository. No process dump was copied and no dump/logging settings were enabled.
+
+Microsoft identifies `0xc0000374` as `STATUS_HEAP_CORRUPTION` in its
+[published diagnostic example](https://support.microsoft.com/en-gb/topic/heap-corruption-occurs-in-the-svchost-exe-process-in-windows-7-or-in-windows-server-2008-r2-1cb2d98b-0a06-3782-d3bd-151c47189bc9)
+(read 2026-09-15 UTC). That identifies the reported exception, not the cause of this Wacom
+failure; the unrelated example's fix does not apply here.
+
+**Interpretation:** this combined live-input, child-exit, and manager-reclamation experiment
+was followed by a driver crash. It is not a successful packet-preservation test. It does not
+isolate child termination, asynchronous cleanup, enumeration, foreign closure, or their
+interaction as the trigger. The event timestamp is a reporting time, not proof of the exact
+instruction that failed. No repeat of the crashing sequence was attempted. The idle manager
+results remain valid measurements, but they do not justify a production cleanup tool.
+
+After preserving fresh-reader/manager failures, process metrics, and crash events, an announced
+service restart restored a fresh virtual system lifecycle to **2 to 4 to 2** at 01:32:47 UTC.
+The probe gained `packet-only`, which checks real input without opening or reclaiming child
+contexts, and optional desktop coordinates for both packet modes. The revised source builds
+on x64 and x86 with `/W4 /WX /wd4191`. An input-only recovery check was then placed directly
+on the Cintiq at desktop coordinates 3200/3000; its result is recorded below.
+
+The first input-only attempt timed out without packets; a later check found its window minimized.
+The probe was changed to restore the window and require both visibility and non-minimized state.
+The user still could not see the next attempt at the saved coordinates. A per-monitor-DPI-aware
+query then located the Cintiq work area at 2151/2160 to 4711/3516, and the verified window was
+moved to 2351/2360 and kept on top. The earlier coordinate lookup was made in a different DPI
+context; its coordinates were not interchangeable. The final source uses per-monitor DPI
+awareness for packet windows and documents this requirement for coordinate selection.
+
+At **01:39:07 UTC**, the input-only check received **16 positive-pressure packets**, reported
+`input_only_no_reclamation` success, and closed its own context successfully: **4 to 2**.
+No child was created and no foreign context was closed in that recovery check. This verifies
+physical pen input **after service recovery**, not preservation across reclamation.
+`recovery-packets-2.csv` contains the passing trace; `recovery-window-placement.txt` records the
+verified display and window bounds. The previous timeouts remain preserved as incomplete tests.
+
+No further attempt to reproduce the driver crash was made. Follow-up final state is recorded
+in this capture directory's `final-state.json`; the older root `final-state.json` is the
+daytime session's historical state.
+
 ## Status
 
 The bounded investigation is complete. Known-child manager reclamation, counter semantics,
 NULL-HWND refusal, the post-cleanup counter trap, and allocation-type-dependent refusal were
 independently measured. The original 253/90 ms driver-wide wedge and 1074-to-538 decrease
-remain unexplained; physical packet preservation remains unverified because neither manual
-attempt received input. These limits are retained rather than inferred away.
+remain unexplained. The later live-input sequence was followed by a driver crash, so physical
+packet preservation across reclamation did not pass and operational safety is not established.
+The exact crash trigger is a new unresolved question. These limits are retained rather than
+inferred away.
 
-The machine was left at **2 total / 2 system contexts**, both readings returning four bytes,
+At the end of the initial daytime session, the machine was left at **2 total / 2 system contexts**, both readings returning four bytes,
 with `WTabletServicePro` **Running** and no investigation probe left running. Fresh virtual
 system open/close and final tagged x64/x86 reclamation controls passed. Two announced service
 restarts occurred during the session. Nothing was installed; security settings and tablet

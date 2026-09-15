@@ -1,0 +1,5 @@
+utc,pid,event,handle,result,elapsed_ms,contexts,contexts_bytes,system,system_bytes,detail
+2026-09-15T01:33:51.875Z,26788,packet_context_open,0000000000000202,1,0.000,4,4,4,4,"physical_pen_required"
+2026-09-15T01:33:51.920Z,26788,packet_window_visible,0000000001A21490,1,0.000,4,4,4,4,"explicit_show"
+2026-09-15T01:36:51.903Z,26788,packet_check_result,0000000000000202,0,0.000,4,4,4,4,"timeout_or_incomplete"
+2026-09-15T01:36:51.907Z,26788,packet_context_close,0000000000000202,1,0.000,2,4,2,4,""

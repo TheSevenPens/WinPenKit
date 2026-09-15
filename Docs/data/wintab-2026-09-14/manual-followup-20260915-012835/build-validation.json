@@ -1,0 +1,7 @@
+{
+  "utc": "2026-09-15T01:40:57.0529733Z",
+  "x64_build_exit": 0,
+  "x86_build_exit": 0,
+  "source_sha256": "45BBD18CDEA78F690B7F3303656FE8C528E3EE21C5147CB80F6194C74A56E41B",
+  "note": "Final patch adds consistent DPI awareness and input-only phase label; physical packet recovery validated in recovery-packets-2.csv."
+}

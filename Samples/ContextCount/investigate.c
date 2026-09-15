@@ -425,19 +425,22 @@ done:
  * after reclaiming a test child's contexts. Poll a fixed, checked packet layout;
  * mouse/WM_POINTER messages cannot satisfy this test. No pen input is synthesized.
  */
-static int packetCheck(void)
+static int packetCheck(BOOL reclaimChild, int x, int y)
 {
     typedef struct { UINT serial, cursor; LONG x, y; UINT pressure; } Packet;
     typedef int (WINAPI *PacketsFn)(HANDLE, int, void *);
     typedef int (WINAPI *QueueSizeFn)(HANDLE);
     PacketsFn packets = (PacketsFn)GetProcAddress(dll, "WTPacketsGet");
     QueueSizeFn queueSize = (QueueSizeFn)GetProcAddress(dll, "WTQueueSizeGet");
-    HWND hwnd = window(), label;
+    HWND hwnd, label;
     HANDLE context = NULL;
     Context c = {0};
     ULONGLONG deadline;
     unsigned contactPackets = 0, phase = 0;
     int failed = 1;
+    /* Keep optional desktop coordinates consistent across mixed-DPI monitors. */
+    SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    hwnd = window();
     if (!hwnd) return 2;
     if (!packets || !queueSize || info(4, 0, &c) != sizeof c) goto done;
     c.options |= 1u;
@@ -448,13 +451,18 @@ static int packetCheck(void)
     context = openContext(hwnd, &c, TRUE);
     row("packet_context_open", context, context != NULL, 0, "physical_pen_required");
     if (!context || c.pktData != 0x5B0u || c.pktMode != 0) goto done;
-    SetWindowTextA(hwnd, "Wintab packet check - draw continuously for a few seconds");
+    SetWindowTextA(hwnd, reclaimChild ? "Wintab packet check - draw continuously for a few seconds" :
+        "Wintab input-only check - draw a short stroke");
     label = CreateWindowExA(0, "STATIC",
-        "Draw on the tablet while this window is active.\nKeep drawing when the text changes.\nNo ink is drawn; this checks pressure packets.\nThe window closes when both phases pass.",
+        reclaimChild ? "Draw on the tablet while this window is active.\nKeep drawing when the text changes.\nNo ink is drawn; this checks pressure packets.\nThe window closes when both phases pass." :
+        "Draw a short stroke here.\nNo ink is drawn; this checks pressure packets.\nNo child contexts are opened or reclaimed.\nThe window closes when input is verified.",
         WS_CHILD | WS_VISIBLE | SS_CENTER, 10, 20, 360, 120, hwnd, NULL, GetModuleHandleA(NULL), NULL);
-    SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-    row("packet_window_visible", hwnd, IsWindowVisible(hwnd), 0, "explicit_show");
-    if (!IsWindowVisible(hwnd)) goto done;
+    ShowWindow(hwnd, SW_RESTORE);
+    /* The first ShowWindow can be overridden by the launcher's STARTUPINFO. */
+    if (IsIconic(hwnd) || !IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_RESTORE);
+    SetWindowPos(hwnd, HWND_TOP, x, y, 900, 600, SWP_SHOWWINDOW);
+    row("packet_window_visible", hwnd, IsWindowVisible(hwnd) && !IsIconic(hwnd), 0, "visible_and_not_minimized");
+    if (!IsWindowVisible(hwnd) || IsIconic(hwnd)) goto done;
     SetForegroundWindow(hwnd);
     deadline = GetTickCount64() + 180000;
     while (IsWindow(hwnd) && GetTickCount64() < deadline) {
@@ -471,8 +479,9 @@ static int packetCheck(void)
             if (data[i].pressure) ++contactPackets;
         }
         if (contactPackets >= 16) {
-            row("packet_phase_pass", context, contactPackets, 0, phase ? "after_reclaim" : "before_reclaim");
-            if (phase) { failed = 0; break; }
+            row("packet_phase_pass", context, contactPackets, 0,
+                !reclaimChild ? "input_only" : phase ? "after_reclaim" : "before_reclaim");
+            if (!reclaimChild || phase) { failed = 0; break; }
             SetWindowTextA(label, "First phase passed. Reclaiming test contexts...\nKeep drawing for the second phase.");
             if (reclaim("kill", "system", 3, context) != 0) break;
             /* Discard queued pre-reclamation packets so they cannot count as
@@ -489,7 +498,8 @@ static int packetCheck(void)
             SetWindowTextA(label, "Cleanup completed. Keep drawing.\nNow checking packets on the original context.");
         }
     }
-    row("packet_check_result", context, !failed, 0, failed ? "timeout_or_incomplete" : "same_context_both_phases");
+    row("packet_check_result", context, !failed, 0, failed ? "timeout_or_incomplete" :
+        reclaimChild ? "same_context_both_phases" : "input_only_no_reclamation");
 done:
     if (context) {
         BOOL ok = closeContext(context);
@@ -518,7 +528,12 @@ int main(int argc, char **argv)
     if (argc == 1 || strcmp(argv[1], "snapshot") == 0) row("snapshot", NULL, 0, 0, "");
     else if (strcmp(argv[1], "info") == 0 || (argc == 2 && strcmp(argv[1], "direct-info") == 0)) metadata();
     else if (strcmp(argv[1], "manager") == 0) result = managerProbe();
-    else if (strcmp(argv[1], "packet-check") == 0) result = packetCheck();
+    else if ((!strcmp(argv[1], "packet-check") || !strcmp(argv[1], "packet-only")) && (argc == 2 || argc == 4)) {
+        long x = argc == 4 ? number(argv[2], -32768, 32767) : 40;
+        long y = argc == 4 ? number(argv[3], -32768, 32767) : 40;
+        if (x == LONG_MIN || y == LONG_MIN) return 2;
+        result = packetCheck(!strcmp(argv[1], "packet-check"), (int)x, (int)y);
+    }
     else if (strcmp(argv[1], "lifecycle") == 0 && argc >= 5 && argc <= 8) {
         int count = (int)number(argv[2], 1, 128);
         long device = argc > 5 ? number(argv[5], -1, 15) : -1;
@@ -552,7 +567,8 @@ int main(int argc, char **argv)
         row("sample_end", NULL, 0, 0, "persistent_DLL");
     }
     else {
-        fprintf(stderr, "Usage:\n  investigate snapshot|info|direct-info|manager|packet-check\n"
+        fprintf(stderr, "Usage:\n  investigate snapshot|info|direct-info|manager\n"
+            "  investigate packet-check|packet-only [desktop_x desktop_y]\n"
             "  investigate lifecycle N clean|cleanup|kill|return|destroy-return system|digitizer|mixed|null|null-poll [device|-1] [hold_ms] [run_tag]\n"
             "  investigate reclaim kill|return|destroy-return system|digitizer N\n"
             "  investigate watch seconds interval_ms\n");

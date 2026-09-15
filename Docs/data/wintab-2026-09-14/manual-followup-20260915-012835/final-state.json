@@ -1,0 +1,29 @@
+{
+  "utc": "2026-09-15T01:40:56.9737098Z",
+  "contexts": 2,
+  "system": 2,
+  "contexts_bytes": 4,
+  "system_bytes": 4,
+  "service_status": "Running",
+  "driver_processes": [
+    {
+      "ProcessName": "Wacom_Tablet",
+      "Id": 43584
+    },
+    {
+      "ProcessName": "Wacom_TabletUser",
+      "Id": 58756
+    },
+    {
+      "ProcessName": "WTabletServicePro",
+      "Id": 53688
+    }
+  ],
+  "remaining_probes": [],
+  "physical_input": "Passed input-only after service restart: 16 positive-pressure packets.",
+  "reclamation_during_input": "Failed: combined experiment followed by driver crash; exact trigger not isolated.",
+  "service_restarts_this_followup": 1,
+  "installations": [],
+  "security_changes": [],
+  "preference_changes": []
+}

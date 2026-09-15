@@ -29,6 +29,11 @@ will be higher every time.
 
 ## Independent investigation probe
 
+**Observed live-input crash:** the combined pen-input, child-termination, and manager-reclamation
+test was followed by a Wacom driver crash (`0xc0000374`). Idle successes do not establish safety
+during input. `reclaim` and `packet-check` are experimental, not production recovery tools.
+Use `packet-only` to check input without deliberately leaking or closing child contexts.
+
 `investigate.c` is the independent instrument for [issue #121](https://github.com/TheSevenPens/WinPenKit/issues/121).
 It declares its own ABI and calls `WTInfoA` directly; it does not use `wtcount.h` or WinPenKit.
 Methods, results, and raw data are in [the investigation record](../../Docs/WINTAB-INVESTIGATION-2026-09.md).
@@ -86,6 +91,12 @@ investigate packet-check
   It requires pressure packets before and after reclaiming a killed test child's contexts,
   using the same live context. It flushes queued packets between phases and closes after
   success or a three-minute timeout. Mouse events cannot satisfy it.
+- `packet-only` checks real pressure input and closes its own context, without creating a child
+  or attempting reclamation. Both packet commands accept optional desktop X/Y coordinates so
+  their window can be placed on the pen display. Packet tests use per-monitor DPI awareness;
+  obtain coordinates from `GetMonitorInfo` in that same awareness context. The verified placement
+  on this configuration was `investigate packet-only 2351 2360`. Coordinates from another DPI
+  context proved unreliable; discover the current bounds rather than assuming a saved position.
 
 **Confirm you can restore the tablet before deliberate leakage.** The programs do not restart
 services. If a driver refuses or hangs, preserve the output before deciding how to recover.

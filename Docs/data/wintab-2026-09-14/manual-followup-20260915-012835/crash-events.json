@@ -1,0 +1,26 @@
+[
+  {
+    "utc": "2026-09-15T01:30:29.5357012Z",
+    "event_id": 1001,
+    "provider": "Windows Error Reporting",
+    "application": "Wacom_Tablet.exe",
+    "application_version": "6.4.14.1",
+    "exception_code": "0xc0000374",
+    "faulting_module": null,
+    "faulting_module_version": null,
+    "fault_offset": null,
+    "note": "Selected fields from the original event. Full WER messages retained locally; report IDs, attachment paths, and dumps omitted."
+  },
+  {
+    "utc": "2026-09-15T01:30:22.3646537Z",
+    "event_id": 1000,
+    "provider": "Application Error",
+    "application": "Wacom_Tablet.exe",
+    "application_version": "6.4.14.1",
+    "exception_code": "0xc0000374",
+    "faulting_module": "ntdll.dll",
+    "faulting_module_version": "10.0.26100.9444",
+    "fault_offset": "0x117eb5",
+    "note": "Selected fields from the original event. Full WER messages retained locally; report IDs, attachment paths, and dumps omitted."
+  }
+]

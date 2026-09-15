@@ -1,5 +1,11 @@
 # Wintab contexts are leaked by processes that do not close them
 
+**Live-input follow-up, September 14 evening:** a test combining physical pen input, child
+termination, and manager reclamation was followed by a `Wacom_Tablet.exe` crash with exception
+`0xc0000374`. The earlier idle reclamation successes do **not** establish operational safety.
+Do not use this experiment as a production cleanup mechanism. The exact trigger within that
+sequence remains unproven; see the [follow-up record](WINTAB-INVESTIGATION-2026-09.md#live-input-follow-up-september-14-evening).
+
 A Wintab context opened by a process that exits without `WTClose` can remain in the
 Wacom driver's tables after its owner is gone. This was reproduced with process termination,
 ordinary return from `main`, and window destruction before exit.
@@ -249,8 +255,10 @@ This worked for system and digitizer contexts, killed children, ordinary process
 `WTClose`, and window destruction before process exit. None needed a service restart.
 
 The final probe tags names by child PID and run, avoiding accidental matches after PID reuse.
-The sentinel check establishes `WTGetA` validity. Two manual packet tests received no pen input,
-so continued physical packet delivery across reclamation remains unverified.
+The sentinel check establishes `WTGetA` validity in the idle tests. After two earlier manual
+attempts received no input, a later attempt received pressure packets but the combined child-exit/
+reclamation test was followed by a driver crash. Physical packet preservation across reclamation
+has therefore not passed validation. This substantially limits the practical use of the result.
 
 **Do not turn `!IsWindow(owner)` into a cleanup button.** Our initial two built-in system
 contexts had NULL owners. A destroyed window also does not prove its process has exited, and
