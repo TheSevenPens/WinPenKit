@@ -3,7 +3,7 @@
  * The demonstration the other two exist to be compared against. A process that ends without
  * calling WTClose is what happens when an application is killed from a task manager, crashes, or
  * is stopped from a debugger -- and on the driver this was tested against, the context it held is
- * never taken back.
+ * retained after exit. A manager can reclaim known leaked contexts; see the investigation.
  *
  * TerminateProcess rather than exit(), because exit() runs the C runtime's shutdown and the point
  * is to model a process that gets no shutdown at all.

@@ -1,0 +1,1 @@
+device=\\.\DISPLAY3;placed=True;monitor=2151,2160,4711,3516;window=2351,2360,3350,3009

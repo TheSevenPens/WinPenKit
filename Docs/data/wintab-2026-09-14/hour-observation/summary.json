@@ -1,0 +1,187 @@
+{
+  "readers": {
+    "persistent": {
+      "rows": 361,
+      "valid_rows": 361,
+      "invalid_rows": 0,
+      "first_utc": "2026-09-14T17:36:43.640Z",
+      "last_utc": "2026-09-14T18:36:48.813Z",
+      "duration_seconds": 3605.173,
+      "max_gap_seconds": 10.028,
+      "distinct_pids": 1,
+      "end_marker": true,
+      "contexts": {
+        "min": 405,
+        "max": 405,
+        "first": 405,
+        "last": 405
+      },
+      "system": {
+        "min": 405,
+        "max": 405,
+        "first": 405,
+        "last": 405
+      },
+      "changes": []
+    },
+    "fresh": {
+      "rows": 359,
+      "valid_rows": 359,
+      "invalid_rows": 0,
+      "first_utc": "2026-09-14T17:36:43.646Z",
+      "last_utc": "2026-09-14T18:36:40.797Z",
+      "duration_seconds": 3597.151,
+      "max_gap_seconds": 10.072,
+      "distinct_pids": 344,
+      "end_marker": false,
+      "contexts": {
+        "min": 405,
+        "max": 405,
+        "first": 405,
+        "last": 405
+      },
+      "system": {
+        "min": 405,
+        "max": 405,
+        "first": 405,
+        "last": 405
+      },
+      "changes": []
+    }
+  },
+  "processes": {
+    "WTabletServicePro": {
+      "samples": 359,
+      "pids": [
+        40496
+      ],
+      "service_states": [
+        "Running"
+      ],
+      "private_bytes": {
+        "min": 2183168,
+        "max": 3469312
+      },
+      "working_set_bytes": {
+        "min": 12652544,
+        "max": 14024704
+      },
+      "handles": {
+        "min": 202,
+        "max": 206
+      },
+      "threads": {
+        "min": 3,
+        "max": 5
+      }
+    },
+    "Wacom_Tablet": {
+      "samples": 359,
+      "pids": [
+        34844
+      ],
+      "service_states": [
+        "Running"
+      ],
+      "private_bytes": {
+        "min": 45748224,
+        "max": 47292416
+      },
+      "working_set_bytes": {
+        "min": 91787264,
+        "max": 92409856
+      },
+      "handles": {
+        "min": 727,
+        "max": 742
+      },
+      "threads": {
+        "min": 68,
+        "max": 73
+      }
+    },
+    "Wacom_TabletUser": {
+      "samples": 359,
+      "pids": [
+        55636
+      ],
+      "service_states": [
+        "Running"
+      ],
+      "private_bytes": {
+        "min": 2973696,
+        "max": 3080192
+      },
+      "working_set_bytes": {
+        "min": 23302144,
+        "max": 23543808
+      },
+      "handles": {
+        "min": 307,
+        "max": 309
+      },
+      "threads": {
+        "min": 4,
+        "max": 7
+      }
+    }
+  },
+  "allocation_cohorts": [
+    {
+      "file": "cohort-0.csv",
+      "attempts": 67,
+      "successful_opens": 67,
+      "failed_opens": [],
+      "successful_open_ms": {
+        "min": 41.536,
+        "max": 48.117,
+        "mean": 44.250253731343285,
+        "median": 43.924
+      }
+    },
+    {
+      "file": "cohort-1.csv",
+      "attempts": 67,
+      "successful_opens": 67,
+      "failed_opens": [],
+      "successful_open_ms": {
+        "min": 41.952,
+        "max": 50.385,
+        "mean": 43.9605671641791,
+        "median": 43.758
+      }
+    },
+    {
+      "file": "cohort-2.csv",
+      "attempts": 67,
+      "successful_opens": 67,
+      "failed_opens": [],
+      "successful_open_ms": {
+        "min": 43.62,
+        "max": 52.765,
+        "mean": 47.54368656716418,
+        "median": 47.475
+      }
+    },
+    {
+      "file": "cohort-3.csv",
+      "attempts": 54,
+      "successful_opens": 53,
+      "failed_opens": [
+        {
+          "utc": "2026-09-14T17:35:15.849Z",
+          "contexts": 511,
+          "elapsed_ms": 27.113,
+          "detail": "index=53;device=4294967295;options=0x8015;hwnd=00000000004A13DC"
+        }
+      ],
+      "successful_open_ms": {
+        "min": 49.391,
+        "max": 57.128,
+        "mean": 53.5098679245283,
+        "median": 53.853
+      }
+    }
+  ],
+  "scope": "Sampled counters and process metrics only; no inference about unobserved intervals or driver internals."
+}

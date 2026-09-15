@@ -1,0 +1,6 @@
+{
+  "pid": 3528,
+  "utc": "2026-09-14T18:55:56.3159197Z",
+  "timeout_seconds": 180,
+  "note": "Explicit window visibility fix; prior attempt received no pen input."
+}

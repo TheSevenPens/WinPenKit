@@ -1,0 +1,2 @@
+utc,pid,event,handle,result,elapsed_ms,contexts,contexts_bytes,system,system_bytes,detail
+2026-09-14T19:00:06.729Z,30576,snapshot,0000000000000000,0,0.000,2,4,2,4,""

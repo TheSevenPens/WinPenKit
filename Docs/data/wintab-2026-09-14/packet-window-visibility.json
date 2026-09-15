@@ -1,0 +1,7 @@
+{
+  "utc": "2026-09-14T18:53:19.8117083Z",
+  "pid": 17480,
+  "visible_before": false,
+  "visible_after": true,
+  "note": "Show the explicitly requested test window after hidden-console startup suppressed its first ShowWindow."
+}

@@ -1,0 +1,29 @@
+{
+  "utc": "2026-09-14T19:00:06.7351156Z",
+  "contexts": 2,
+  "contexts_bytes": 4,
+  "system": 2,
+  "system_bytes": 4,
+  "service_status": "Running",
+  "driver_processes": [
+    {
+      "ProcessName": "Wacom_Tablet",
+      "Id": 44964
+    },
+    {
+      "ProcessName": "Wacom_TabletUser",
+      "Id": 22684
+    },
+    {
+      "ProcessName": "WTabletServicePro",
+      "Id": 33448
+    }
+  ],
+  "remaining_probe_processes": [],
+  "recovery_checks": "Fresh virtual system open/close and tagged x64/x86 reclamation passed.",
+  "physical_packet_validation": "Incomplete: two attempts received no hardware packets; both contexts closed normally.",
+  "installations": [],
+  "security_changes": [],
+  "preference_changes": [],
+  "service_restarts_this_session": 2
+}

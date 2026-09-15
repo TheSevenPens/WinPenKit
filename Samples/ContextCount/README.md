@@ -2,7 +2,7 @@
 
 Three small C programs that report the Wintab driver's own context counters, do one thing, and
 report them again. They exist to demonstrate, without a framework or a language runtime in the
-way, that **a process which dies without calling `WTClose` never gives its context back**.
+way, that **a process which dies without calling `WTClose` can leave contexts behind**.
 
 What they showed, and what it means, is in
 [Docs/WINTAB-CONTEXT-LEAK.md](../../Docs/WINTAB-CONTEXT-LEAK.md).
@@ -26,3 +26,115 @@ input — for that, see the Scribble sample applications.
 
 Run `leak-context.exe` a few times and then `system-context.exe`, and the count it starts from
 will be higher every time.
+
+## Independent investigation probe
+
+**Observed live-input crash:** the combined pen-input, child-termination, and manager-reclamation
+test was followed by a Wacom driver crash (`0xc0000374`). Idle successes do not establish safety
+during input. `reclaim` and `packet-check` are experimental, not production recovery tools.
+Use `packet-only` to check input without deliberately leaking or closing child contexts.
+
+`investigate.c` is the independent instrument for [issue #121](https://github.com/TheSevenPens/WinPenKit/issues/121).
+It declares its own ABI and calls `WTInfoA` directly; it does not use `wtcount.h` or WinPenKit.
+Methods, results, and raw data are in [the investigation record](../../Docs/WINTAB-INVESTIGATION-2026-09.md).
+
+Build with `build-investigate.cmd` (x64) or `build-investigate.cmd x86`. The script discovers
+Visual Studio with `vswhere`; alternatively use a developer prompt:
+
+```bat
+cl /nologo /W4 /WX /wd4191 investigate.c user32.lib
+```
+
+Only the documented function-pointer casts from `GetProcAddress` suppress warning C4191.
+The x86 script places its executable under `x86/`. No SDK, install, or import library is needed.
+
+Commands below use the x64 executable:
+
+```bat
+investigate snapshot
+investigate info
+investigate manager
+investigate lifecycle 3 clean mixed
+investigate lifecycle 3 clean system 0
+investigate lifecycle 1 clean null
+investigate lifecycle 1 clean null-poll
+investigate reclaim kill system 3
+investigate reclaim return digitizer 3
+investigate reclaim destroy-return system 3
+investigate watch 3600 10000
+investigate packet-check
+```
+
+- `snapshot`, `info`, and `watch` only read Wintab information. `watch` uses one persistent DLL
+  connection; its arguments are duration in seconds and sampling interval in milliseconds.
+- `info` also reports device capabilities, checking the returned sizes for numeric and axis
+  fields. Hardware identifier text is omitted. `direct-info` performs the same read-only
+  queries against the installed Wacom backend DLL to compare it with the public coordinator;
+  this is a diagnostic experiment, not a supported replacement API for applications.
+- `manager` opens and closes manager handles, enumerates without closing contexts, and compares
+  hidden, visible, and NULL manager windows. A visible test window appears briefly.
+- `lifecycle N MODE KIND [DEVICE] [HOLD_MS]` opens up to 128 contexts. `clean` closes them;
+  `cleanup` also calls `WacomCleanup` after all owned contexts are closed. `kill`, `return`, and
+  `destroy-return` deliberately omit `WTClose` and can leave driver resources behind.
+  Kinds are `system`, `digitizer`, `mixed`, `null`, and `null-poll`. Device -1 preserves the
+  driver's default virtual selection. The optional hold pumps window messages before exit
+  or cleanup, including after an open fails. On failure, successful opens are closed normally.
+  An optional final 16-digit uppercase hexadecimal run tag is used internally by `reclaim`.
+- `reclaim MODE KIND N` creates its own child, confirms its exit through a retained process
+  handle, then closes only enumerated test contexts named for that child. A separate live
+  sentinel must remain valid. The final probe also requires a per-run performance-counter tag
+  in each name, preventing a reused process ID from matching a previous probe's contexts.
+  It never treats a NULL or invalid owner HWND as sufficient
+  evidence to close an arbitrary context. Zero candidates returns nonzero: no reclamation
+  was demonstrated. Candidate overflow also returns nonzero rather than claiming full recovery.
+- `packet-check` is an interactive hardware test. Keep drawing while its window is active.
+  It requires pressure packets before and after reclaiming a killed test child's contexts,
+  using the same live context. It flushes queued packets between phases and closes after
+  success or a three-minute timeout. Mouse events cannot satisfy it.
+- `packet-only` checks real pressure input and closes its own context, without creating a child
+  or attempting reclamation. Both packet commands accept optional desktop X/Y coordinates so
+  their window can be placed on the pen display. Packet tests use per-monitor DPI awareness;
+  obtain coordinates from `GetMonitorInfo` in that same awareness context. The verified placement
+  on this configuration was `investigate packet-only 2351 2360`. Coordinates from another DPI
+  context proved unreliable; discover the current bounds rather than assuming a saved position.
+
+**Confirm you can restore the tablet before deliberate leakage.** The programs do not restart
+services. If a driver refuses or hangs, preserve the output before deciding how to recover.
+The observed Wacom driver can leave a context even when `WTOpenA` returns NULL, so an unsuccessful
+run is not necessarily balanced.
+
+CSV records retain UTC timestamps, process IDs, handles, return values, timings, both counters,
+and their returned byte counts. Treat a counter as reported only when its byte count is four.
+`0xFFFFFFFF` with zero returned bytes means unsupported/unavailable, not an enormous count.
+Do not infer global cleanup from a reading in a process that just called `WacomCleanup`:
+cross-check with a fresh process.
+For manager rows, device/options/name fields are meaningful only when `get=1` in the detail.
+Failed `WTGetA` leaves the probe's zero-initialized structure, not a reported device 0.
+
+`observe.ps1 -OutputDirectory <new-directory>` records both fresh-process and persistent readers
+for one hour by default, plus Wacom process IDs, memory, thread and handle counts. It is read-only
+and refuses to overwrite its core CSVs. Run it as the normal interactive user so the reader sees
+the same driver session as the applications under investigation.
+
+`summarize-observation.py <directory> [--output summary.json]` reads those CSVs using Python's
+standard library and reports durations, gaps, counter ranges, invalid reads, and process metrics.
+The persistent reader's final `sample_end` row distinguishes completion from an interim summary.
+Distinct PID counts can be lower than fresh launches because Windows reuses process IDs.
+
+`observe-idle.ps1 -OutputDirectory <new-directory>` compares fresh counters across ten minutes
+with no investigation readers running. Run it only after the other probes have exited, and
+do not launch probes during its wait. It records the interval and driver process IDs, opens
+no contexts, and changes no services. Unrelated clients are not stopped, so this is specifically
+a control for the investigation readers, not proof that the entire system makes no Wintab calls.
+
+`read-preference-profiles.ps1 -OutputPath <new-file>` extracts only tablet names, dimensions,
+and selected flags from existing Wacom preferences. It does not load Wintab, alter preferences,
+or include sensor IDs, serials, or application settings. Saved entries need not represent
+currently connected hardware; matching them to Wintab profiles requires interpretation.
+
+`probe-capacity.ps1 -OutputDirectory <new-directory>` performs a bounded allocation experiment:
+one process attempts 128 virtual system opens and holds its successful handles for two minutes.
+Fresh processes capture counters, manager enumeration, driver metrics, and system/digitizer/
+explicit-device controls while those allocations are held. Successful handles are then closed
+and a fresh control is retried. Timeouts preserve the affected processes and logs for inspection.
+Failed opens may leave residue; this is not a read-only or guaranteed balanced command.

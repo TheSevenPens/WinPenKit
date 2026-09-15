@@ -1,0 +1,20 @@
+[
+  {
+    "ProcessName": "Wacom_TabletUser",
+    "Id": 22684,
+    "StartTime": "2026-09-14T11:51:30.6824932-07:00",
+    "HandleCount": 210,
+    "threads": 4,
+    "PrivateMemorySize64": 2105344,
+    "Responding": true
+  },
+  {
+    "ProcessName": "WTabletServicePro",
+    "Id": 33448,
+    "StartTime": null,
+    "HandleCount": 202,
+    "threads": 3,
+    "PrivateMemorySize64": 2347008,
+    "Responding": true
+  }
+]

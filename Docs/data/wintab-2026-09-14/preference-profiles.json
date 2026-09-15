@@ -1,0 +1,27 @@
+{
+  "utc": "2026-09-14T18:41:02.9256541Z",
+  "source": "Existing WTablet/Wacom_Tablet.dat; selected tablet metadata only",
+  "scope": "Read-only preferences, not authoritative live Wintab device mapping. No sensor IDs, serials, or application settings recorded.",
+  "profiles": [
+    {
+      "TabletName": "Wacom Cintiq 24 touch",
+      "DefaultTabName": "Wacom Cintiq 24 touch",
+      "IsVirtual": "false",
+      "TabletPhysicallyOn": "true",
+      "TabletOn1Off0": "true",
+      "TabletType": "33",
+      "TabletXDimension": "53085",
+      "TabletYDimension": "30035"
+    },
+    {
+      "TabletName": "Wacom One 14",
+      "DefaultTabName": "Wacom One 14",
+      "IsVirtual": "false",
+      "TabletPhysicallyOn": "false",
+      "TabletOn1Off0": "true",
+      "TabletType": "8",
+      "TabletXDimension": "30931",
+      "TabletYDimension": "17399"
+    }
+  ]
+}

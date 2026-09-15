@@ -1,0 +1,24 @@
+{
+  "utc": "2026-09-14T18:57:19.3926430Z",
+  "x86_build_exit": 0,
+  "powershell": [
+    {
+      "script": "observe.ps1",
+      "errors": 0
+    },
+    {
+      "script": "observe-idle.ps1",
+      "errors": 0
+    },
+    {
+      "script": "probe-capacity.ps1",
+      "errors": 0
+    },
+    {
+      "script": "read-preference-profiles.ps1",
+      "errors": 0
+    }
+  ],
+  "x64_build_exit": 0,
+  "source_sha256": "F81C1BE1BA8FD266E17B1FAA962904D300B0D9CA1C62148C496FF781DCD2CC18"
+}

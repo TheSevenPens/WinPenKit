@@ -1,0 +1,14 @@
+[
+  {
+    "ModuleName": "Wintab32.dll",
+    "FileName": "C:\\Windows\\SYSTEM32\\Wintab32.dll",
+    "version": "1.0.5-10",
+    "description": "Wintab Coordinator"
+  },
+  {
+    "ModuleName": "Wacom_Tablet.dll",
+    "FileName": "C:\\Windows\\SYSTEM32\\Wacom_Tablet.dll",
+    "version": "6.4.14-1",
+    "description": "WINTAB32"
+  }
+]
