@@ -9,7 +9,7 @@ namespace WinPenKit.Wintab;
 /// packet queue, logging, and P/Invoke helpers. Subclasses implement
 /// context creation and coordinate conversion.
 /// </summary>
-internal abstract class WintabSessionBase : IPenSession
+internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCounts
 {
     private WintabMessagePump? _pump;
     private IntPtr _hCtx;
@@ -30,6 +30,19 @@ internal abstract class WintabSessionBase : IPenSession
     /// can anchor its clock the way the framework backends do instead of detecting wraps.
     /// </remarks>
     internal Action<uint, long>? RawTimeObserver { get; set; }
+
+    private long _fromDriver;
+    private long _outsideRegion;
+    private long _delivered;
+
+    /// <inheritdoc />
+    public long PacketsFromDriver => Interlocked.Read(ref _fromDriver);
+
+    /// <inheritdoc />
+    public long PacketsOutsideCaptureRegion => Interlocked.Read(ref _outsideRegion);
+
+    /// <inheritdoc />
+    public long PointsDelivered => Interlocked.Read(ref _delivered);
 
     /// <summary>
     /// The pump's hidden window, or zero before <see cref="Start"/>. Diagnostics only.
@@ -349,6 +362,12 @@ internal abstract class WintabSessionBase : IPenSession
             var pkt = buf.MarshalOut<Packet>();
             if (pkt.pkContext == IntPtr.Zero) return;
 
+            // Counted here, before anything has judged the packet. A count taken further down
+            // can only agree with what survived, which is exactly the question it would be
+            // asked to answer. Interlocked because this runs on the pump thread and is read
+            // from whichever thread asks.
+            Interlocked.Increment(ref _fromDriver);
+
             // Before the capture region, deliberately. The blind spot this probe exists to
             // investigate is a gap in which the region discarded every packet, so a clock
             // diagnostic that could only see the packets the region kept would be blind to the
@@ -361,7 +380,11 @@ internal abstract class WintabSessionBase : IPenSession
             // Spatial scope: drop points outside the capture region so Wintab
             // matches the window/control-scoped pointer backends.
             if (!EffectiveRegion.Contains(desktopX, desktopY))
+            {
+                Interlocked.Increment(ref _outsideRegion);
+
                 return;
+            }
 
             // Log button/cursor transitions.
             if (pkt.pkButtons != _lastButtons || pkt.pkCursor != _lastCursor)
@@ -372,6 +395,8 @@ internal abstract class WintabSessionBase : IPenSession
                 _lastButtons = pkt.pkButtons;
                 _lastCursor = pkt.pkCursor;
             }
+
+            Interlocked.Increment(ref _delivered);
 
             _points.Enqueue(new PenPoint(
                 DesktopX: desktopX,
