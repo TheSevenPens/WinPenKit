@@ -43,7 +43,7 @@ internal sealed class WizardForm : Form
         // Sized by hand for the monitor it opens on: every size below is 96-DPI pixels, scaled.
         AutoScaleMode = AutoScaleMode.None;
         int S(int px) => px * DeviceDpi / 96;
-        _instructions.Height = S(250); _status.Height = S(170); _footer.Height = S(60);
+        _instructions.Height = S(290); _status.Height = S(170); _footer.Height = S(60);
         foreach (var l in new[] { _instructions, _status, _footer }) l.Padding = new Padding(S(8));
         ClientSize = new Size(S(1180), S(680));
         StartPosition = FormStartPosition.CenterScreen;
@@ -112,6 +112,12 @@ internal sealed class WizardForm : Form
         }
 
         var target = _monitors.FirstOrDefault(m => m.Number == step.ResolutionOn);
+        // The one setting the wizard cannot make, so it says plainly when it changes -- and the
+        // plan is ordered so that happens once per monitor and once for all displays.
+        int index = _plan.IndexOf(step);
+        string mappingChange = index > 0 && _plan[index - 1].MappedTo == step.MappedTo
+            ? "  (Same as the previous step.)"
+            : "\n     >> The tablet mapping changes at this step. <<";
         string mapping = step.MappedTo is { } mm && _monitors.FirstOrDefault(m => m.Number == mm) is { } mapped
             ? $"map the pen to monitor {mm} only ({mapped.Device.TrimStart('\\', '.')}, {mapped.Current}, {Where(mapped)})"
             : "map the pen to all displays";
@@ -134,7 +140,7 @@ internal sealed class WizardForm : Form
             $"Step {step.Number} of {_plan.Count}\n\n" +
             $"1.  Resolution: monitor {step.ResolutionOn} at {step.Resolution} ({step.ResolutionLabel}).\n\n" +
             $"2.  Scaling: {scalingNote}.\n\n" +
-            $"3.  Tablet: in the tablet driver's settings, {mapping}.\n\n" +
+            $"3.  Tablet: in the tablet driver's settings, {mapping}.{mappingChange}\n\n" +
             "Then press Measure. Targets appear on the monitors the pen should reach.";
 
         var unmet = Planner.Unmet(step, _monitors);

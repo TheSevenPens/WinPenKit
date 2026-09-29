@@ -81,7 +81,7 @@ internal sealed class Session
             {
                 var saved = System.Text.Json.JsonSerializer.Deserialize<Saved>(File.ReadAllText(file), Json);
                 if (saved is null) continue;
-                return new Session(dir) { Monitors = saved.Monitors, _steps = saved.Results, Skipped = saved.Skipped };
+                return new Session(dir) { Monitors = saved.Monitors, _steps = saved.Results, Skipped = saved.Skipped, PlanVersion = saved.PlanVersion };
             }
             catch (Exception)
             {
@@ -108,7 +108,15 @@ internal sealed class Session
         Write();
     }
 
-    private sealed record Saved(List<Monitor> Monitors, List<StepResult> Results, HashSet<int> Skipped);
+    /// <param name="PlanVersion">Which plan the step numbers refer to. Version 1 put scaling outermost;
+    /// version 2 puts tablet mapping outermost. A session is only resumed under the plan it was
+    /// recorded with, since the same number means a different step in each.</param>
+    private sealed record Saved(List<Monitor> Monitors, List<StepResult> Results, HashSet<int> Skipped, int PlanVersion = 1);
+
+    /// <summary>The plan this build of the wizard makes. See <see cref="Saved"/>.</summary>
+    public const int CurrentPlanVersion = 2;
+
+    public int PlanVersion { get; private set; } = CurrentPlanVersion;
 
     private static readonly System.Text.Json.JsonSerializerOptions Json = new()
     {
@@ -120,7 +128,7 @@ internal sealed class Session
     private void Write()
     {
         File.WriteAllText(Path.Combine(Folder, "session.json"),
-            System.Text.Json.JsonSerializer.Serialize(new Saved(Monitors, _steps, Skipped), Json));
+            System.Text.Json.JsonSerializer.Serialize(new Saved(Monitors, _steps, Skipped, PlanVersion), Json));
 
         var csv = new StringBuilder("step,api,monitor,target,rawX,rawY,desktopX,desktopY,cursorX,cursorY\n");
         foreach (var t in _steps.SelectMany(s => s.Targets))

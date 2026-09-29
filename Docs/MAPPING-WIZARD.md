@@ -19,18 +19,22 @@ Each step says what to set:
    the scaling when you press its button. You then get 15 seconds to keep the changes before they revert
    on their own. The resolution change is never saved to Windows' settings, and when the wizard
    closes it offers to put back anything it changed.
-2. **Scaling:** as it is now, every monitor at 100%, every monitor at 150% (or the nearest
-   value every monitor offers), or monitor 1 at 100% and the rest at 150%. This applies to every
-   monitor, not just the one whose resolution the step sets. The same button sets it, **after**
-   the resolution: Windows stores each monitor's scaling as steps above or below the scaling it
-   recommends, and the recommendation depends on the resolution, so changing the resolution also
-   changes the scaling. There is no public API for this; the wizard uses the undocumented one
-   Settings uses, and if that fails it asks you to change scaling in Settings > System > Display.
-   If you change the primary monitor's scaling, sign out and back in. The wizard offers to carry
-   on with the same session when you open it again.
+2. **Scaling:** every monitor at 100%, every monitor at 150% (or the nearest value every
+   monitor offers), monitor 1 at 100% and the rest at 150%, or monitor 1 at 150% and the rest
+   at 100%. Both mixed directions are measured because they behave differently. The scaling
+   applies to every monitor, not just the one whose resolution the step sets. The same button
+   sets it, **after** the resolution: Windows stores each monitor's scaling as steps above or
+   below the scaling it recommends, and the recommendation depends on the resolution, so
+   changing the resolution also changes the scaling. There is no public API for this. The wizard
+   uses the undocumented one Settings uses, and if that fails it asks you to change scaling in
+   Settings > System > Display. The system scaling Windows fixed at sign-in goes stale when the
+   primary monitor's scaling changes. That's recorded for each step, and in the measurements so
+   far it made no difference.
 3. **Tablet mapping:** one monitor, or all displays. You change this yourself in the tablet
    driver's settings. The wizard can't read it, but if it's wrong the targets will be out of
-   reach.
+   reach. Because it's the one thing you have to do by hand, the plan is ordered around it: the
+   mapping changes once per monitor and once for all displays (three times with two monitors),
+   and the wizard says when a step is the one where it changes.
 
 The wizard checks the scaling and the resolution before measuring, and says what doesn't match.
 

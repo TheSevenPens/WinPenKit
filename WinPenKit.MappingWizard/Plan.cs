@@ -3,19 +3,23 @@ namespace WinPenKit.MappingWizard;
 /// <summary>How the monitors should be scaled for a group of steps.</summary>
 internal enum ScalingSetup
 {
-    /// <summary>Whatever they are now. Recorded, not checked.</summary>
+    /// <summary>
+    /// Whatever they are now. Recorded, not checked. No longer planned, now that the wizard sets
+    /// scaling itself; kept so sessions recorded with it still load.
+    /// </summary>
     AsIs,
     /// <summary>Every monitor at 100%.</summary>
     All100,
     /// <summary>Every monitor at the same scaling, other than 100%.</summary>
     AllSameAbove100,
-    /// <summary>
-    /// Monitor 1 at a lower scaling than every other monitor. Fixed in that direction because
-    /// the as-is steps usually cover the other: on the machine this was built on, the primary
-    /// was the higher one, and which way round it is decides between two explanations of what
-    /// the driver does.
-    /// </summary>
+    /// <summary>Monitor 1 at a lower scaling than every other monitor.</summary>
     Mixed,
+    /// <summary>
+    /// Monitor 1 at a higher scaling than every other monitor. Both directions are planned
+    /// because they behave differently: measured on 28 Sep 2026, the Wacom driver's positions
+    /// were off by (lowest scaling / primary scaling), which is 1 when the primary is lowest.
+    /// </summary>
+    MixedHigher,
 }
 
 /// <summary>
@@ -40,6 +44,7 @@ internal sealed record Step(
         ScalingSetup.All100 => "every monitor at 100%",
         ScalingSetup.AllSameAbove100 => "every monitor at the same scaling, above 100%",
         ScalingSetup.Mixed => "monitor 1 scaled lower than the others",
+        ScalingSetup.MixedHigher => "monitor 1 scaled higher than the others",
         _ => s.ToString(),
     };
 
@@ -57,24 +62,27 @@ internal sealed record Step(
 /// from a baseline and crosses only the pair most likely to matter: scaling against mapping.
 /// Measured on 28 Sep 2026, mixed scaling was what broke the Wintab mapping, and whether the
 /// fix held depended on whether the tablet was mapped to one display or all of them.</para>
-/// <para>The order is chosen for the person doing it. Scaling is outermost, because changing
-/// the primary monitor's scaling properly needs a sign-out. Mapping is next, because it means
-/// opening the tablet driver. Resolution is innermost, because the wizard sets it with a button.</para>
+/// <para>The order is chosen for the person doing it. Tablet mapping is outermost, because it
+/// is the one thing the wizard cannot set: it means opening the tablet driver's settings, so it
+/// should change as few times as possible -- once per monitor and once for all displays. Scaling
+/// and resolution, which the wizard sets with a button, vary inside it. (An earlier order put
+/// scaling outermost, for the sign-out a primary monitor's scaling change calls for. Measured,
+/// a stale sign-in scaling changed nothing, and the mapping had to be changed at every step.)</para>
 /// </remarks>
 internal static class Planner
 {
     public static List<Step> Build(IReadOnlyList<Monitor> monitors)
     {
-        var scalings = new List<ScalingSetup> { ScalingSetup.AsIs, ScalingSetup.All100, ScalingSetup.AllSameAbove100 };
-        if (monitors.Count > 1) scalings.Add(ScalingSetup.Mixed);
+        var scalings = new List<ScalingSetup> { ScalingSetup.All100, ScalingSetup.AllSameAbove100 };
+        if (monitors.Count > 1) { scalings.Add(ScalingSetup.Mixed); scalings.Add(ScalingSetup.MixedHigher); }
 
         var mappings = monitors.Select(m => (int?)m.Number).ToList();
         if (monitors.Count > 1) mappings.Add(null);
 
         var steps = new List<Step>();
-        foreach (var scaling in scalings)
+        foreach (var mapped in mappings)
         {
-            foreach (var mapped in mappings)
+            foreach (var scaling in scalings)
             {
                 // The resolution varied is on the mapped monitor; with all displays mapped, on
                 // the first monitor.
@@ -111,6 +119,10 @@ internal static class Planner
                                            monitors.Where(m => m.Number != 1).All(m => m.Dpi > first.Dpi)):
                 unmet.Add("Monitor 1 should be at a lower scaling than every other monitor. " + ScalingNow(monitors));
                 break;
+            case ScalingSetup.MixedHigher when !(monitors.FirstOrDefault(m => m.Number == 1) is { } top &&
+                                                 monitors.Where(m => m.Number != 1).All(m => m.Dpi < top.Dpi)):
+                unmet.Add("Monitor 1 should be at a higher scaling than every other monitor. " + ScalingNow(monitors));
+                break;
         }
         return unmet;
     }
@@ -138,16 +150,22 @@ internal static class Planner
                 return monitors.ToDictionary(m => m.Device, _ => same);
 
             case ScalingSetup.Mixed:
-                // Monitor 1 at 100% and the rest at 150%: a large enough gap to show plainly.
+            case ScalingSetup.MixedHigher:
+            {
+                // 100% against 150%: a large enough gap to show plainly. Monitor 1 takes the low
+                // value for Mixed and the high one for MixedHigher.
                 var first = monitors.FirstOrDefault(m => m.Number == 1);
-                if (first is null || !Offers(first, 100)) return null;
+                if (first is null) return null;
                 var rest = monitors.Where(m => m.Number != 1).ToList();
-                int higher = rest.All(m => Offers(m, 150)) ? 150
-                           : Scaling.Percentages.FirstOrDefault(p => p > 100 && rest.All(m => Offers(m, p)));
-                if (higher == 0) return null;
-                var map = rest.ToDictionary(m => m.Device, _ => higher);
-                map[first.Device] = 100;
+                var all = rest.Append(first).ToList();
+                int higher = all.All(m => Offers(m, 150)) ? 150
+                           : Scaling.Percentages.FirstOrDefault(p => p > 100 && all.All(m => Offers(m, p)));
+                if (higher == 0 || !all.All(m => Offers(m, 100))) return null;
+                bool firstHigh = step.Scaling == ScalingSetup.MixedHigher;
+                var map = rest.ToDictionary(m => m.Device, _ => firstHigh ? 100 : higher);
+                map[first.Device] = firstHigh ? higher : 100;
                 return map;
+            }
 
             default:
                 return null;

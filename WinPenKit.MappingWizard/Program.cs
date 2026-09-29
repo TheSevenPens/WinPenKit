@@ -27,7 +27,7 @@ internal static class Program
             bool sameMonitors = last.Monitors.Select(m => m.Device).Order()
                                     .SequenceEqual(monitors.Select(m => m.Device).Order());
 
-            if (done < total && sameMonitors &&
+            if (done < total && sameMonitors && last.PlanVersion == Session.CurrentPlanVersion &&
                 MessageBox.Show(
                     $"Carry on with the session from {Path.GetFileName(last.Folder)}? {done} of {total} steps are done.\n\n" +
                     "No starts a new session; the old one is kept.",
