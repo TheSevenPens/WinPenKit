@@ -41,6 +41,8 @@ internal sealed class Measurement : IDisposable
     private readonly Queue<(TimeSpan At, Point Where)> _trail = new();
     private bool _penLeftSinceTarget;
     private (int X, int Y) _approach;
+    // The nearest the cursor has come to the current target, for a target that has to be skipped.
+    private (double Distance, Point Cursor, (double X, double Y)? Reported) _closest = (double.MaxValue, Point.Empty, null);
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 8 };
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
@@ -213,6 +215,8 @@ internal sealed class Measurement : IDisposable
         _trail.Enqueue((now, new Point(c.X, c.Y)));
         while (_trail.Count > 0 && now - _trail.Peek().At > TimeSpan.FromMilliseconds(250)) _trail.Dequeue();
         double distance = Math.Sqrt(Math.Pow(c.X - target.Center.X, 2) + Math.Pow(c.Y - target.Center.Y, 2));
+        if (penHere && distance < _closest.Distance)
+            _closest = (distance, new Point(c.X, c.Y), _reported);
         bool onTarget = penHere && _pressed && distance <= Radius(target.Monitor);
 
         if (!onTarget)
@@ -230,17 +234,39 @@ internal sealed class Measurement : IDisposable
         {
             Result.Targets.Add(new TargetResult(CurrentApi, target.Monitor, target.Target, target.Center, [.. _hold],
                 target.Pass, _approach.X, _approach.Y, _penLeftSinceTarget));
-            _penLeftSinceTarget = false;
-            _hold.Clear();
-            _holdStart = null;
-            _targetIndex++;
-            if (_targetIndex >= _targets.Count)
-            {
-                NextApi();
-                return;
-            }
+            AdvanceTarget();
+            if (_apiIndex >= _apis.Count) return;
         }
 
+        Invalidate();
+    }
+
+    private void AdvanceTarget()
+    {
+        _penLeftSinceTarget = false;
+        _hold.Clear();
+        _holdStart = null;
+        _closest = (double.MaxValue, Point.Empty, null);
+        _targetIndex++;
+        if (_targetIndex >= _targets.Count) NextApi();
+    }
+
+    /// <summary>
+    /// Gives up on a target the cursor cannot reach, and records that it could not, with the
+    /// closest the cursor came. Measured on 28 Sep 2026: with the tablet mapped to all displays
+    /// and the primary monitor scaled higher than the other, the cursor could not be brought onto
+    /// part of the primary monitor at all, so an unreachable target is data, not a failed run.
+    /// </summary>
+    public void SkipTarget()
+    {
+        if (_apiIndex < 0 || _apiIndex >= _apis.Count) return;
+        var t = CurrentTarget;
+        string closest = _closest.Distance == double.MaxValue
+            ? "the pen never came near"
+            : $"the cursor came no closer than {_closest.Distance:F0} px, at ({_closest.Cursor.X},{_closest.Cursor.Y})" +
+              (_closest.Reported is { } r ? $", where {CurrentApi.Label()} put the pen at ({r.X:F0},{r.Y:F0})" : "");
+        Result.Unreachable.Add($"{CurrentApi.Label()}, pass {t.Pass}, monitor {t.Monitor} target {t.Target} at ({t.Center.X},{t.Center.Y}): {closest}");
+        AdvanceTarget();
         Invalidate();
     }
 
@@ -306,7 +332,7 @@ internal sealed class Measurement : IDisposable
                     ? "No pen data from this API yet. Lift the pen away from the tablet and bring it back."
                     : "Waiting for the pen...";
             g.DrawString(hint, small, Brushes.Gainsboro, 24 * scale, 52 * scale);
-            g.DrawString("S: skip this API     Esc: stop this step", small, Brushes.Gray, 24 * scale, 76 * scale);
+            g.DrawString("N: skip a target you can't reach     S: skip this API     Esc: stop (a grid scan keeps what it has)", small, Brushes.Gray, 24 * scale, 76 * scale);
 
             for (int i = 0; i < _targets.Count; i++)
             {
@@ -395,6 +421,7 @@ internal sealed class Measurement : IDisposable
         {
             if (e.KeyCode == Keys.Escape) _owner.Stop();
             else if (e.KeyCode == Keys.S) _owner.SkipApi();
+            else if (e.KeyCode == Keys.N) _owner.SkipTarget();
         }
     }
 

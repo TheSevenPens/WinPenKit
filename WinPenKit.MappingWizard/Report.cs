@@ -34,6 +34,7 @@ internal sealed class StepResult
     public Dictionary<InputApi, string> DesktopMaps { get; } = [];
     public List<string> Notes { get; } = [];
     public List<InputApi> Skipped { get; } = [];
+    public List<string> Unreachable { get; } = [];
 }
 
 /// <summary>
@@ -174,6 +175,7 @@ internal sealed class Session
             md.AppendLine($"- driver's screen: {s.DriverScreen}");
             foreach (var (api, map) in s.DesktopMaps) md.AppendLine($"- {api.Label()} desktop map: {map}");
             foreach (var skipped in s.Skipped) md.AppendLine($"- {skipped.Label()}: skipped");
+            foreach (var u in s.Unreachable) md.AppendLine($"- **unreachable:** {u}");
             foreach (var note in s.Notes) md.AppendLine($"- note: {note}");
             md.AppendLine();
 

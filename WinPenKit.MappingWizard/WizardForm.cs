@@ -274,12 +274,16 @@ internal sealed class WizardForm : Form
         {
             var m = _measurement;
             _measurement = null;
-            if (completed && m is not null) _session.Add(m.Result);
+            // A grid scan stopped part way keeps what it measured: it is long, and the reason for
+            // stopping may be the finding (a target the cursor could not reach).
+            bool keepPartial = !completed && grid && m is not null && (m.Result.Targets.Count > 0 || m.Result.Unreachable.Count > 0);
+            if (keepPartial) m!.Result.Notes.Add("stopped before the end; the targets measured are kept");
+            if ((completed || keepPartial) && m is not null) _session.Add(m.Result);
             m?.Dispose();
             UpdateResults();
             Activate();
             if (completed && !grid) SelectNextPending(_plan.IndexOf(step) + 1);
-            if (completed && grid)
+            if ((completed || keepPartial) && grid)
                 MessageBox.Show(this, $"The grid scan is saved as step {step.Number} in the results summary.",
                                 "Grid scan saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
             _refresh.Start();
