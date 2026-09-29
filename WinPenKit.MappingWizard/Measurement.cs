@@ -9,9 +9,11 @@ namespace WinPenKit.MappingWizard;
 /// with each input API, comparing where the API puts the pen with where Windows puts the cursor.
 /// </summary>
 /// <remarks>
-/// <para><b>Held, not clicked.</b> A target counts once the pen has hovered over it, still, for
-/// <see cref="HoldTime"/>. A click is too easy to make by accident, and a tap would also move the
-/// foreground to whatever window is under the nib, which stops Wintab delivering.</para>
+/// <para><b>Pressed and held.</b> A target counts once the pen tip has been pressed down on it
+/// for <see cref="HoldTime"/>; the ring fills only while the tip is down, so a quick tap does
+/// not count. A first version measured while the pen hovered, and that was confusing to use:
+/// nothing says when a hover has begun, where pressing is an unmistakable act. Every window the
+/// tip can land on is one of this wizard's, so pressing never hands the foreground away.</para>
 /// <para><b>The cursor decides where the pen is.</b> The targets only tell the person where to
 /// go. Whether the pen is over a target, and the reference every position is compared with, is
 /// the cursor: the driver moves it, and Windows places it on the physical desktop correctly. The
@@ -46,6 +48,7 @@ internal sealed class Measurement : IDisposable
     private TimeSpan _apiStarted;
     private (double X, double Y)? _reported;
     private bool _finished;
+    private bool _pressed;
 
     public StepResult Result { get; }
 
@@ -107,6 +110,7 @@ internal sealed class Measurement : IDisposable
         _targetIndex = 0;
         _holdStart = null;
         _reported = null;
+        _pressed = false;
 
         if (_apiIndex >= _apis.Count)
         {
@@ -164,7 +168,11 @@ internal sealed class Measurement : IDisposable
             {
                 _lastPen = now;
                 _reported = (pt.DesktopX, pt.DesktopY);
-                if (_holdStart is not null)
+
+                // Pressure, not a button flag: every API reports it the same way, where the tip
+                // flag is encoded differently by Wintab and by the pointer APIs.
+                _pressed = pt.Pressure > 0;
+                if (_holdStart is not null && _pressed)
                     _hold.Add(new Sample(_step.Number, CurrentApi, target.Monitor, target.Target,
                         pt.RawX, pt.RawY, pt.DesktopX, pt.DesktopY, c.X, c.Y));
             }
@@ -172,7 +180,7 @@ internal sealed class Measurement : IDisposable
 
         bool penHere = now - _lastPen < PenGone;
         double distance = Math.Sqrt(Math.Pow(c.X - target.Center.X, 2) + Math.Pow(c.Y - target.Center.Y, 2));
-        bool onTarget = penHere && distance <= Radius(target.Monitor);
+        bool onTarget = penHere && _pressed && distance <= Radius(target.Monitor);
 
         if (!onTarget)
         {
@@ -254,7 +262,7 @@ internal sealed class Measurement : IDisposable
                             $"target {done + 1} of {_targets.Count}";
             g.DrawString(header, big, Brushes.White, 24 * scale, 20 * scale);
 
-            string hint = "Hover the pen over the white circle and hold it still until the ring fills. Don't click.";
+            string hint = "Press the pen down on the white circle and keep it pressed until the ring fills.";
             if (_clock.Elapsed - _lastPen > TimeSpan.FromSeconds(1))
                 hint = _targetIndex == 0 && _clock.Elapsed - _apiStarted > TimeSpan.FromSeconds(3)
                     ? "No pen data from this API yet. Lift the pen away from the tablet and bring it back."

@@ -33,8 +33,8 @@ The wizard checks the scaling and the resolution before measuring, and says what
 
 **Measure** covers each monitor the tablet should reach with a full-screen window showing four
 targets. For each pen API in turn (Wintab, Wintab high-res, then WM_Pointer as the Windows Ink
-reference), hover over the white circle and hold still until the ring fills. That takes half a
-second. Clicks do nothing.
+reference), press the pen down on the white circle and keep it pressed until the ring fills. That
+takes half a second. The ring only fills while the tip is down, so a quick tap does not count.
 
 - A red dot shows where the current API says the pen is, so a bad mapping is visible right away.
 - **S** skips an API, and **Esc** stops the step.
@@ -42,7 +42,7 @@ second. Clicks do nothing.
   always get packets until the pen re-enters proximity.
 
 The cursor is the reference, not the target or the nib. The driver moves the cursor, and Windows
-places it on the physical desktop correctly. Holding still means the cursor, which is read a
+places it on the physical desktop correctly. Holding the pen down still means the cursor, which is read a
 moment after each packet, has caught up with the pen.
 
 ## Results
