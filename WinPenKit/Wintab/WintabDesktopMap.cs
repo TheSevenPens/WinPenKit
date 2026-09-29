@@ -8,31 +8,44 @@ namespace WinPenKit.Wintab;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The driver's desktop is not always the real one.</b> Measured on 28 Sep 2026 with a Wacom
-/// driver, a 3840x2160 monitor at 250% above a 2560x1600 one at 225%: the real desktop is
-/// 3840x3760, and the driver reports its screen as 3840x4178. The answer was the same whatever
-/// DPI awareness the calling process had, so it cannot be fixed by choosing a different one.
+/// <b>The driver's desktop is not always the real one.</b> On a desktop whose monitors use
+/// different display scaling, the Wacom driver sends positions that are not physical pixels, in
+/// both the system and the digitizer context -- asking for raw tablet counts does not avoid it,
+/// the counts are distorted by the same factor. Windows Ink is not affected, because Windows maps
+/// its positions itself. Nothing the driver reports reveals the distortion: its screen
+/// (<c>lcSysExt</c>) is the same whatever the caller's DPI awareness, and it sent positions past
+/// the width it reports.
 /// </para>
 /// <para>
-/// <b>What the driver actually sends is one scale, not what it reports.</b> Compared against the
-/// cursor across both monitors and both kinds of context, every position was the physical one
-/// times 250/225 -- 0.900 back again on each axis, on each monitor -- and a system context sent X
-/// values up to 4241, past the 3840 the driver claims as its width. So the reported width cannot
-/// be trusted and the height can: 3760 / 4178 is exactly the factor measured. A per-monitor
-/// remap, which assumed the driver saw the desktop as a system-DPI-aware process does, was right
-/// for the lower monitor and left the upper one 10% off; it is gone.
+/// <b>The rule, as measured.</b> Across a 24-step session on 28 Sep 2026 (a 3840x2160 monitor
+/// above a 2560x1600 one; testdata/mapping-wizard-2026-09-28), with the tablet mapped to a single
+/// display the driver's positions were the physical ones multiplied by <i>primary monitor
+/// scaling / lowest monitor scaling</i>, uniformly over the desktop. So the correction is the
+/// inverse: <i>lowest / primary</i>. It passed every single-display and every equal-scaling step
+/// within 1.1 px (20 of 24). When the primary monitor is the lowest-scaled one, the factor is 1:
+/// the driver was already right, and a correction would be the bug. The "primary" is its current
+/// scaling, not the system DPI Windows fixed at sign-in -- a stale system DPI made no difference.
 /// </para>
 /// <para>
-/// Taken as physical pixels, those positions put the pen about 11% further from the desktop
-/// origin than it was, the error growing toward the right and bottom. Windows Ink was not
-/// affected, because Windows maps its positions itself; Clip Studio Paint shows the same offset.
+/// <b>What it does not cover.</b> With the tablet mapped to all displays on a mixed-scaling
+/// desktop, the driver rescales parts of the non-primary monitors and not others, and no model of
+/// which yet fits the data (issue #132). This rule leaves those positions as wrong as they were.
+/// WinTab does not report whether the tablet is mapped to one display or all of them, so the rule
+/// cannot tell the two apart.
 /// </para>
 /// <para>
-/// <b>Recognised, not assumed.</b> The scale applies only when the driver's screen is not the
-/// physical desktop. A driver that reports physical pixels passes through unchanged, and so does
-/// a height ratio too far from 1 to be a scaling difference -- a guess applied to a driver that
-/// was right would be the same bug in the other direction. The rule comes from one machine; a
-/// layout where the height ratio is not the driver's scale would need measuring the same way.
+/// <b>Scoped, and switchable.</b> It applies only when the monitors' scalings differ and the
+/// driver's screen is not the physical desktop -- a driver whose screen already matches is taken
+/// at its word. <c>WINPENKIT_WINTAB_DESKTOP_MAP=off</c> in the environment turns it off for a
+/// process, for a driver that turns out to follow another rule. Which map is active, and why, is
+/// written to the Wintab log and to the session's <c>DebugInfo</c>.
+/// </para>
+/// <para>
+/// <b>History.</b> The first version scaled by the physical desktop's height over the driver's.
+/// On the layout it was measured on that equalled lowest / primary, by coincidence; with the
+/// primary monitor scaled lowest it put the pen 420 to 590 px off, where the driver had been
+/// right. Before that, a per-monitor remap assumed the driver saw a system-DPI-aware desktop, and
+/// was right on one monitor only.
 /// </para>
 /// </remarks>
 internal sealed class WintabDesktopMap
@@ -44,28 +57,26 @@ internal sealed class WintabDesktopMap
         public override string ToString() => $"({Left},{Top})-({Right},{Bottom})";
     }
 
+    /// <summary>One monitor in physical pixels, with its effective DPI.</summary>
+    internal readonly record struct Monitor(Box Bounds, uint Dpi, bool Primary);
+
+    /// <summary>The environment variable that turns the correction off.</summary>
+    public const string OverrideVariable = "WINPENKIT_WINTAB_DESKTOP_MAP";
+
     // Tolerance, in pixels, when comparing the driver's rectangle with the physical desktop.
     private const int Slack = 2;
 
-    // Scaling steps are 25% apart at most, and the widest mixed setup is on the order of 100%
-    // against 350%. A ratio outside this is not a scaling difference.
-    private const double MinScale = 0.25, MaxScale = 4.0;
-
-    private readonly Box _driver;
-    private readonly Box _physical;
     private readonly double _scale;
 
-    public static WintabDesktopMap Identity { get; } = new(default, default, 1, "identity");
+    public static WintabDesktopMap Identity { get; } = new(1, "identity");
 
     /// <summary>What was decided and why, for the session log.</summary>
     public string Description { get; }
 
     public bool IsIdentity => _scale == 1;
 
-    private WintabDesktopMap(Box driver, Box physical, double scale, string description)
+    private WintabDesktopMap(double scale, string description)
     {
-        _driver = driver;
-        _physical = physical;
         _scale = scale;
         Description = description;
     }
@@ -75,41 +86,56 @@ internal sealed class WintabDesktopMap
     /// </summary>
     public static WintabDesktopMap ForDriverScreen(int orgX, int orgY, int extX, int extY)
     {
-        var physical = ReadPhysicalDesktop();
-        if (physical is null)
-            return new(default, default, 1, "identity: could not read the monitor layout");
+        if (string.Equals(Environment.GetEnvironmentVariable(OverrideVariable), "off", StringComparison.OrdinalIgnoreCase))
+            return new(1, $"identity: turned off by {OverrideVariable}=off");
+
+        var monitors = ReadMonitors();
+        if (monitors is null || monitors.Count == 0)
+            return new(1, "identity: could not read the monitor layout");
 
         var driver = new Box(orgX, orgY, orgX + Math.Abs(extX), orgY + Math.Abs(extY));
-        return FromLayout(driver, physical.Value);
+        return FromLayout(driver, monitors);
     }
 
     /// <summary>The decision itself, from a layout supplied rather than read. Testable.</summary>
-    internal static WintabDesktopMap FromLayout(Box driver, Box physical)
+    internal static WintabDesktopMap FromLayout(Box driver, IReadOnlyList<Monitor> monitors)
     {
+        if (monitors.Count == 0) return new(1, "identity: no monitors");
+
+        var physical = new Box(
+            monitors.Min(m => m.Bounds.Left), monitors.Min(m => m.Bounds.Top),
+            monitors.Max(m => m.Bounds.Right), monitors.Max(m => m.Bounds.Bottom));
+        string scalings = string.Join("/", monitors.Select(m => $"{m.Dpi * 100 / 96}%{(m.Primary ? " (primary)" : "")}"));
+
+        if (monitors.Select(m => m.Dpi).Distinct().Count() == 1)
+            return new(1, $"identity: every monitor at the same scaling ({scalings})");
+
         if (Near(driver, physical))
-            return new(driver, physical, 1, $"identity: the driver's screen {driver} is the physical desktop");
+            return new(1, $"identity: the driver's screen {driver} is the physical desktop");
 
-        if (driver.Height <= 0 || physical.Height <= 0)
-            return new(driver, physical, 1, $"identity: the driver's screen {driver} has no height");
+        var primary = monitors.FirstOrDefault(m => m.Primary);
+        if (primary.Dpi == 0)
+            return new(1, "identity: no primary monitor found");
 
-        double scale = (double)physical.Height / driver.Height;
-        if (scale < MinScale || scale > MaxScale)
-            return new(driver, physical, 1,
-                $"identity: the driver's screen {driver} and the physical desktop {physical} " +
-                $"differ by {scale:F3}, which is not a scaling difference");
+        uint lowest = monitors.Min(m => m.Dpi);
+        double scale = (double)lowest / primary.Dpi;
+        if (scale == 1)
+            return new(1, $"identity: the primary monitor has the lowest scaling ({scalings}), " +
+                          "where the driver's positions are already physical");
 
-        return new(driver, physical, scale,
-            $"scaled: the driver's screen {driver} is not the physical desktop {physical}; " +
-            $"positions scaled by {scale:F4}, the ratio of their heights");
+        return new(scale,
+            $"scaled by {scale:F4}, lowest over primary scaling ({scalings}); the driver's screen {driver} " +
+            $"is not the physical desktop {physical}. Correct for the tablet mapped to one display; " +
+            "mapped to all displays, parts of the other monitors stay wrong (issue #132)");
     }
 
     /// <summary>A position on the driver's desktop, as physical pixels.</summary>
+    /// <remarks>
+    /// About the origin, which is the primary monitor's top-left corner: the driver's scaling was
+    /// measured to be uniform about that point.
+    /// </remarks>
     public (double X, double Y) ToPhysical(double x, double y)
-    {
-        if (_scale == 1) return (x, y);
-        return (_physical.Left + (x - _driver.Left) * _scale,
-                _physical.Top + (y - _driver.Top) * _scale);
-    }
+        => _scale == 1 ? (x, y) : (x * _scale, y * _scale);
 
     private static bool Near(Box a, Box b)
         => Math.Abs(a.Left - b.Left) <= Slack && Math.Abs(a.Top - b.Top) <= Slack
@@ -118,32 +144,33 @@ internal sealed class WintabDesktopMap
     // ── Reading the layout ───────────────────────────────────────
 
     /// <summary>
-    /// The union of the monitors in physical pixels, read with this thread made per-monitor
-    /// aware for the call so the answer does not depend on the host's own DPI awareness.
+    /// The monitors in physical pixels with their effective DPI, read with this thread made
+    /// per-monitor aware for the call so the answer does not depend on the host's own awareness.
+    /// A DPI-unaware thread would be told 96 for every monitor.
     /// </summary>
-    private static Box? ReadPhysicalDesktop()
+    private static List<Monitor>? ReadMonitors()
     {
         var previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         if (previous == IntPtr.Zero) return null;
 
         try
         {
-            int l = int.MaxValue, t = int.MaxValue, r = int.MinValue, b = int.MinValue;
+            var list = new List<Monitor>();
             MonitorEnumProc callback = (IntPtr h, IntPtr hdc, ref RECT rect, IntPtr data) =>
             {
                 var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-                if (GetMonitorInfoW(h, ref info))
+                if (GetMonitorInfoW(h, ref info) && GetDpiForMonitor(h, MDT_EFFECTIVE_DPI, out uint dpi, out _) == 0)
                 {
-                    l = Math.Min(l, info.rcMonitor.left); t = Math.Min(t, info.rcMonitor.top);
-                    r = Math.Max(r, info.rcMonitor.right); b = Math.Max(b, info.rcMonitor.bottom);
+                    var r = info.rcMonitor;
+                    list.Add(new Monitor(new Box(r.left, r.top, r.right, r.bottom), dpi, (info.dwFlags & MONITORINFOF_PRIMARY) != 0));
                 }
                 return true;
             };
 
-            if (!EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero) || l > r)
+            if (!EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero))
                 return null;
             GC.KeepAlive(callback);
-            return new Box(l, t, r, b);
+            return list;
         }
         finally
         {
@@ -152,6 +179,8 @@ internal sealed class WintabDesktopMap
     }
 
     private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new(-4);
+    private const int MDT_EFFECTIVE_DPI = 0;
+    private const uint MONITORINFOF_PRIMARY = 1;
 
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, ref RECT rect, IntPtr data);
 
@@ -177,4 +206,7 @@ internal sealed class WintabDesktopMap
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfoW(IntPtr hMonitor, ref MONITORINFO info);
+
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
 }

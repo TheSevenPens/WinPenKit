@@ -78,7 +78,8 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
     public bool HasNewData => _hasNewData;
     public abstract InputApi Api { get; }
     public abstract PenCapabilities Capabilities { get; }
-    public string DebugInfo => _debugInfo;
+    /// <summary>What the session opened, and which desktop map it is applying.</summary>
+    public string DebugInfo => $"{_debugInfo}  Desktop map: {_desktopMap.Description}";
     public int MaxPressure { get; private set; }
     public IPenCaptureRegion? CaptureRegion { get; set; }
 
@@ -288,8 +289,11 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
             return;
         }
 
-        _desktopMap = WintabDesktopMap.ForDriverScreen(lc.lcSysOrgX, lc.lcSysOrgY, lc.lcSysExtX, lc.lcSysExtY);
-        Log($"Desktop map: {_desktopMap.Description}");
+        // Logged only when it changes: this runs every time the pen comes into proximity.
+        var map = WintabDesktopMap.ForDriverScreen(lc.lcSysOrgX, lc.lcSysOrgY, lc.lcSysExtX, lc.lcSysExtY);
+        if (map.Description != _desktopMap.Description)
+            Log($"Desktop map: {map.Description}");
+        _desktopMap = map;
     }
 
     public void Dispose()
@@ -383,6 +387,16 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
 
     private void OnWintabMessage(uint msg, IntPtr wParam, IntPtr lParam)
     {
+        // Each time the pen comes into the context's proximity, before a stroke can begin, the
+        // map is rebuilt. A scaling change on a monitor other than the window's sends nothing
+        // this window hears, and rebuilding here means the map never changes mid-stroke. LOWORD
+        // of lParam is non-zero on entering. Reading the layout costs microseconds.
+        if (msg == WintabMessages.WT_PROXIMITY)
+        {
+            if ((lParam.ToInt64() & 0xFFFF) != 0) RefreshMapping();
+            return;
+        }
+
         if (msg != WintabMessages.WT_PACKET) return;
         if (_hCtx == IntPtr.Zero) return;
 
