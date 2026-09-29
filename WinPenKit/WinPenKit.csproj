@@ -11,4 +11,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The mapping wizard reports which desktop map a Wintab session chose. -->
+    <InternalsVisibleTo Include="WinPenKit.MappingWizard" />
+  </ItemGroup>
+
 </Project>

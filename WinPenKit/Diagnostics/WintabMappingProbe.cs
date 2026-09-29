@@ -11,7 +11,7 @@ namespace WinPenKit.Diagnostics;
 /// </summary>
 /// <remarks>
 /// <para><b>Why this needs its own probe.</b> The driver describes its screen with numbers that
-/// can be wrong. On 28 Sep 2026, on a desktop of a 250% monitor above a 225% one, a Wacom driver
+/// can be wrong. On 28 Sep 2026, on a desktop of a 250% monitor above a 225% one, a Huion (V20) driver
 /// reported its screen as 3840x4178 against a real 3840x3760, sent X values past the width it
 /// reported, and scaled every position by 250/225 -- so the pen drew up to ~400 px from the nib
 /// while Windows Ink was exact. Nothing the session reads from the driver can reveal that. The
@@ -30,11 +30,10 @@ namespace WinPenKit.Diagnostics;
 /// the raw packet value -- is the driver's actual mapping, and is what to compare when a
 /// layout fails.</para>
 /// <para>Kept, like <see cref="WintabEpochProbe"/>, because the answer is a fact about one driver
-/// on one layout. The mapping in <c>WintabDesktopMap</c> is a rule inferred from one machine, and
-/// every change to it should be checked with this on more than one. The run that found the
-/// problem is in <c>testdata/wintab-mapping-probe-mixed-dpi.csv</c>, with the positions the
-/// sessions produced before the fix; reported, it fails on all four mode and monitor pairs, and
-/// the same packets through the fix pass on all four.</para>
+/// on one layout. The run that found the problem is in
+/// <c>testdata/wintab-mapping-probe-mixed-dpi.csv</c>: it fails on all four mode and monitor
+/// pairs. That driver turned out to be Huion's (V20); Wacom's passed every configuration, and
+/// WinPenKit takes Wacom as the reference and does not correct for other drivers (issue #132).</para>
 /// </remarks>
 public static class WintabMappingProbe
 {
@@ -99,7 +98,6 @@ public static class WintabMappingProbe
         output.Flush();
 
         var samples = new List<Sample>();
-        var descriptions = new Dictionary<InputApi, string>();
 
         foreach (var mode in modes)
         {
@@ -114,7 +112,6 @@ public static class WintabMappingProbe
                 continue;
             }
 
-            descriptions[mode] = wintab.DesktopMap.Description;
             using var window = ProbeWindow.Show(wintab.PumpWindowHandle, monitors,
                 $"WinPenKit - Wintab mapping probe - {mode} - hover over every monitor");
 
@@ -157,9 +154,6 @@ public static class WintabMappingProbe
             output.WriteLine($"[INFO] samples written to      {csvPath}");
         }
 
-        output.WriteLine();
-        foreach (var (mode, description) in descriptions)
-            output.WriteLine($"[INFO] {mode} desktop map: {description}");
         output.WriteLine();
 
         return Report(output, monitors, samples);

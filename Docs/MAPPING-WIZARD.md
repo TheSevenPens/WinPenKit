@@ -1,0 +1,100 @@
+# Mapping wizard
+
+`WinPenKit.MappingWizard` checks whether each pen API puts the pen where Windows puts the
+cursor, across display and tablet configurations. It walks you through a plan one step at a time.
+
+It exists because of issue #129. On a desktop whose monitors were scaled differently, the Huion (V20)
+driver sent Wintab positions that were off by up to ~400 px. Nothing the driver reported about
+itself showed it. The cursor did.
+
+## Running it
+
+```
+dotnet run --project WinPenKit.MappingWizard -c Release
+```
+
+Each step says what to set:
+
+1. **Resolution:** native, or the next mode down with the same shape. The wizard sets this and
+   the scaling when you press its button. You then get 15 seconds to keep the changes before they revert
+   on their own. The resolution change is never saved to Windows' settings, and when the wizard
+   closes it offers to put back anything it changed.
+2. **Scaling:** every monitor at 100%, every monitor at 150% (or the nearest value every
+   monitor offers), monitor 1 at 100% and the rest at 150%, or monitor 1 at 150% and the rest
+   at 100%. Both mixed directions are measured because they behave differently. The scaling
+   applies to every monitor, not just the one whose resolution the step sets. The same button
+   sets it, **after** the resolution: Windows stores each monitor's scaling as steps above or
+   below the scaling it recommends, and the recommendation depends on the resolution, so
+   changing the resolution also changes the scaling. There is no public API for this. The wizard
+   uses the undocumented one Settings uses, and if that fails it asks you to change scaling in
+   Settings > System > Display. The system scaling Windows fixed at sign-in goes stale when the
+   primary monitor's scaling changes. That's recorded for each step, and in the measurements so
+   far it made no difference.
+3. **Tablet mapping:** one monitor, or all displays. You change this yourself in the tablet
+   driver's settings. The wizard can't read it, but if it's wrong the targets will be out of
+   reach. Because it's the one thing you have to do by hand, the plan is ordered around it: the
+   mapping changes once per monitor and once for all displays (three times with two monitors).
+   The step list is grouped by mapping, with the mapping first in every step's description,
+   and the first step of each group is bold.
+
+The wizard checks the scaling and the resolution before measuring, and says what doesn't match.
+
+## Quick check
+
+**Quick check** is the fast first pass. For each pen API in turn, move the pen around the monitor
+and watch the red dot that shows where that API thinks the pen is. Press **Y** if it stays on the
+pointer, **N** if it doesn't. The errors this wizard was built to find are hundreds of pixels,
+so they're obvious by eye in seconds. The answer is recorded along with the last second of
+differences from the cursor as evidence. Give a full measurement only to the steps a quick check
+says disagree.
+
+## Measuring
+
+**Measure** covers each monitor the tablet should reach with a full-screen window showing four
+targets. For each pen API in turn (Wintab, Wintab high-res, then WM_Pointer as the Windows Ink
+reference), press the pen down on the white circle and keep it pressed until the ring fills. That
+takes half a second. The ring only fills while the tip is down, so a quick tap does not count.
+Anywhere within about 8% of the monitor's smaller side from the target's center counts.
+
+- A red dot shows where the current API says the pen is, so a bad mapping is visible right away.
+- **S** skips an API, and **Esc** stops the step.
+- If an API shows no pen data, lift the pen away and bring it back. A new Wintab context doesn't
+  always get packets until the pen re-enters proximity.
+
+The cursor is the reference, not the target or the nib. The driver moves the cursor, and Windows
+places it on the physical desktop correctly. Holding the pen down still means the cursor, which is read a
+moment after each packet, has caught up with the pen.
+
+## Results
+
+Each session is saved in `Documents\WinPenKit\MappingWizard\<date-time>\`. The files are
+rewritten after every step.
+
+- `summary.md`: a pass/fail table for every step and API, followed by a section per step. Each
+  section lists the monitors, the system scaling, what the driver claims about its screen, any
+  quick-check answers, and the mean error per API and monitor. It also gives the line fitted from
+  each API's raw values to the cursor, which is the mapping the driver actually applied.
+  Comparing those lines across steps is how a rule is found.
+- `samples.csv`: every sample taken during each hold.
+- `session.json`: what the wizard reads to resume a session.
+
+A step passes when every target's mean difference from the cursor is at most 10 px on each axis.
+That's deliberately loose: the distortions this looks for are hundreds of pixels.
+
+## What it has found
+
+- **Wacom** (Cintiq 16, Wintab32 1.0.5-10): passed all 24 steps with both tablet mappings and every scaling mix. WinPenKit takes Wacom as its reference.
+- **Huion V20** (Wintab32 20.0.0.4): with mixed scaling it scaled positions by the ratio of the monitors' scalings, and with the tablet mapped to all displays it did so depending on where the pen had been. WinPenKit doesn't correct for it. See issue #132 and `testdata/mapping-wizard-2026-09-28/`.
+
+## Grid scan
+
+**Grid scan** runs in the selected step's setup, but instead of four targets it shows a 3×3 grid on every monitor the pen should reach. It visits the grid in order, then again in reverse. It uses Wintab's system context only: in every step so far, both Wintab modes were off in the same way.
+
+It's for finding where the driver's behavior changes when the tablet is mapped to all displays on a mixed-scaling desktop (issue #132). There, part of the other monitor is rescaled and part isn't, and it isn't yet known whether that depends on where the pen is or on how it got there. For every target, the scan records:
+
+- the error
+- the driver's position over the cursor's, which is 1.000 where the driver sent physical pixels
+- the direction the pen came from
+- whether the pen left proximity since the previous target
+
+A boundary that depends only on position looks the same in both passes; one that depends on state doesn't. Scans are saved beside the plan's steps, numbered from 1001.
