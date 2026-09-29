@@ -37,8 +37,11 @@ internal sealed record Step(
 {
     public string Title =>
         (Scan is null ? "" : $"grid scan ({Scan}): ") +
-        $"{ScalingText(Scaling)}; tablet mapped to {(MappedTo is { } m ? $"monitor {m}" : "all displays")}; " +
+        $"{MappingText}; {ScalingText(Scaling)}; " +
         $"monitor {ResolutionOn} at {Resolution} ({ResolutionLabel})";
+
+    /// <summary>The tablet mapping, first in every title: it is the one setting changed by hand.</summary>
+    public string MappingText => $"tablet mapped to {(MappedTo is { } m ? $"monitor {m}" : "all displays")}";
 
     public static string ScalingText(ScalingSetup s) => s switch
     {

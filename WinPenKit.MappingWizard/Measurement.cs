@@ -57,6 +57,9 @@ internal sealed class Measurement : IDisposable
     private (double X, double Y)? _reported;
     private bool _finished;
     private bool _pressed;
+    private readonly bool _quick;
+    // Quick check: the last second of (reported, cursor) pairs, kept as evidence for the answer.
+    private readonly Queue<(TimeSpan At, double Dx, double Dy)> _recent = new();
 
     public StepResult Result { get; }
 
@@ -69,11 +72,18 @@ internal sealed class Measurement : IDisposable
     /// the driver's all-displays behaviour changes -- a spatial boundary shows up the same from
     /// both directions, a state-dependent one does not (issue #132).
     /// </param>
-    public Measurement(Step step, IReadOnlyList<Monitor> monitors, IReadOnlyList<InputApi> apis, bool grid = false)
+    /// <param name="quick">
+    /// A quick check instead of targets: for each API the person moves the pen about, watches
+    /// whether the red dot stays on the pointer, and answers Y or N. Gross errors -- the only kind
+    /// this investigation has found -- are obvious by eye in seconds, so the four-target
+    /// measurement is kept for configurations that fail a quick check.
+    /// </param>
+    public Measurement(Step step, IReadOnlyList<Monitor> monitors, IReadOnlyList<InputApi> apis, bool grid = false, bool quick = false)
     {
         _step = step;
         _monitors = monitors;
         _apis = [.. apis];
+        _quick = quick;
 
         Result = new StepResult
         {
@@ -89,7 +99,7 @@ internal sealed class Measurement : IDisposable
         foreach (var m in step.TargetMonitors(monitors))
         {
             int n = 0;
-            foreach (var (fx, fy) in grid ? GridFractions() : [(0.15, 0.15), (0.85, 0.15), (0.85, 0.85), (0.15, 0.85)])
+            foreach (var (fx, fy) in quick ? [] : grid ? GridFractions() : [(0.15, 0.15), (0.85, 0.15), (0.85, 0.85), (0.15, 0.85)])
                 _targets.Add((m.Number, ++n, new Point(
                     m.Bounds.X + (int)(m.Bounds.Width * fx), m.Bounds.Y + (int)(m.Bounds.Height * fy)), 1));
 
@@ -128,11 +138,14 @@ internal sealed class Measurement : IDisposable
     private InputApi CurrentApi => _apis[_apiIndex];
     private (int Monitor, int Target, Point Center, int Pass) CurrentTarget => _targets[_targetIndex];
 
-    /// <summary>The hold radius: about 4% of the smaller side of the monitor, in its own pixels.</summary>
+    /// <summary>
+    /// The hold radius: about 8% of the smaller side of the monitor, in its own pixels. It was 4%,
+    /// which was too fussy about where the pen was held; the errors being looked for are far larger.
+    /// </summary>
     private int Radius(int monitor)
     {
         var m = _monitors.First(x => x.Number == monitor);
-        return Math.Max(30, Math.Min(m.Bounds.Width, m.Bounds.Height) * 4 / 100);
+        return Math.Max(60, Math.Min(m.Bounds.Width, m.Bounds.Height) * 8 / 100);
     }
 
     private void NextApi()
@@ -159,8 +172,6 @@ internal sealed class Measurement : IDisposable
         else
         {
             StartSession(api, _overlays[0].Handle);
-            if (_sessions.LastOrDefault() is WintabSessionBase wintab)
-                Result.DesktopMaps[api] = wintab.DesktopMap.Description;
         }
 
         _apiStarted = _clock.Elapsed;
@@ -193,6 +204,12 @@ internal sealed class Measurement : IDisposable
         GetCursorPos(out POINT c);
 
         var now = _clock.Elapsed;
+        if (_quick)
+        {
+            QuickTick(now, c);
+            return;
+        }
+
         var target = CurrentTarget;
         foreach (var session in _sessions)
         {
@@ -308,6 +325,61 @@ internal sealed class Measurement : IDisposable
 
     // ── Drawing ──────────────────────────────────────────────────
 
+    // ── Quick check ──────────────────────────────────────────────
+
+    private void QuickTick(TimeSpan now, POINT c)
+    {
+        foreach (var session in _sessions)
+        {
+            foreach (var pt in session.DrainPoints())
+            {
+                _lastPen = now;
+                _reported = (pt.DesktopX, pt.DesktopY);
+                _recent.Enqueue((now, pt.DesktopX - c.X, pt.DesktopY - c.Y));
+            }
+        }
+        while (_recent.Count > 0 && now - _recent.Peek().At > TimeSpan.FromSeconds(1)) _recent.Dequeue();
+        Invalidate();
+    }
+
+    /// <summary>
+    /// Records the person's answer for the current API, with the last second of differences
+    /// from the cursor as evidence, and moves on. The answer is the verdict; the numbers are there
+    /// so a surprising answer can be checked.
+    /// </summary>
+    public void Answer(bool agrees)
+    {
+        if (!_quick || _apiIndex < 0 || _apiIndex >= _apis.Count) return;
+        var recent = _recent.ToList();
+        double meanAbs = recent.Count == 0 ? double.NaN
+            : recent.Average(r => Math.Max(Math.Abs(r.Dx), Math.Abs(r.Dy)));
+        Result.Quick.Add(new QuickVerdict(CurrentApi, agrees, meanAbs, recent.Count));
+        _recent.Clear();
+        NextApi();
+    }
+
+    private void PaintQuick(Monitor m, Point origin, Graphics g, float scale, Font big, Font small)
+    {
+        g.DrawString($"Quick check  -  step {_step.Number}  -  {CurrentApi.Label()} ({_apiIndex + 1} of {_apis.Count})",
+                     big, Brushes.White, 24 * scale, 20 * scale);
+        string hint = _clock.Elapsed - _lastPen > TimeSpan.FromSeconds(1)
+            ? (_clock.Elapsed - _apiStarted > TimeSpan.FromSeconds(3)
+                ? "No pen data from this API yet. Lift the pen away from the tablet and bring it back."
+                : "Waiting for the pen...")
+            : "Move the pen around this monitor. Does the red dot stay on the pointer?";
+        g.DrawString(hint, small, Brushes.Gainsboro, 24 * scale, 52 * scale);
+        g.DrawString("Y: yes, they agree     N: no, they don't     S: skip this API     Esc: stop", small, Brushes.Gray, 24 * scale, 76 * scale);
+
+        if (_reported is { } rep && m.Bounds.Contains((int)rep.X, (int)rep.Y))
+        {
+            float x = (float)(rep.X - origin.X), y = (float)(rep.Y - origin.Y);
+            using var dot = new SolidBrush(Color.FromArgb(230, 90, 80));
+            g.FillEllipse(dot, x - 8 * scale, y - 8 * scale, 16 * scale, 16 * scale);
+        }
+    }
+
+    // ── Drawing ──────────────────────────────────────────────────
+
     private void Paint(Overlay overlay, Graphics g)
     {
         var m = overlay.Monitor;
@@ -318,6 +390,12 @@ internal sealed class Measurement : IDisposable
         float scale = m.Dpi / 96f;
         using var big = new Font("Segoe UI", 16 * scale, GraphicsUnit.Pixel);
         using var small = new Font("Segoe UI", 12 * scale, GraphicsUnit.Pixel);
+
+        if (_quick && _apiIndex >= 0 && _apiIndex < _apis.Count)
+        {
+            PaintQuick(m, origin, g, scale, big, small);
+            return;
+        }
 
         if (_apiIndex >= 0 && _apiIndex < _apis.Count)
         {
@@ -423,6 +501,8 @@ internal sealed class Measurement : IDisposable
         {
             if (e.KeyCode == Keys.Escape) _owner.Stop();
             else if (e.KeyCode == Keys.S) _owner.SkipApi();
+            else if (_owner._quick && e.KeyCode == Keys.Y) _owner.Answer(true);
+            else if (_owner._quick && e.KeyCode == Keys.N) _owner.Answer(false);
             else if (e.KeyCode == Keys.N) _owner.SkipTarget();
         }
     }

@@ -29,6 +29,7 @@ internal sealed class WizardForm : Form
     private readonly Button _apply = new() { AutoSize = true };
     private readonly Button _measure = new() { Text = "Measure", AutoSize = true };
     private readonly Button _scan = new() { Text = "Grid scan", AutoSize = true };
+    private readonly Button _quick = new() { Text = "Quick check", AutoSize = true };
     private readonly Button _skip = new() { Text = "Skip step", AutoSize = true };
     private readonly Button _results = new() { Text = "Open results", AutoSize = true };
     private readonly Label _footer = new() { Dock = DockStyle.Bottom, AutoSize = false };
@@ -51,13 +52,28 @@ internal sealed class WizardForm : Form
         Font = new Font("Segoe UI", 10);
 
         _list.Columns.Add("Step", S(50));
-        _list.Columns.Add("Configuration", S(560));
-        _list.Columns.Add("Result", S(90));
-        foreach (var step in _plan)
-            _list.Items.Add(new ListViewItem([step.Number.ToString(), step.Title, ""]) { Tag = step });
+        _list.Columns.Add("Configuration", S(540));
+        _list.Columns.Add("Result", S(150));
 
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = S(52), Padding = new Padding(S(8)) };
-        buttons.Controls.AddRange([_apply, _measure, _scan, _skip, _results]);
+        // Grouped by tablet mapping, the one setting changed by hand in the tablet driver, so it
+        // is plain where it changes; the first step of each group is bold for the same reason.
+        ListViewGroup? group = null;
+        foreach (var step in _plan)
+        {
+            bool first = group is null || !Equals(group.Tag, step.MappedTo);
+            if (first)
+            {
+                string header = char.ToUpperInvariant(step.MappingText[0]) + step.MappingText[1..];
+                group = new ListViewGroup($"{header}  (set this in the tablet driver)") { Tag = step.MappedTo };
+                _list.Groups.Add(group);
+            }
+            var item = new ListViewItem([step.Number.ToString(), step.Title, ""]) { Tag = step, Group = group };
+            if (first) item.Font = new Font(_list.Font, FontStyle.Bold);
+            _list.Items.Add(item);
+        }
+
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(S(8)) };
+        buttons.Controls.AddRange([_apply, _quick, _measure, _scan, _skip, _results]);
 
         var right = new Panel { Dock = DockStyle.Fill };
         right.Controls.Add(_status);
@@ -77,6 +93,7 @@ internal sealed class WizardForm : Form
         _apply.Click += (_, _) => ApplySettings();
         _measure.Click += (_, _) => Measure();
         _scan.Click += (_, _) => Measure(grid: true);
+        _quick.Click += (_, _) => Measure(quick: true);
         _skip.Click += (_, _) => SkipStep();
         _results.Click += (_, _) => Process.Start(new ProcessStartInfo(_session.Folder) { UseShellExecute = true });
         _refresh.Tick += (_, _) => Refresh(true);
@@ -109,7 +126,7 @@ internal sealed class WizardForm : Form
         {
             _instructions.Text = "Every step is done. The summary is in the results folder.";
             _status.Text = "";
-            _apply.Visible = _measure.Enabled = _scan.Enabled = _skip.Enabled = false;
+            _apply.Visible = _measure.Enabled = _quick.Enabled = _scan.Enabled = _skip.Enabled = false;
             return;
         }
 
@@ -167,7 +184,7 @@ internal sealed class WizardForm : Form
             (true, false) => $"Set monitor {step.ResolutionOn} to {step.Resolution}",
             _ => "Set scaling",
         };
-        _measure.Enabled = _scan.Enabled = _skip.Enabled = true;
+        _measure.Enabled = _quick.Enabled = _scan.Enabled = _skip.Enabled = true;
     }
 
     private static string Where(Monitor m) => m.Primary ? "the primary" : $"at {m.Bounds.X},{m.Bounds.Y}";
@@ -238,7 +255,7 @@ internal sealed class WizardForm : Form
     /// and uses Wintab's system context only: in every step so far both Wintab modes were off in
     /// exactly the same way, and a scan is long enough already.
     /// </summary>
-    private void Measure(bool grid = false)
+    private void Measure(bool grid = false, bool quick = false)
     {
         var planned = Selected;
         if (planned is null) return;
@@ -266,7 +283,7 @@ internal sealed class WizardForm : Form
         }
 
         _refresh.Stop();
-        _measurement = new Measurement(step, _monitors, apis, grid);
+        _measurement = new Measurement(step, _monitors, apis, grid, quick);
         foreach (var u in unmet) _measurement.Result.Notes.Add("measured with this unmet: " + u);
         if (Planner.StaleSystemDpi(_monitors) is { } stale) _measurement.Result.Notes.Add(stale);
 
@@ -307,9 +324,14 @@ internal sealed class WizardForm : Form
         {
             var step = (Step)item.Tag!;
             var result = _session.Steps.FirstOrDefault(r => r.Step.Number == step.Number);
-            item.SubItems[2].Text = result is not null
-                ? (result.Targets.Count > 0 && result.Targets.All(t => t.Error <= Session.MaxError) ? "pass" : "FAIL")
-                : _session.Skipped.Contains(step.Number) ? "skipped" : "";
+            // A full measurement, when there is one, decides; otherwise the quick check does.
+            item.SubItems[2].Text = result is null
+                ? _session.Skipped.Contains(step.Number) ? "skipped" : ""
+                : result.Targets.Count > 0
+                    ? (result.Targets.All(t => t.Error <= Session.MaxError) ? "pass" : "FAIL")
+                    : result.Quick.Count > 0
+                        ? (result.Quick.All(q => q.Agrees) ? "agrees (quick)" : "DISAGREES (quick)")
+                        : "";
         }
     }
 

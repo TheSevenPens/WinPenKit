@@ -22,6 +22,10 @@ internal sealed record TargetResult(InputApi Api, int Monitor, int Target, Point
     public double Error => Math.Max(Math.Abs(MeanDx), Math.Abs(MeanDy));
 }
 
+/// <summary>A quick check's answer for one API, with the last second of differences as evidence.</summary>
+/// <param name="MeanError">The mean of the larger axis difference from the cursor over that second.</param>
+internal sealed record QuickVerdict(InputApi Api, bool Agrees, double MeanError, int Samples);
+
 /// <summary>Everything measured for one step, and what the machine looked like at the time.</summary>
 internal sealed class StepResult
 {
@@ -35,6 +39,7 @@ internal sealed class StepResult
     public List<string> Notes { get; } = [];
     public List<InputApi> Skipped { get; } = [];
     public List<string> Unreachable { get; } = [];
+    public List<QuickVerdict> Quick { get; } = [];
 }
 
 /// <summary>
@@ -44,7 +49,9 @@ internal sealed class StepResult
 internal sealed class Session
 {
     /// <summary>The largest mean difference from the cursor, on either axis, that passes.</summary>
-    public const double MaxError = 3.0;
+    // 10 px, not the 3 px it started at: the distortions this looks for are hundreds of pixels,
+    // and a tighter bar failed good results on the jitter of a hand holding a pen still.
+    public const double MaxError = 10.0;
 
     private List<StepResult> _steps = [];
 
@@ -102,6 +109,14 @@ internal sealed class Session
 
     public void Add(StepResult result)
     {
+        // A quick check and a full measurement of the same step are kept together: the quick
+        // answers carry over into a later measurement, and a later quick check doesn't discard
+        // targets already measured.
+        if (_steps.FirstOrDefault(s => s.Step.Number == result.Step.Number) is { } earlier)
+        {
+            if (result.Quick.Count == 0) result.Quick.AddRange(earlier.Quick);
+            if (result.Targets.Count == 0) result.Targets.AddRange(earlier.Targets);
+        }
         _steps.RemoveAll(s => s.Step.Number == result.Step.Number);
         _steps.Add(result);
         _steps.Sort((a, b) => a.Step.Number.CompareTo(b.Step.Number));
@@ -154,7 +169,7 @@ internal sealed class Session
                       $"cursor is at most {MaxError:F0} px on each axis; the cursor is where Windows put the pen.");
         md.AppendLine();
 
-        var apis = _steps.SelectMany(s => s.Targets.Select(t => t.Api)).Distinct().OrderBy(a => a).ToList();
+        var apis = _steps.SelectMany(s => s.Targets.Select(t => t.Api).Concat(s.Quick.Select(q => q.Api))).Distinct().OrderBy(a => a).ToList();
         if (_steps.Count > 0)
         {
             md.AppendLine("| Step | Configuration | " + string.Join(" | ", apis.Select(a => a.Label())) + " |");
@@ -178,6 +193,10 @@ internal sealed class Session
             foreach (var u in s.Unreachable) md.AppendLine($"- **unreachable:** {u}");
             foreach (var note in s.Notes) md.AppendLine($"- note: {note}");
             md.AppendLine();
+
+            foreach (var q in s.Quick)
+                md.AppendLine(Inv($"- quick check, {q.Api.Label()}: {(q.Agrees ? "agrees" : "**disagrees**")} (mean difference from the cursor over the last second {q.MeanError:F1} px, {q.Samples} samples)"));
+            if (s.Quick.Count > 0) md.AppendLine();
 
             md.AppendLine("| API | Monitor | Mean error x, y (px) | Worst target | Verdict |");
             md.AppendLine("|---|---|---|---|---|");
@@ -233,7 +252,12 @@ internal sealed class Session
     private static string Verdict(StepResult s, InputApi api)
     {
         var targets = s.Targets.Where(t => t.Api == api).ToList();
-        if (targets.Count == 0) return s.Skipped.Contains(api) ? "skipped" : "-";
+        if (targets.Count == 0)
+        {
+            if (s.Quick.FirstOrDefault(q => q.Api == api) is { } q)
+                return q.Agrees ? "agrees (quick)" : "**DISAGREES** (quick)";
+            return s.Skipped.Contains(api) ? "skipped" : "-";
+        }
         var worst = targets.Max(t => t.Error);
         return worst <= MaxError ? Inv($"pass ({worst:F1})") : Inv($"**FAIL** ({worst:F0} px)");
     }

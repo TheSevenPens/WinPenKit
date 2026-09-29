@@ -3,7 +3,7 @@
 `WinPenKit.MappingWizard` checks whether each pen API puts the pen where Windows puts the
 cursor, across display and tablet configurations. It walks you through a plan one step at a time.
 
-It exists because of issue #129. On a desktop whose monitors were scaled differently, the Wacom
+It exists because of issue #129. On a desktop whose monitors were scaled differently, the Huion (V20)
 driver sent Wintab positions that were off by up to ~400 px. Nothing the driver reported about
 itself showed it. The cursor did.
 
@@ -33,10 +33,20 @@ Each step says what to set:
 3. **Tablet mapping:** one monitor, or all displays. You change this yourself in the tablet
    driver's settings. The wizard can't read it, but if it's wrong the targets will be out of
    reach. Because it's the one thing you have to do by hand, the plan is ordered around it: the
-   mapping changes once per monitor and once for all displays (three times with two monitors),
-   and the wizard says when a step is the one where it changes.
+   mapping changes once per monitor and once for all displays (three times with two monitors).
+   The step list is grouped by mapping, with the mapping first in every step's description,
+   and the first step of each group is bold.
 
 The wizard checks the scaling and the resolution before measuring, and says what doesn't match.
+
+## Quick check
+
+**Quick check** is the fast first pass. For each pen API in turn, move the pen around the monitor
+and watch the red dot that shows where that API thinks the pen is. Press **Y** if it stays on the
+pointer, **N** if it doesn't. The errors this wizard was built to find are hundreds of pixels,
+so they're obvious by eye in seconds. The answer is recorded along with the last second of
+differences from the cursor as evidence. Give a full measurement only to the steps a quick check
+says disagree.
 
 ## Measuring
 
@@ -44,6 +54,7 @@ The wizard checks the scaling and the resolution before measuring, and says what
 targets. For each pen API in turn (Wintab, Wintab high-res, then WM_Pointer as the Windows Ink
 reference), press the pen down on the white circle and keep it pressed until the ring fills. That
 takes half a second. The ring only fills while the tip is down, so a quick tap does not count.
+Anywhere within about 8% of the monitor's smaller side from the target's center counts.
 
 - A red dot shows where the current API says the pen is, so a bad mapping is visible right away.
 - **S** skips an API, and **Esc** stops the step.
@@ -60,14 +71,20 @@ Each session is saved in `Documents\WinPenKit\MappingWizard\<date-time>\`. The f
 rewritten after every step.
 
 - `summary.md`: a pass/fail table for every step and API, followed by a section per step. Each
-  section lists the monitors, the system scaling, what the driver claims about its screen, the
-  desktop map each Wintab session chose, and the mean error per API and monitor. It also gives
-  the line fitted from each API's raw values to the cursor, which is the mapping the driver
-  actually applied. Comparing those lines across steps is how a rule is found.
+  section lists the monitors, the system scaling, what the driver claims about its screen, any
+  quick-check answers, and the mean error per API and monitor. It also gives the line fitted from
+  each API's raw values to the cursor, which is the mapping the driver actually applied.
+  Comparing those lines across steps is how a rule is found.
 - `samples.csv`: every sample taken during each hold.
 - `session.json`: what the wizard reads to resume a session.
 
-A step passes when every target's mean difference from the cursor is at most 3 px on each axis.
+A step passes when every target's mean difference from the cursor is at most 10 px on each axis.
+That's deliberately loose: the distortions this looks for are hundreds of pixels.
+
+## What it has found
+
+- **Wacom** (Cintiq 16, Wintab32 1.0.5-10): passed all 24 steps with both tablet mappings and every scaling mix. WinPenKit takes Wacom as its reference.
+- **Huion V20** (Wintab32 20.0.0.4): with mixed scaling it scaled positions by the ratio of the monitors' scalings, and with the tablet mapped to all displays it did so depending on where the pen had been. WinPenKit doesn't correct for it. See issue #132 and `testdata/mapping-wizard-2026-09-28/`.
 
 ## Grid scan
 
