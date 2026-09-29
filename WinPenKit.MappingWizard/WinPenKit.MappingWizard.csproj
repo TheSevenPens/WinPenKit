@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A guided probe for Wintab position mapping: it walks a person through display and tablet
+    configurations, measures where each input API puts the pen against where Windows puts the
+    cursor, and writes a report. See Docs/MAPPING-WIZARD.md.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <RootNamespace>WinPenKit.MappingWizard</RootNamespace>
+    <AssemblyName>WinPenKit.MappingWizard</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinPenKit\WinPenKit.csproj" />
+  </ItemGroup>
+
+</Project>
