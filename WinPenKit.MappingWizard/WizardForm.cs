@@ -109,18 +109,26 @@ internal sealed class WizardForm : Form
             ? $"map the pen to monitor {mm} only ({mapped.Device.TrimStart('\\', '.')}, {mapped.Current}, {Where(mapped)})"
             : "map the pen to all displays";
 
+        // Resolution comes first, because it moves scaling. Windows stores each monitor's scaling
+        // as steps above or below the scaling it recommends, and the recommendation depends on
+        // the resolution -- so setting scaling and then resolution undid the scaling, and the
+        // first version of this wizard asked for them in that order.
+        string scalingNote = step.Scaling == ScalingSetup.AsIs
+            ? "leave it as it is"
+            : $"{Step.ScalingText(step.Scaling)}. This is for every monitor, not only monitor {step.ResolutionOn}";
         _instructions.Text =
             $"Step {step.Number} of {_plan.Count}\n\n" +
-            $"1.  Scaling: {Step.ScalingText(step.Scaling)}.  (Settings > System > Display > Scale.)\n\n" +
-            $"2.  Tablet: in the tablet driver's settings, {mapping}.\n\n" +
-            $"3.  Resolution: monitor {step.ResolutionOn} at {step.Resolution} ({step.ResolutionLabel}).  Use the button below.\n\n" +
+            $"1.  Resolution: monitor {step.ResolutionOn} at {step.Resolution} ({step.ResolutionLabel}).  Use the button below.\n\n" +
+            $"2.  Scaling: {scalingNote}.  (Settings > System > Display > Scale.)  Do this after the resolution: " +
+            "changing a monitor's resolution also changes its scaling.\n\n" +
+            $"3.  Tablet: in the tablet driver's settings, {mapping}.\n\n" +
             "Then press Measure. Targets appear on the monitors the pen should reach.";
 
         var unmet = Planner.Unmet(step, _monitors);
         var lines = new List<string>();
+        lines.Add(unmet.Any(u => u.Contains("needs")) || target is null ? "✗  resolution" : "✓  resolution");
         lines.Add(unmet.Any(u => u.Contains("scaling")) ? "✗  scaling" : "✓  scaling");
         lines.Add("?  tablet mapping: cannot be read; if it is wrong, the targets will be out of the pen's reach");
-        lines.Add(unmet.Any(u => u.Contains("needs")) || target is null ? "✗  resolution" : "✓  resolution");
         lines.AddRange(unmet);
         if (Planner.StaleSystemDpi(_monitors) is { } stale) lines.Add("Note: " + stale);
         _status.Text = string.Join("\n", lines);

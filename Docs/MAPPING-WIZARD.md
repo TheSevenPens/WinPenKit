@@ -15,17 +15,21 @@ dotnet run --project WinPenKit.MappingWizard -c Release
 
 Each step says what to set:
 
-1. **Scaling:** as it is now, every monitor at 100%, every monitor at the same scaling above
-   100%, or (with two or more monitors) different scalings. You change this yourself in
-   Settings > System > Display. If you change the primary monitor's scaling, sign out and back
-   in. The wizard offers to carry on with the same session when you open it again.
-2. **Tablet mapping:** one monitor, or all displays. You change this yourself in the tablet
-   driver's settings. The wizard can't read it, but if it's wrong the targets will be out of
-   reach.
-3. **Resolution:** native, or the next mode down with the same shape. The wizard sets this for
+1. **Resolution:** native, or the next mode down with the same shape. The wizard sets this for
    you when you press the button. You then get 15 seconds to keep the change before it reverts
    on its own. The change is never saved to Windows' settings, and every resolution the wizard
    changed is put back when it closes.
+2. **Scaling:** as it is now, every monitor at 100%, every monitor at the same scaling above
+   100%, or (with two or more monitors) different scalings. This applies to every monitor, not
+   just the one whose resolution the step sets. You change it yourself in
+   Settings > System > Display. **Set it after the resolution.** Windows stores each monitor's
+   scaling as steps above or below the scaling it recommends, and the recommendation depends on
+   the resolution, so changing the resolution also changes the scaling. If you change the
+   primary monitor's scaling, sign out and back in. The wizard offers to carry on with the same
+   session when you open it again.
+3. **Tablet mapping:** one monitor, or all displays. You change this yourself in the tablet
+   driver's settings. The wizard can't read it, but if it's wrong the targets will be out of
+   reach.
 
 The wizard checks the scaling and the resolution before measuring, and says what doesn't match.
 
