@@ -59,6 +59,12 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
     private uint _lastCursor;
     private string _debugInfo = "";
 
+    /// <summary>
+    /// From the driver's desktop to the physical one. Rebuilt whenever a context opens and when
+    /// the display layout changes. Replaced whole, so a reader sees one map or the other.
+    /// </summary>
+    private volatile WintabDesktopMap _desktopMap = WintabDesktopMap.Identity;
+
     // Default capture scope when CaptureRegion is not set: the app window the
     // consumer passed to Start (Unbounded if no handle was supplied).
     private IPenCaptureRegion _defaultRegion = PenCaptureRegion.Unbounded;
@@ -93,7 +99,7 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
         LogContexts("before opening");
 
         // Start the message pump first — we need the HWND for WTOpen.
-        _pump = new WintabMessagePump(OnWintabMessage);
+        _pump = new WintabMessagePump(OnWintabMessage, OnDisplayChanged);
 
         var error = OpenContext(_pump.Hwnd);
         if (error != null)
@@ -102,6 +108,8 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
             _pump = null;
             return error;
         }
+
+        RebuildDesktopMap();
 
         LogContexts("after opening");
 
@@ -217,6 +225,7 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
             return;
         }
 
+        RebuildDesktopMap();
         IsRunning = true;
         Log("Context reopened; the pen should work again.");
         LogContexts("after reopening");
@@ -255,7 +264,30 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
         return count;
     }
 
-    public virtual void RefreshMapping() { }
+    /// <summary>
+    /// Re-reads the driver's screen and the monitor layout. Subclasses that cache more of the
+    /// driver's mapping override this and call it too.
+    /// </summary>
+    public virtual void RefreshMapping() => RebuildDesktopMap();
+
+    /// <summary>
+    /// The display layout changed. Heard by the pump window on the pump thread, which is also
+    /// where packets are converted, so the rebuild never lands mid-conversion.
+    /// </summary>
+    private void OnDisplayChanged() => RefreshMapping();
+
+    private void RebuildDesktopMap()
+    {
+        if (!GetDefaultSystemContext(out var lc))
+        {
+            _desktopMap = WintabDesktopMap.Identity;
+            Log("Desktop map: identity, WTInfoA(WTI_DEFSYSCTX) returned 0");
+            return;
+        }
+
+        _desktopMap = WintabDesktopMap.ForDriverScreen(lc.lcSysOrgX, lc.lcSysOrgY, lc.lcSysExtX, lc.lcSysExtY);
+        Log($"Desktop map: {_desktopMap.Description}");
+    }
 
     public void Dispose()
     {
@@ -375,7 +407,10 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
             // against the system clock at the moment the packet is in hand.
             RawTimeObserver?.Invoke(pkt.pkTime, Environment.TickCount64);
 
-            var (desktopX, desktopY) = ConvertCoordinates(pkt.pkX, pkt.pkY);
+            // The driver's screen, then the physical desktop. See WintabDesktopMap for why those
+            // are not always the same thing.
+            var (driverX, driverY) = ConvertCoordinates(pkt.pkX, pkt.pkY);
+            var (desktopX, desktopY) = _desktopMap.ToPhysical(driverX, driverY);
 
             // Spatial scope: drop points outside the capture region so Wintab
             // matches the window/control-scoped pointer backends.

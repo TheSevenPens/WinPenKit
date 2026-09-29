@@ -17,6 +17,7 @@ internal sealed class WintabMessagePump : IDisposable
     private readonly Thread _thread;
     private readonly ManualResetEventSlim _ready = new();
     private readonly Action<uint, IntPtr, IntPtr> _onMessage;
+    private readonly Action? _onDisplayChange;
     private IntPtr _hwnd;
     private volatile bool _disposed;
 
@@ -39,10 +40,14 @@ internal sealed class WintabMessagePump : IDisposable
     /// <paramref name="onMessage"/> is called on the pump thread for every
     /// message in the WT_* range (0x7FF0–0x7FFF).
     /// Parameters: (uint msg, IntPtr wParam, IntPtr lParam).
+    /// <paramref name="onDisplayChange"/>, if given, is called on the pump thread when the
+    /// display layout changes: WM_DISPLAYCHANGE is broadcast to top-level windows, hidden
+    /// ones included.
     /// </summary>
-    public WintabMessagePump(Action<uint, IntPtr, IntPtr> onMessage)
+    public WintabMessagePump(Action<uint, IntPtr, IntPtr> onMessage, Action? onDisplayChange = null)
     {
         _onMessage = onMessage;
+        _onDisplayChange = onDisplayChange;
         _wndProcDelegate = WndProc;
 
         _thread = new Thread(PumpThreadFunc)
@@ -116,6 +121,9 @@ internal sealed class WintabMessagePump : IDisposable
             return IntPtr.Zero;
         }
 
+        if (msg == WM_DISPLAYCHANGE)
+            _onDisplayChange?.Invoke();
+
         return DefWindowProcW(hWnd, msg, wParam, lParam);
     }
 
@@ -123,6 +131,7 @@ internal sealed class WintabMessagePump : IDisposable
 
     private const uint WS_OVERLAPPED = 0x00000000;
     private const uint WM_QUIT = 0x0012;
+    private const uint WM_DISPLAYCHANGE = 0x007E;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WNDCLASSEX
