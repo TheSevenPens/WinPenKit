@@ -6,10 +6,16 @@ namespace WinPenKit.MappingWizard;
 /// <summary>One pen report taken while the pen was held over a target, with the cursor beside it.</summary>
 internal readonly record struct Sample(
     int Step, InputApi Api, int Monitor, int Target,
-    int RawX, int RawY, double DesktopX, double DesktopY, int CursorX, int CursorY);
+    int RawX, int RawY, double DesktopX, double DesktopY, int CursorX, int CursorY,
+    int Pass = 1, long Ms = 0);
 
 /// <summary>A target that was held long enough to count, and what was recorded over it.</summary>
-internal sealed record TargetResult(InputApi Api, int Monitor, int Target, Point Center, IReadOnlyList<Sample> Samples)
+/// <param name="Pass">Which pass of a grid scan: 1 visits the targets in order, 2 in reverse.</param>
+/// <param name="ApproachX">Where the cursor moved from over the 250 ms before the hold began,
+/// relative to where the hold began.</param>
+/// <param name="PenLeftBefore">Whether the pen left proximity between the previous target and this one.</param>
+internal sealed record TargetResult(InputApi Api, int Monitor, int Target, Point Center, IReadOnlyList<Sample> Samples,
+    int Pass = 1, int ApproachX = 0, int ApproachY = 0, bool PenLeftBefore = false)
 {
     public double MeanDx => Samples.Average(s => s.DesktopX - s.CursorX);
     public double MeanDy => Samples.Average(s => s.DesktopY - s.CursorY);
@@ -130,10 +136,10 @@ internal sealed class Session
         File.WriteAllText(Path.Combine(Folder, "session.json"),
             System.Text.Json.JsonSerializer.Serialize(new Saved(Monitors, _steps, Skipped, PlanVersion), Json));
 
-        var csv = new StringBuilder("step,api,monitor,target,rawX,rawY,desktopX,desktopY,cursorX,cursorY\n");
+        var csv = new StringBuilder("step,api,monitor,target,rawX,rawY,desktopX,desktopY,cursorX,cursorY,pass,ms,approachX,approachY,penLeftBefore\n");
         foreach (var t in _steps.SelectMany(s => s.Targets))
             foreach (var s in t.Samples)
-                csv.AppendLine(Inv($"{s.Step},{s.Api},{s.Monitor},{s.Target},{s.RawX},{s.RawY},{s.DesktopX:F2},{s.DesktopY:F2},{s.CursorX},{s.CursorY}"));
+                csv.AppendLine(Inv($"{s.Step},{s.Api},{s.Monitor},{s.Target},{s.RawX},{s.RawY},{s.DesktopX:F2},{s.DesktopY:F2},{s.CursorX},{s.CursorY},{t.Pass},{s.Ms},{t.ApproachX},{t.ApproachY},{(t.PenLeftBefore ? 1 : 0)}"));
         File.WriteAllText(Path.Combine(Folder, "samples.csv"), csv.ToString());
         File.WriteAllText(Path.Combine(Folder, "summary.md"), Summary());
     }
@@ -196,6 +202,28 @@ internal sealed class Session
                 md.AppendLine(Inv($"- {group.Key.Api.Label()}, monitor {group.Key.Monitor}: cursorX = {ax:F6} x rawX + {bx:F1}, cursorY = {ay:F6} x rawY + {by:F1}"));
             }
             md.AppendLine();
+
+            // For a grid scan the point is which targets are off, not the average, so every
+            // target is listed. The ratio is the driver's position over the cursor's about the
+            // desktop origin: 1.000 where the driver sent physical pixels, the scaling ratio where
+            // it rescaled about the origin, and something else where it rescaled about another
+            // point. Pass 1 and pass 2 at the same target differ only if the behaviour depends
+            // on how the target was reached.
+            if (s.Step.Scan is not null)
+            {
+                md.AppendLine("Every target, in the order visited:");
+                md.AppendLine();
+                md.AppendLine("| Pass | Monitor | Target | Cursor x, y | Error x, y (px) | Raw / cursor x, y | Approached from | Pen left before |");
+                md.AppendLine("|---|---|---|---|---|---|---|---|");
+                foreach (var t in s.Targets)
+                {
+                    double cx = t.Samples.Average(p => p.CursorX), cy = t.Samples.Average(p => p.CursorY);
+                    double rx = t.Samples.Average(p => p.RawX), ry = t.Samples.Average(p => p.RawY);
+                    string rx1 = cx == 0 ? "-" : Inv($"{rx / cx:F3}"), ry1 = cy == 0 ? "-" : Inv($"{ry / cy:F3}");
+                    md.AppendLine(Inv($"| {t.Pass} | {t.Monitor} | {t.Target} | {cx:F0}, {cy:F0} | {t.MeanDx:F1}, {t.MeanDy:F1} | {rx1}, {ry1} | {t.ApproachX}, {t.ApproachY} | {(t.PenLeftBefore ? "yes" : "no")} |"));
+                }
+                md.AppendLine();
+            }
         }
         return md.ToString();
     }

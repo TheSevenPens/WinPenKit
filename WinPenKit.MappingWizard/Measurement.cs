@@ -34,7 +34,13 @@ internal sealed class Measurement : IDisposable
     private readonly IReadOnlyList<Monitor> _monitors;
     private readonly List<InputApi> _apis;
     private readonly List<Overlay> _overlays = [];
-    private readonly List<(int Monitor, int Target, Point Center)> _targets = [];
+    private readonly List<(int Monitor, int Target, Point Center, int Pass)> _targets = [];
+
+    // For a grid scan: where the cursor has been lately, to record which way each target was
+    // approached, and whether the pen left proximity since the last target.
+    private readonly Queue<(TimeSpan At, Point Where)> _trail = new();
+    private bool _penLeftSinceTarget;
+    private (int X, int Y) _approach;
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 8 };
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
@@ -55,7 +61,13 @@ internal sealed class Measurement : IDisposable
     /// <summary>Raised once, when every API has been measured or the person stops.</summary>
     public event Action<bool>? Finished;
 
-    public Measurement(Step step, IReadOnlyList<Monitor> monitors, IReadOnlyList<InputApi> apis)
+    /// <param name="grid">
+    /// A grid scan instead of four targets: <see cref="GridColumns"/> x <see cref="GridRows"/>
+    /// targets per monitor, visited in order and then again in reverse. It is for finding where
+    /// the driver's all-displays behaviour changes -- a spatial boundary shows up the same from
+    /// both directions, a state-dependent one does not (issue #132).
+    /// </param>
+    public Measurement(Step step, IReadOnlyList<Monitor> monitors, IReadOnlyList<InputApi> apis, bool grid = false)
     {
         _step = step;
         _monitors = monitors;
@@ -75,11 +87,17 @@ internal sealed class Measurement : IDisposable
         foreach (var m in step.TargetMonitors(monitors))
         {
             int n = 0;
-            foreach (var (fx, fy) in new[] { (0.15, 0.15), (0.85, 0.15), (0.85, 0.85), (0.15, 0.85) })
+            foreach (var (fx, fy) in grid ? GridFractions() : [(0.15, 0.15), (0.85, 0.15), (0.85, 0.85), (0.15, 0.85)])
                 _targets.Add((m.Number, ++n, new Point(
-                    m.Bounds.X + (int)(m.Bounds.Width * fx), m.Bounds.Y + (int)(m.Bounds.Height * fy))));
+                    m.Bounds.X + (int)(m.Bounds.Width * fx), m.Bounds.Y + (int)(m.Bounds.Height * fy)), 1));
 
             _overlays.Add(new Overlay(this, m));
+        }
+
+        if (grid)
+        {
+            var back = _targets.AsEnumerable().Reverse().Select(t => t with { Pass = 2 }).ToList();
+            _targets.AddRange(back);
         }
 
         _timer.Tick += (_, _) => Tick();
@@ -93,8 +111,18 @@ internal sealed class Measurement : IDisposable
         _timer.Start();
     }
 
+    public const int GridColumns = 5, GridRows = 4;
+
+    /// <summary>Row by row, left to right, in from the edges as the four-target layout is.</summary>
+    private static IEnumerable<(double, double)> GridFractions()
+    {
+        for (int r = 0; r < GridRows; r++)
+            for (int c = 0; c < GridColumns; c++)
+                yield return (0.1 + 0.8 * c / (GridColumns - 1), 0.1 + 0.8 * r / (GridRows - 1));
+    }
+
     private InputApi CurrentApi => _apis[_apiIndex];
-    private (int Monitor, int Target, Point Center) CurrentTarget => _targets[_targetIndex];
+    private (int Monitor, int Target, Point Center, int Pass) CurrentTarget => _targets[_targetIndex];
 
     /// <summary>The hold radius: about 4% of the smaller side of the monitor, in its own pixels.</summary>
     private int Radius(int monitor)
@@ -174,11 +202,16 @@ internal sealed class Measurement : IDisposable
                 _pressed = pt.Pressure > 0;
                 if (_holdStart is not null && _pressed)
                     _hold.Add(new Sample(_step.Number, CurrentApi, target.Monitor, target.Target,
-                        pt.RawX, pt.RawY, pt.DesktopX, pt.DesktopY, c.X, c.Y));
+                        pt.RawX, pt.RawY, pt.DesktopX, pt.DesktopY, c.X, c.Y,
+                        target.Pass, (long)now.TotalMilliseconds));
             }
         }
 
         bool penHere = now - _lastPen < PenGone;
+        if (!penHere) _penLeftSinceTarget = true;
+
+        _trail.Enqueue((now, new Point(c.X, c.Y)));
+        while (_trail.Count > 0 && now - _trail.Peek().At > TimeSpan.FromMilliseconds(250)) _trail.Dequeue();
         double distance = Math.Sqrt(Math.Pow(c.X - target.Center.X, 2) + Math.Pow(c.Y - target.Center.Y, 2));
         bool onTarget = penHere && _pressed && distance <= Radius(target.Monitor);
 
@@ -190,10 +223,14 @@ internal sealed class Measurement : IDisposable
         else if (_holdStart is null)
         {
             _holdStart = now;
+            var from = _trail.Count > 0 ? _trail.Peek().Where : new Point(c.X, c.Y);
+            _approach = (from.X - c.X, from.Y - c.Y);
         }
         else if (now - _holdStart >= HoldTime && _hold.Count > 0)
         {
-            Result.Targets.Add(new TargetResult(CurrentApi, target.Monitor, target.Target, target.Center, [.. _hold]));
+            Result.Targets.Add(new TargetResult(CurrentApi, target.Monitor, target.Target, target.Center, [.. _hold],
+                target.Pass, _approach.X, _approach.Y, _penLeftSinceTarget));
+            _penLeftSinceTarget = false;
             _hold.Clear();
             _holdStart = null;
             _targetIndex++;
@@ -258,7 +295,8 @@ internal sealed class Measurement : IDisposable
         {
             var target = CurrentTarget;
             int done = _targetIndex;
-            string header = $"Step {_step.Number} of the plan  -  {CurrentApi.Label()} ({_apiIndex + 1} of {_apis.Count})  -  " +
+            string pass = _step.Scan is null ? "" : $"pass {target.Pass} of 2 ({(target.Pass == 1 ? "in order" : "in reverse")})  -  ";
+            string header = $"{(_step.Scan is null ? $"Step {_step.Number} of the plan" : "Grid scan")}  -  {pass}{CurrentApi.Label()} ({_apiIndex + 1} of {_apis.Count})  -  " +
                             $"target {done + 1} of {_targets.Count}";
             g.DrawString(header, big, Brushes.White, 24 * scale, 20 * scale);
 
@@ -273,7 +311,7 @@ internal sealed class Measurement : IDisposable
             for (int i = 0; i < _targets.Count; i++)
             {
                 var t = _targets[i];
-                if (t.Monitor != m.Number) continue;
+                if (t.Monitor != m.Number || t.Pass != target.Pass) continue;
                 var p = new Point(t.Center.X - origin.X, t.Center.Y - origin.Y);
                 int r = Radius(t.Monitor);
 

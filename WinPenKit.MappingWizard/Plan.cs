@@ -30,11 +30,13 @@ internal enum ScalingSetup
 /// <param name="ResolutionOn">The monitor whose resolution this step sets.</param>
 /// <param name="Resolution">The resolution to set on it.</param>
 /// <param name="ResolutionLabel">"native" or "lower", for the report.</param>
+/// <param name="Scan">Set for a grid scan rather than a step of the plan: what it was run from.</param>
 internal sealed record Step(
     int Number, ScalingSetup Scaling, int? MappedTo,
-    int ResolutionOn, DisplayMode Resolution, string ResolutionLabel)
+    int ResolutionOn, DisplayMode Resolution, string ResolutionLabel, string? Scan = null)
 {
     public string Title =>
+        (Scan is null ? "" : $"grid scan ({Scan}): ") +
         $"{ScalingText(Scaling)}; tablet mapped to {(MappedTo is { } m ? $"monitor {m}" : "all displays")}; " +
         $"monitor {ResolutionOn} at {Resolution} ({ResolutionLabel})";
 

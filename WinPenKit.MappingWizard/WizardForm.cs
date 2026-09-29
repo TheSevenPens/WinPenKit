@@ -28,6 +28,7 @@ internal sealed class WizardForm : Form
     private readonly Label _status = new() { Dock = DockStyle.Top, AutoSize = false };
     private readonly Button _apply = new() { AutoSize = true };
     private readonly Button _measure = new() { Text = "Measure", AutoSize = true };
+    private readonly Button _scan = new() { Text = "Grid scan", AutoSize = true };
     private readonly Button _skip = new() { Text = "Skip step", AutoSize = true };
     private readonly Button _results = new() { Text = "Open results", AutoSize = true };
     private readonly Label _footer = new() { Dock = DockStyle.Bottom, AutoSize = false };
@@ -56,7 +57,7 @@ internal sealed class WizardForm : Form
             _list.Items.Add(new ListViewItem([step.Number.ToString(), step.Title, ""]) { Tag = step });
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = S(52), Padding = new Padding(S(8)) };
-        buttons.Controls.AddRange([_apply, _measure, _skip, _results]);
+        buttons.Controls.AddRange([_apply, _measure, _scan, _skip, _results]);
 
         var right = new Panel { Dock = DockStyle.Fill };
         right.Controls.Add(_status);
@@ -75,6 +76,7 @@ internal sealed class WizardForm : Form
         _list.SelectedIndexChanged += (_, _) => Refresh(false);
         _apply.Click += (_, _) => ApplySettings();
         _measure.Click += (_, _) => Measure();
+        _scan.Click += (_, _) => Measure(grid: true);
         _skip.Click += (_, _) => SkipStep();
         _results.Click += (_, _) => Process.Start(new ProcessStartInfo(_session.Folder) { UseShellExecute = true });
         _refresh.Tick += (_, _) => Refresh(true);
@@ -107,7 +109,7 @@ internal sealed class WizardForm : Form
         {
             _instructions.Text = "Every step is done. The summary is in the results folder.";
             _status.Text = "";
-            _apply.Visible = _measure.Enabled = _skip.Enabled = false;
+            _apply.Visible = _measure.Enabled = _scan.Enabled = _skip.Enabled = false;
             return;
         }
 
@@ -165,7 +167,7 @@ internal sealed class WizardForm : Form
             (true, false) => $"Set monitor {step.ResolutionOn} to {step.Resolution}",
             _ => "Set scaling",
         };
-        _measure.Enabled = _skip.Enabled = true;
+        _measure.Enabled = _scan.Enabled = _skip.Enabled = true;
     }
 
     private static string Where(Monitor m) => m.Primary ? "the primary" : $"at {m.Bounds.X},{m.Bounds.Y}";
@@ -230,10 +232,21 @@ internal sealed class WizardForm : Form
         Refresh(true);
     }
 
-    private void Measure()
+    /// <summary>
+    /// Measures the selected step, or with <paramref name="grid"/> runs a grid scan in the
+    /// selected step's configuration. A scan is saved beside the plan's steps, numbered from 1001,
+    /// and uses Wintab's system context only: in every step so far both Wintab modes were off in
+    /// exactly the same way, and a scan is long enough already.
+    /// </summary>
+    private void Measure(bool grid = false)
     {
-        var step = Selected;
-        if (step is null) return;
+        var planned = Selected;
+        if (planned is null) return;
+        var step = !grid ? planned : planned with
+        {
+            Number = 1001 + _session.Steps.Count(s => s.Step.Scan is not null),
+            Scan = $"in step {planned.Number}'s setup",
+        };
 
         _monitors = Displays.Read(_session.Monitors);
         var unmet = Planner.Unmet(step, _monitors);
@@ -244,7 +257,7 @@ internal sealed class WizardForm : Form
             return;
 
         var available = PenSessionFactory.GetAvailableApis();
-        var apis = new[] { InputApi.WintabSystem, InputApi.WintabDigitizer, InputApi.WmPointer }
+        var apis = (grid ? [InputApi.WintabSystem] : new[] { InputApi.WintabSystem, InputApi.WintabDigitizer, InputApi.WmPointer })
             .Where(available.Contains).ToList();
         if (apis.Count == 0)
         {
@@ -253,7 +266,7 @@ internal sealed class WizardForm : Form
         }
 
         _refresh.Stop();
-        _measurement = new Measurement(step, _monitors, apis);
+        _measurement = new Measurement(step, _monitors, apis, grid);
         foreach (var u in unmet) _measurement.Result.Notes.Add("measured with this unmet: " + u);
         if (Planner.StaleSystemDpi(_monitors) is { } stale) _measurement.Result.Notes.Add(stale);
 
@@ -265,7 +278,10 @@ internal sealed class WizardForm : Form
             m?.Dispose();
             UpdateResults();
             Activate();
-            if (completed) SelectNextPending(_plan.IndexOf(step) + 1);
+            if (completed && !grid) SelectNextPending(_plan.IndexOf(step) + 1);
+            if (completed && grid)
+                MessageBox.Show(this, $"The grid scan is saved as step {step.Number} in the results summary.",
+                                "Grid scan saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
             _refresh.Start();
             Refresh(true);
         };

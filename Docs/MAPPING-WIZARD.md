@@ -68,3 +68,16 @@ rewritten after every step.
 - `session.json`: what the wizard reads to resume a session.
 
 A step passes when every target's mean difference from the cursor is at most 3 px on each axis.
+
+## Grid scan
+
+**Grid scan** runs in the selected step's setup, but instead of four targets it shows a 5×4 grid on every monitor the pen should reach. It visits the grid in order, then again in reverse. It uses Wintab's system context only: in every step so far, both Wintab modes were off in the same way.
+
+It's for finding where the driver's behavior changes when the tablet is mapped to all displays on a mixed-scaling desktop (issue #132). There, part of the other monitor is rescaled and part isn't, and it isn't yet known whether that depends on where the pen is or on how it got there. For every target, the scan records:
+
+- the error
+- the driver's position over the cursor's, which is 1.000 where the driver sent physical pixels
+- the direction the pen came from
+- whether the pen left proximity since the previous target
+
+A boundary that depends only on position looks the same in both passes; one that depends on state doesn't. Scans are saved beside the plan's steps, numbered from 1001.
