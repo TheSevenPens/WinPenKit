@@ -65,6 +65,9 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
     /// </summary>
     private volatile WintabDesktopMap _desktopMap = WintabDesktopMap.Identity;
 
+    /// <summary>The map in use. Diagnostics only.</summary>
+    internal WintabDesktopMap DesktopMap => _desktopMap;
+
     // Default capture scope when CaptureRegion is not set: the app window the
     // consumer passed to Start (Unbounded if no handle was supplied).
     private IPenCaptureRegion _defaultRegion = PenCaptureRegion.Unbounded;
