@@ -71,7 +71,7 @@ A step passes when every target's mean difference from the cursor is at most 3 p
 
 ## Grid scan
 
-**Grid scan** runs in the selected step's setup, but instead of four targets it shows a 5×4 grid on every monitor the pen should reach. It visits the grid in order, then again in reverse. It uses Wintab's system context only: in every step so far, both Wintab modes were off in the same way.
+**Grid scan** runs in the selected step's setup, but instead of four targets it shows a 3×3 grid on every monitor the pen should reach. It visits the grid in order, then again in reverse. It uses Wintab's system context only: in every step so far, both Wintab modes were off in the same way.
 
 It's for finding where the driver's behavior changes when the tablet is mapped to all displays on a mixed-scaling desktop (issue #132). There, part of the other monitor is rescaled and part isn't, and it isn't yet known whether that depends on where the pen is or on how it got there. For every target, the scan records:
 

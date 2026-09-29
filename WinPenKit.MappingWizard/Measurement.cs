@@ -113,7 +113,9 @@ internal sealed class Measurement : IDisposable
         _timer.Start();
     }
 
-    public const int GridColumns = 5, GridRows = 4;
+    // 3 x 3 is enough to show where the driver switches scaling -- the switch was a whole row
+    // on the 5 x 4 grid it replaced -- at under half the holds.
+    public const int GridColumns = 3, GridRows = 3;
 
     /// <summary>Row by row, left to right, in from the edges as the four-target layout is.</summary>
     private static IEnumerable<(double, double)> GridFractions()
