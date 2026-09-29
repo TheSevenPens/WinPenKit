@@ -2,7 +2,8 @@ namespace WinPenKit.Wintab;
 
 /// <summary>
 /// Wintab system context session — screen-pixel output.
-/// The simplest Wintab path: pkX/pkY are physical screen pixels.
+/// The simplest Wintab path: pkX/pkY are screen pixels as the driver sees the screen, which
+/// the base class moves onto the physical desktop (see <see cref="WintabDesktopMap"/>).
 /// </summary>
 internal sealed class WintabSystemSession : WintabSessionBase
 {
@@ -10,7 +11,8 @@ internal sealed class WintabSystemSession : WintabSessionBase
 
     /// <summary>
     /// A system context is mapped to the screen by the driver, so the raw fields are screen
-    /// pixels: the same space DesktopX is in, at whole-pixel resolution.
+    /// pixels at whole-pixel resolution. They are the space DesktopX is in unless the monitors
+    /// are scaled differently, when the driver's screen and the physical one part company.
     /// </summary>
     public override PenConventions Conventions => new(
         PenRawUnits.ScreenPixels,
@@ -57,7 +59,7 @@ internal sealed class WintabSystemSession : WintabSessionBase
 
     protected override (double desktopX, double desktopY) ConvertCoordinates(int pkX, int pkY)
     {
-        // System mode: pkX/pkY are already physical screen pixels.
+        // System mode: pkX/pkY are already the driver's screen pixels.
         return (pkX, pkY);
     }
 }

@@ -157,6 +157,7 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
     {
         if (GetDefaultSystemContext(out var lc))
             CacheSystemMapping(lc);
+        base.RefreshMapping();
     }
 
     private void CacheSystemMapping(in LogContext lc)

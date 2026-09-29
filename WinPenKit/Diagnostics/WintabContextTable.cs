@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using WinPenKit.Wintab;
 
 namespace WinPenKit.Diagnostics;
@@ -73,6 +74,40 @@ public static class WintabDiagnostics
         uint? open = Count(WTI.STATUS, STA.CONTEXTS);
 
         return maximum is { } max && open is { } now ? new WintabContextTable(now, max) : null;
+    }
+
+    /// <summary>The tablet's name as the driver gives it, or null if it will not say.</summary>
+    public static string? DeviceName()
+    {
+        if (!WintabNative.IsAvailable()) return null;
+
+        var buf = Marshal.AllocHGlobal(512);
+        try
+        {
+            return WintabNative.WTInfoA(WTI.DEVICES, DVC.NAME, buf) == 0
+                ? null
+                : Marshal.PtrToStringAnsi(buf);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buf);
+        }
+    }
+
+    /// <summary>
+    /// The screen the driver says its default system context maps to, and its tablet input
+    /// range, or null if it will not say. What it says can be wrong; see
+    /// <see cref="WintabMappingProbe"/>.
+    /// </summary>
+    public static string? DriverScreen()
+    {
+        if (!WintabNative.IsAvailable()) return null;
+
+        using var buf = UnmanagedBuffer.Create<LogContext>();
+        if (WintabNative.WTInfoA(WTI.DEFSYSCTX, 0, buf.Ptr) == 0) return null;
+        var lc = buf.MarshalOut<LogContext>();
+        return $"sys org ({lc.lcSysOrgX},{lc.lcSysOrgY}) ext ({lc.lcSysExtX},{lc.lcSysExtY}), " +
+               $"out ext ({lc.lcOutExtX},{lc.lcOutExtY}), in ext ({lc.lcInExtX},{lc.lcInExtY})";
     }
 
     private static uint? Count(uint category, uint index)

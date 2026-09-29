@@ -491,7 +491,9 @@ PenPoint provides desktop screen pixels. Your app converts to canvas-local coord
 
 ## DPI Handling
 
-Wintab always reports physical screen pixels. Your app must be **Per-Monitor V2 DPI aware** for coordinates to match:
+`PenPoint.DesktopX`/`DesktopY` are physical screen pixels on every backend. For Wintab that takes work: on a desktop whose monitors are scaled differently, the Wacom driver was measured sending positions scaled by the ratio of the scalings, so the managed Wintab sessions rescale them (`WintabDesktopMap`). The rule was inferred from one machine; check other layouts with the mapping probe under [Diagnostics](#diagnostics). The native C++ and Rust Wintab paths do not rescale yet.
+
+Your app must be **Per-Monitor V2 DPI aware** for coordinates to match:
 
 - **WinForms (.NET 10)**: Automatic — `PointToClient()` handles DPI.
 - **WPF (.NET 10)**: Automatic — `PointFromScreen()` handles DPI.
@@ -614,6 +616,20 @@ WinPenKit logs to `%TEMP%\WinPenKit.log`:
 - Hi-res fallback events
 - Button/cursor transitions
 - Packet processing errors
+- The desktop map: whether Wintab positions are being rescaled, and by how much
+
+### Is the pen landing under the cursor?
+
+`WintabMappingProbe` compares every Wintab position with the cursor, which the driver moves itself and Windows places correctly, on each monitor and in each Wintab mode:
+
+```
+WinPenKit.TestConsole --probe-wintab-mapping [seconds-per-mode] [samples.csv]
+WinPenKit.TestConsole --report-wintab-mapping samples.csv
+```
+
+Hover the pen (don't tap) over every monitor, corners included, in each mode; the tablet must be in pen mode. The report gives, per mode and monitor, the mean error in pixels (judged: at most 3 px per axis), the driver's actual mapping from raw values to the cursor, and how much of the monitor was covered. Samples are saved to CSV so a run can be re-reported later on the same layout. `testdata/wintab-mapping-probe-mixed-dpi.csv` is the run that found the scaling problem, with the positions the sessions produced before the fix.
+
+Run it after any change to the Wintab coordinate path, and on any new monitor layout, scaling, resolution or tablet mapping.
 
 ## Native C++ / Rust Gotchas
 

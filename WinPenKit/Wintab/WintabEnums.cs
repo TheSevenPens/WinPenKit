@@ -44,6 +44,7 @@ internal static class STA
 /// <summary>WTI_DEVICES sub-indices.</summary>
 internal static class DVC
 {
+    public const uint NAME        = 1;
     public const uint NPRESSURE   = 15;
     public const uint ORIENTATION = 17;
 }

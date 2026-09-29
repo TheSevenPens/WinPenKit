@@ -37,6 +37,39 @@ if (args.Any(a => string.Equals(a, "--verify-wintab-anchoring", StringComparison
     Environment.Exit(bad == 0 ? 0 : 1);
 }
 
+// Checks the Wintab position against the cursor on every monitor, in every Wintab mode.
+//   --probe-wintab-mapping [seconds-per-mode] [samples.csv]   collect from the tablet, then report
+//   --report-wintab-mapping samples.csv                         report on samples saved earlier
+// Both make this process per-monitor DPI aware first, before any window exists, so the cursor
+// and the monitors are in physical pixels. The rest of this console stays DPI-unaware, which
+// the epoch probe's window placement depends on.
+int mapIdx = Array.FindIndex(args, a => string.Equals(a, "--probe-wintab-mapping", StringComparison.OrdinalIgnoreCase));
+int reportIdx = Array.FindIndex(args, a => string.Equals(a, "--report-wintab-mapping", StringComparison.OrdinalIgnoreCase));
+if (mapIdx >= 0 || reportIdx >= 0)
+{
+    SetProcessDpiAwarenessContext(new IntPtr(-4));
+
+    if (reportIdx >= 0)
+    {
+        if (reportIdx + 1 >= args.Length)
+        {
+            Console.Error.WriteLine("--report-wintab-mapping needs a path to a samples CSV");
+            Environment.Exit(2);
+        }
+        Environment.Exit(WintabMappingProbe.Report(Console.Out, WintabMappingProbe.CurrentMonitors(),
+                                                   WintabMappingProbe.ReadCsv(args[reportIdx + 1])));
+    }
+
+    int perMode = mapIdx + 1 < args.Length && int.TryParse(args[mapIdx + 1], out int pm) ? pm : 45;
+    string csv = mapIdx + 2 < args.Length
+        ? args[mapIdx + 2]
+        : Path.Combine(Path.GetTempPath(), $"WinPenKit.mapping-probe.{DateTime.Now:yyyyMMdd-HHmmss}.csv");
+    Environment.Exit(WintabMappingProbe.Run(Console.Out, TimeSpan.FromSeconds(perMode), csv));
+}
+
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+
 // The epoch probe drives its own Wintab session and prompts for a pause mid-run, so it cannot
 // share the discovery prompt below.
 if (args.Any(a => string.Equals(a, "--probe-wintab-epoch", StringComparison.OrdinalIgnoreCase)))
