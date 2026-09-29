@@ -59,15 +59,6 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
     private uint _lastCursor;
     private string _debugInfo = "";
 
-    /// <summary>
-    /// From the driver's desktop to the physical one. Rebuilt whenever a context opens and when
-    /// the display layout changes. Replaced whole, so a reader sees one map or the other.
-    /// </summary>
-    private volatile WintabDesktopMap _desktopMap = WintabDesktopMap.Identity;
-
-    /// <summary>The map in use. Diagnostics only.</summary>
-    internal WintabDesktopMap DesktopMap => _desktopMap;
-
     // Default capture scope when CaptureRegion is not set: the app window the
     // consumer passed to Start (Unbounded if no handle was supplied).
     private IPenCaptureRegion _defaultRegion = PenCaptureRegion.Unbounded;
@@ -78,8 +69,7 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
     public bool HasNewData => _hasNewData;
     public abstract InputApi Api { get; }
     public abstract PenCapabilities Capabilities { get; }
-    /// <summary>What the session opened, and which desktop map it is applying.</summary>
-    public string DebugInfo => $"{_debugInfo}  Desktop map: {_desktopMap.Description}";
+    public string DebugInfo => _debugInfo;
     public int MaxPressure { get; private set; }
     public IPenCaptureRegion? CaptureRegion { get; set; }
 
@@ -103,7 +93,7 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
         LogContexts("before opening");
 
         // Start the message pump first — we need the HWND for WTOpen.
-        _pump = new WintabMessagePump(OnWintabMessage, OnDisplayChanged);
+        _pump = new WintabMessagePump(OnWintabMessage);
 
         var error = OpenContext(_pump.Hwnd);
         if (error != null)
@@ -112,8 +102,6 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
             _pump = null;
             return error;
         }
-
-        RebuildDesktopMap();
 
         LogContexts("after opening");
 
@@ -229,7 +217,6 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
             return;
         }
 
-        RebuildDesktopMap();
         IsRunning = true;
         Log("Context reopened; the pen should work again.");
         LogContexts("after reopening");
@@ -268,33 +255,7 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
         return count;
     }
 
-    /// <summary>
-    /// Re-reads the driver's screen and the monitor layout. Subclasses that cache more of the
-    /// driver's mapping override this and call it too.
-    /// </summary>
-    public virtual void RefreshMapping() => RebuildDesktopMap();
-
-    /// <summary>
-    /// The display layout changed. Heard by the pump window on the pump thread, which is also
-    /// where packets are converted, so the rebuild never lands mid-conversion.
-    /// </summary>
-    private void OnDisplayChanged() => RefreshMapping();
-
-    private void RebuildDesktopMap()
-    {
-        if (!GetDefaultSystemContext(out var lc))
-        {
-            _desktopMap = WintabDesktopMap.Identity;
-            Log("Desktop map: identity, WTInfoA(WTI_DEFSYSCTX) returned 0");
-            return;
-        }
-
-        // Logged only when it changes: this runs every time the pen comes into proximity.
-        var map = WintabDesktopMap.ForDriverScreen(lc.lcSysOrgX, lc.lcSysOrgY, lc.lcSysExtX, lc.lcSysExtY);
-        if (map.Description != _desktopMap.Description)
-            Log($"Desktop map: {map.Description}");
-        _desktopMap = map;
-    }
+    public virtual void RefreshMapping() { }
 
     public void Dispose()
     {
@@ -387,16 +348,6 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
 
     private void OnWintabMessage(uint msg, IntPtr wParam, IntPtr lParam)
     {
-        // Each time the pen comes into the context's proximity, before a stroke can begin, the
-        // map is rebuilt. A scaling change on a monitor other than the window's sends nothing
-        // this window hears, and rebuilding here means the map never changes mid-stroke. LOWORD
-        // of lParam is non-zero on entering. Reading the layout costs microseconds.
-        if (msg == WintabMessages.WT_PROXIMITY)
-        {
-            if ((lParam.ToInt64() & 0xFFFF) != 0) RefreshMapping();
-            return;
-        }
-
         if (msg != WintabMessages.WT_PACKET) return;
         if (_hCtx == IntPtr.Zero) return;
 
@@ -424,10 +375,7 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
             // against the system clock at the moment the packet is in hand.
             RawTimeObserver?.Invoke(pkt.pkTime, Environment.TickCount64);
 
-            // The driver's screen, then the physical desktop. See WintabDesktopMap for why those
-            // are not always the same thing.
-            var (driverX, driverY) = ConvertCoordinates(pkt.pkX, pkt.pkY);
-            var (desktopX, desktopY) = _desktopMap.ToPhysical(driverX, driverY);
+            var (desktopX, desktopY) = ConvertCoordinates(pkt.pkX, pkt.pkY);
 
             // Spatial scope: drop points outside the capture region so Wintab
             // matches the window/control-scoped pointer backends.

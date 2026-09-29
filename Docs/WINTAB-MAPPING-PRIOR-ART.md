@@ -4,12 +4,12 @@ This was researched on 2026-09-28 for issue #129. The source was read through `g
 
 Legend: **[src]** means I read it in the source code myself. **[doc]** means it comes from official documentation or a bug tracker. **[inferred]** is my own reasoning, not verified.
 
-Background, for reference (our measurements). With the Wacom driver on Windows 11 and a mixed-DPI desktop, `lcSysOrg/lcSysExt` from `WTI_DEFSYSCTX` do not match the physical desktop. When the tablet is mapped to one display, WinTab positions equal physical × (primary DPI ÷ lowest DPI). When it is mapped to all displays, some regions are rescaled in a way that isn't uniform. WM_POINTER is always correct. Clip Studio Paint shows the offset; Krita does not.
+Background, for reference (our measurements). **These were of Huion's V20 WinTab driver, first misidentified as Wacom's; Wacom's driver was later measured correct in every configuration (see the Mapping wizard doc).** With the Huion driver on Windows 11 and a mixed-DPI desktop, `lcSysOrg/lcSysExt` from `WTI_DEFSYSCTX` do not match the physical desktop. When the tablet is mapped to one display, WinTab positions equal physical × (primary DPI ÷ lowest DPI). When it is mapped to all displays, some regions are rescaled in a way that isn't uniform. WM_POINTER is always correct. Clip Studio Paint shows the offset; Krita does not.
 
 ---
 ## What our own measurements say about these approaches
 
-These are from the 24-step mapping-wizard session in `testdata/mapping-wizard-2026-09-28/` (Wacom driver, Windows 11, a 3840×2160 monitor above a 2560×1600 one). They change how the approaches below should be read:
+These are from the 24-step mapping-wizard session in `testdata/mapping-wizard-2026-09-28/` (Huion V20 WinTab driver, Windows 11, a 3840×2160 monitor above a 2560×1600 one). They change how the approaches below should be read:
 
 - **Raw tablet counts are distorted too.** Qt, Krita, Blender and GTK all ask the driver for raw counts (`lcOut = lcIn`) and scale them themselves, expecting that to get around the driver's pixel output. On this driver it doesn't. In step 1 (mapped to monitor 1, 250% above 225%), the full 50800-count width landed on **3457** px of a 3840 px monitor, the same 0.9 factor as the system context. With equal scaling (steps 7 and 19) it landed on exactly 3840. Counts outside `lcInExt` also arrived (up to 56195 of a stated 50800).
 - **`lcSys` doesn't depend on the caller's DPI awareness.** `WTI_DEFSYSCTX` read the same (3840×4178) from Unaware, System-aware, Per-Monitor and Per-Monitor-v2 processes. Whether the *packets* depend on it hasn't been tested.
@@ -186,7 +186,7 @@ OpenTabletDriver replaces the vendor driver and does **not** provide WinTab. Out
 - **Adobe community** [doc]: several threads about Photoshop WinTab offsets with two screens ([1](https://community.adobe.com/t5/photoshop-ecosystem-discussions/pen-offset-from-cursor-draws-above-or-below-my-cursor-depending-on-height-of-second-monitor/td-p/11003629), [2](https://community.adobe.com/t5/photoshop/brush-offset-from-cursor-from-using-two-screens/td-p/9671637)). The usual fixes are switching WinTab/Ink (`PSUserConfig.txt UseSystemStylus`) or matching scaling. There was no technical root cause.
 - **Krita Artists** [doc], ["Draw/Cursor offset with display tablet in dual monitor arrangement"](https://krita-artists.org/t/draw-cursor-offset-with-display-tablet-in-dual-monitor-arrangement/45873): fixed through Krita's tablet-resolution settings (the custom rect).
 - **TVPaint forum**, ["Cursor offset while using dual screens"](https://forum.tvpaint.com/viewtopic.php?t=10837): exists, not read in detail.
-- I found **no** public write-up that models the Wacom mixed-DPI distortion quantitatively (the primary÷lowest-DPI factor, or the non-uniform all-displays warp). The only hits were our own (WinPenKit #129 and #130, TheSevenPens/PenDynamicsLab#87).
+- I found **no** public write-up that models the (Huion) mixed-DPI distortion quantitatively (the primary÷lowest-DPI factor, or the non-uniform all-displays warp). The only hits were our own (WinPenKit #129 and #130, TheSevenPens/PenDynamicsLab#87).
 
 ---
 
@@ -206,7 +206,7 @@ OpenTabletDriver replaces the vendor driver and does **not** provide WinTab. Out
 | Aseprite | DEFSYSCTX + CXO_SYSTEM | none (mouse msgs) or driver-scaled lcOut | Implicitly | Yes (default mode) | — | No |
 | Wacom ScribbleDemo | System ctx or digitizer ctx | System: driver pixels; digitizer: SM_*VIRTUALSCREEN or window's monitor | Implicitly | No | PM-aware; reopen on WM_DISPLAYCHANGE | No |
 
-Nobody models the Wacom mixed-DPI distortion. Projects either trust some rectangle (lcSys, the virtual desktop, or a user rect) or **fall back to the system cursor** when WinTab disagrees with it (Qt, Blender, Aseprite, CSP's "mouse mode").
+Nobody models this mixed-DPI distortion. Projects either trust some rectangle (lcSys, the virtual desktop, or a user rect) or **fall back to the system cursor** when WinTab disagrees with it (Qt, Blender, Aseprite, CSP's "mouse mode").
 
 ---
 

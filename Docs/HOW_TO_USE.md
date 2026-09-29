@@ -491,7 +491,7 @@ PenPoint provides desktop screen pixels. Your app converts to canvas-local coord
 
 ## DPI Handling
 
-`PenPoint.DesktopX`/`DesktopY` are physical screen pixels on every backend. For Wintab that takes work. On a desktop whose monitors are scaled differently, the Wacom driver was measured sending positions multiplied by primary monitor scaling ÷ lowest monitor scaling when the tablet is mapped to one display. So the managed Wintab sessions scale by the inverse (`WintabDesktopMap`), and log and report in `DebugInfo` which correction is active. With the tablet mapped to all displays, parts of the other monitors stay wrong (issue #132). Set `WINPENKIT_WINTAB_DESKTOP_MAP=off` to turn the correction off. The rule was measured on one machine; check other layouts with the mapping wizard (`Docs/MAPPING-WIZARD.md`) or the mapping probe under [Diagnostics](#diagnostics). The native C++ and Rust Wintab paths don't rescale yet.
+`PenPoint.DesktopX`/`DesktopY` are physical screen pixels on every backend. Wintab positions are used exactly as the driver reports them, taking **Wacom as the reference**: measured on a mixed-scaling desktop (monitors at different Windows scaling), Wacom's driver reports physical pixels in every configuration tried, with the tablet mapped to one display or to all of them. Other drivers may not. Huion's V20 driver was measured scaling positions by the ratio of the monitors' scalings, and WinPenKit deliberately does not correct for any one vendor's driver (issue #132). Check a driver and layout with the mapping wizard (`Docs/MAPPING-WIZARD.md`) or the mapping probe under [Diagnostics](#diagnostics).
 
 Your app must be **Per-Monitor V2 DPI aware** for coordinates to match:
 
