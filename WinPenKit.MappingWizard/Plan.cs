@@ -9,7 +9,12 @@ internal enum ScalingSetup
     All100,
     /// <summary>Every monitor at the same scaling, other than 100%.</summary>
     AllSameAbove100,
-    /// <summary>At least two monitors at different scalings.</summary>
+    /// <summary>
+    /// Monitor 1 at a lower scaling than every other monitor. Fixed in that direction because
+    /// the as-is steps usually cover the other: on the machine this was built on, the primary
+    /// was the higher one, and which way round it is decides between two explanations of what
+    /// the driver does.
+    /// </summary>
     Mixed,
 }
 
@@ -34,7 +39,7 @@ internal sealed record Step(
         ScalingSetup.AsIs => "scaling as it is",
         ScalingSetup.All100 => "every monitor at 100%",
         ScalingSetup.AllSameAbove100 => "every monitor at the same scaling, above 100%",
-        ScalingSetup.Mixed => "monitors at different scalings",
+        ScalingSetup.Mixed => "monitor 1 scaled lower than the others",
         _ => s.ToString(),
     };
 
@@ -102,11 +107,51 @@ internal static class Planner
             case ScalingSetup.AllSameAbove100 when dpis.Count != 1 || dpis[0] == 96:
                 unmet.Add("Every monitor should be at the same scaling, above 100%. " + ScalingNow(monitors));
                 break;
-            case ScalingSetup.Mixed when dpis.Count < 2:
-                unmet.Add("At least two monitors should be at different scalings. " + ScalingNow(monitors));
+            case ScalingSetup.Mixed when !(monitors.FirstOrDefault(m => m.Number == 1) is { } first &&
+                                           monitors.Where(m => m.Number != 1).All(m => m.Dpi > first.Dpi)):
+                unmet.Add("Monitor 1 should be at a lower scaling than every other monitor. " + ScalingNow(monitors));
                 break;
         }
         return unmet;
+    }
+
+    /// <summary>
+    /// The scaling to give each monitor for a step, by device, when the wizard sets it. Null for
+    /// "as it is", or when a monitor doesn't offer what the step needs.
+    /// </summary>
+    public static Dictionary<string, int>? ScalingFor(Step step, IReadOnlyList<Monitor> monitors,
+                                                     IReadOnlyDictionary<string, ScalingState> states)
+    {
+        bool Offers(Monitor m, int percent) => states.TryGetValue(m.Device, out var s) && s.StepFor(percent) is not null;
+
+        switch (step.Scaling)
+        {
+            case ScalingSetup.All100:
+                return monitors.All(m => Offers(m, 100)) ? monitors.ToDictionary(m => m.Device, _ => 100) : null;
+
+            case ScalingSetup.AllSameAbove100:
+                // 150% where every monitor offers it, since it is common and far enough from 100%
+                // to matter; otherwise the lowest shared value above 100%.
+                var shared = Scaling.Percentages.Where(p => p > 100 && monitors.All(m => Offers(m, p))).ToList();
+                if (shared.Count == 0) return null;
+                int same = shared.Contains(150) ? 150 : shared[0];
+                return monitors.ToDictionary(m => m.Device, _ => same);
+
+            case ScalingSetup.Mixed:
+                // Monitor 1 at 100% and the rest at 150%: a large enough gap to show plainly.
+                var first = monitors.FirstOrDefault(m => m.Number == 1);
+                if (first is null || !Offers(first, 100)) return null;
+                var rest = monitors.Where(m => m.Number != 1).ToList();
+                int higher = rest.All(m => Offers(m, 150)) ? 150
+                           : Scaling.Percentages.FirstOrDefault(p => p > 100 && rest.All(m => Offers(m, p)));
+                if (higher == 0) return null;
+                var map = rest.ToDictionary(m => m.Device, _ => higher);
+                map[first.Device] = 100;
+                return map;
+
+            default:
+                return null;
+        }
     }
 
     /// <summary>

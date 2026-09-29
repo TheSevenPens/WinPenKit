@@ -10,6 +10,13 @@ internal sealed class WizardForm : Form
     private readonly Session _session;
     private readonly List<Step> _plan;
     private readonly HashSet<string> _changedDevices = [];
+
+    // Every monitor's scaling when the wizard opened, put back when it closes if the wizard
+    // changed any. Read at the start because scaling is stored relative to the resolution: a
+    // value read later, under a resolution the wizard set, would mean something else once the
+    // resolution is put back.
+    private readonly Dictionary<string, ScalingState>? _startScaling = Scaling.Read();
+    private bool _scalingChanged;
     private List<Monitor> _monitors;
     private Measurement? _measurement;
 
@@ -63,10 +70,10 @@ internal sealed class WizardForm : Form
         Controls.Add(split);
         Controls.Add(_footer);
 
-        _footer.Text = $"Results: {_session.Folder}\nResolutions this wizard changes are put back when it closes.";
+        _footer.Text = $"Results: {_session.Folder}\nWhen it closes, the wizard offers to put back any resolution or scaling it changed.";
 
         _list.SelectedIndexChanged += (_, _) => Refresh(false);
-        _apply.Click += (_, _) => ApplyResolution();
+        _apply.Click += (_, _) => ApplySettings();
         _measure.Click += (_, _) => Measure();
         _skip.Click += (_, _) => SkipStep();
         _results.Click += (_, _) => Process.Start(new ProcessStartInfo(_session.Folder) { UseShellExecute = true });
@@ -113,21 +120,30 @@ internal sealed class WizardForm : Form
         // as steps above or below the scaling it recommends, and the recommendation depends on
         // the resolution -- so setting scaling and then resolution undid the scaling, and the
         // first version of this wizard asked for them in that order.
+        var states = Scaling.Read();
+        var scalingTarget = states is null ? null : Planner.ScalingFor(step, _monitors, states);
         string scalingNote = step.Scaling == ScalingSetup.AsIs
             ? "leave it as it is"
-            : $"{Step.ScalingText(step.Scaling)}. This is for every monitor, not only monitor {step.ResolutionOn}";
+            : scalingTarget is not null
+                ? string.Join(", ", _monitors.Where(m => scalingTarget.ContainsKey(m.Device))
+                                             .Select(m => $"monitor {m.Number} at {scalingTarget[m.Device]}%")) +
+                  ". The button below sets this too, after the resolution"
+                : $"{Step.ScalingText(step.Scaling)}, for every monitor.  (Settings > System > Display > Scale.)  " +
+                  "Do this after the resolution: changing a monitor's resolution also changes its scaling";
         _instructions.Text =
             $"Step {step.Number} of {_plan.Count}\n\n" +
-            $"1.  Resolution: monitor {step.ResolutionOn} at {step.Resolution} ({step.ResolutionLabel}).  Use the button below.\n\n" +
-            $"2.  Scaling: {scalingNote}.  (Settings > System > Display > Scale.)  Do this after the resolution: " +
-            "changing a monitor's resolution also changes its scaling.\n\n" +
+            $"1.  Resolution: monitor {step.ResolutionOn} at {step.Resolution} ({step.ResolutionLabel}).\n\n" +
+            $"2.  Scaling: {scalingNote}.\n\n" +
             $"3.  Tablet: in the tablet driver's settings, {mapping}.\n\n" +
             "Then press Measure. Targets appear on the monitors the pen should reach.";
 
         var unmet = Planner.Unmet(step, _monitors);
+        bool scalingWrong = scalingTarget is not null
+            ? _monitors.Any(m => scalingTarget.TryGetValue(m.Device, out int p) && m.ScalePercent != p)
+            : unmet.Any(u => u.Contains("scaling"));
         var lines = new List<string>();
         lines.Add(unmet.Any(u => u.Contains("needs")) || target is null ? "✗  resolution" : "✓  resolution");
-        lines.Add(unmet.Any(u => u.Contains("scaling")) ? "✗  scaling" : "✓  scaling");
+        lines.Add(scalingWrong ? "✗  scaling" : "✓  scaling");
         lines.Add("?  tablet mapping: cannot be read; if it is wrong, the targets will be out of the pen's reach");
         lines.AddRange(unmet);
         if (Planner.StaleSystemDpi(_monitors) is { } stale) lines.Add("Note: " + stale);
@@ -135,29 +151,75 @@ internal sealed class WizardForm : Form
 
         bool needsResolution = target is not null &&
             (target.Current.Width != step.Resolution.Width || target.Current.Height != step.Resolution.Height);
-        _apply.Visible = needsResolution;
-        _apply.Text = $"Set monitor {step.ResolutionOn} to {step.Resolution}";
+        bool needsScaling = scalingTarget is not null && scalingWrong;
+        _apply.Visible = needsResolution || needsScaling;
+        _apply.Text = (needsResolution, needsScaling) switch
+        {
+            (true, true) => "Set resolution and scaling",
+            (true, false) => $"Set monitor {step.ResolutionOn} to {step.Resolution}",
+            _ => "Set scaling",
+        };
         _measure.Enabled = _skip.Enabled = true;
     }
 
     private static string Where(Monitor m) => m.Primary ? "the primary" : $"at {m.Bounds.X},{m.Bounds.Y}";
 
-    private void ApplyResolution()
+    /// <summary>
+    /// Sets what the wizard can set for the selected step -- resolution, then scaling -- and asks
+    /// to keep the result. Resolution first: it moves scaling, so the other order undoes itself.
+    /// </summary>
+    private void ApplySettings()
     {
         var step = Selected;
         var target = step is null ? null : _monitors.FirstOrDefault(m => m.Number == step.ResolutionOn);
         if (step is null || target is null) return;
 
-        if (Displays.SetResolution(target.Device, step.Resolution) is { } error)
-        {
-            MessageBox.Show(this, error, "Resolution not changed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-        _changedDevices.Add(target.Device);
+        var changes = new List<string>();
+        var errors = new List<string>();
 
-        using var keep = new KeepDialog($"Monitor {target.Number} is now at {step.Resolution}.");
-        if (keep.ShowDialog(this) != DialogResult.OK)
-            Displays.Restore(target.Device);
+        // What to go back to if the person doesn't keep this, read before anything changes.
+        var scalingBefore = Scaling.Read();
+        bool resolutionChanged = false;
+
+        if (target.Current.Width != step.Resolution.Width || target.Current.Height != step.Resolution.Height)
+        {
+            if (Displays.SetResolution(target.Device, step.Resolution) is { } error) errors.Add(error);
+            else
+            {
+                resolutionChanged = true;
+                _changedDevices.Add(target.Device);
+                changes.Add($"monitor {target.Number} at {step.Resolution}");
+            }
+        }
+
+        // A resolution change settles over a moment; the scaling it moved has to be read after.
+        if (resolutionChanged) Thread.Sleep(750);
+        _monitors = Displays.Read(_session.Monitors);
+        if (Scaling.Read() is { } states && Planner.ScalingFor(step, _monitors, states) is { } wanted)
+        {
+            foreach (var m in _monitors)
+            {
+                if (!wanted.TryGetValue(m.Device, out int percent) || m.ScalePercent == percent) continue;
+                _scalingChanged = true;
+                if (Scaling.Set(m.Device, percent) is { } error) errors.Add($"Monitor {m.Number}: {error}");
+                else changes.Add($"monitor {m.Number} at {percent}% scaling");
+            }
+        }
+
+        if (errors.Count > 0)
+            MessageBox.Show(this, string.Join("\n", errors), "Not everything was changed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+        if (changes.Count > 0)
+        {
+            using var keep = new KeepDialog("Now: " + string.Join(", ", changes) + ".");
+            if (keep.ShowDialog(this) != DialogResult.OK)
+            {
+                if (resolutionChanged) Displays.Restore(target.Device);
+                if (resolutionChanged) Thread.Sleep(750);
+                if (scalingBefore is not null)
+                    foreach (var before in scalingBefore.Values) Scaling.Restore(before);
+            }
+        }
 
         Refresh(true);
     }
@@ -225,11 +287,39 @@ internal sealed class WizardForm : Form
         }
     }
 
-    protected override void OnFormClosed(FormClosedEventArgs e)
+    /// <summary>
+    /// Asks before putting anything back. Closing is not always the end: a person changing the
+    /// primary monitor's scaling closes the wizard to sign out, and putting the scaling back then
+    /// would undo the very change they are signing out for.
+    /// </summary>
+    protected override void OnFormClosing(FormClosingEventArgs e)
     {
         _refresh.Stop();
         _measurement?.Stop();
-        foreach (var device in _changedDevices) Displays.Restore(device);
-        base.OnFormClosed(e);
+
+        if (_changedDevices.Count > 0 || _scalingChanged)
+        {
+            var answer = MessageBox.Show(this,
+                "Put the resolution and scaling back to how they were when the wizard opened?\n\n" +
+                "Choose No if you are closing to sign out and carry on with this step afterwards.",
+                "WinPenKit mapping wizard", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            if (answer == DialogResult.Cancel)
+            {
+                e.Cancel = true;
+                _refresh.Start();
+                return;
+            }
+            if (answer == DialogResult.Yes)
+            {
+                // Resolution first, then scaling, which is stored relative to it.
+                foreach (var device in _changedDevices) Displays.Restore(device);
+                if (_scalingChanged && _startScaling is not null)
+                {
+                    if (_changedDevices.Count > 0) Thread.Sleep(750);
+                    foreach (var start in _startScaling.Values) Scaling.Restore(start);
+                }
+            }
+        }
+        base.OnFormClosing(e);
     }
 }

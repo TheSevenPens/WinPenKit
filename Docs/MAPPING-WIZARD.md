@@ -15,18 +15,19 @@ dotnet run --project WinPenKit.MappingWizard -c Release
 
 Each step says what to set:
 
-1. **Resolution:** native, or the next mode down with the same shape. The wizard sets this for
-   you when you press the button. You then get 15 seconds to keep the change before it reverts
-   on its own. The change is never saved to Windows' settings, and every resolution the wizard
-   changed is put back when it closes.
-2. **Scaling:** as it is now, every monitor at 100%, every monitor at the same scaling above
-   100%, or (with two or more monitors) different scalings. This applies to every monitor, not
-   just the one whose resolution the step sets. You change it yourself in
-   Settings > System > Display. **Set it after the resolution.** Windows stores each monitor's
-   scaling as steps above or below the scaling it recommends, and the recommendation depends on
-   the resolution, so changing the resolution also changes the scaling. If you change the
-   primary monitor's scaling, sign out and back in. The wizard offers to carry on with the same
-   session when you open it again.
+1. **Resolution:** native, or the next mode down with the same shape. The wizard sets this and
+   the scaling when you press its button. You then get 15 seconds to keep the changes before they revert
+   on their own. The resolution change is never saved to Windows' settings, and when the wizard
+   closes it offers to put back anything it changed.
+2. **Scaling:** as it is now, every monitor at 100%, every monitor at 150% (or the nearest
+   value every monitor offers), or monitor 1 at 100% and the rest at 150%. This applies to every
+   monitor, not just the one whose resolution the step sets. The same button sets it, **after**
+   the resolution: Windows stores each monitor's scaling as steps above or below the scaling it
+   recommends, and the recommendation depends on the resolution, so changing the resolution also
+   changes the scaling. There is no public API for this; the wizard uses the undocumented one
+   Settings uses, and if that fails it asks you to change scaling in Settings > System > Display.
+   If you change the primary monitor's scaling, sign out and back in. The wizard offers to carry
+   on with the same session when you open it again.
 3. **Tablet mapping:** one monitor, or all displays. You change this yourself in the tablet
    driver's settings. The wizard can't read it, but if it's wrong the targets will be out of
    reach.
