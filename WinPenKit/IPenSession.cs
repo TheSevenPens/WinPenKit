@@ -25,8 +25,10 @@ public interface IPenSession : IDisposable
     /// </summary>
     /// <param name="appWindowHandle">The application window handle. Required
     /// for WM_POINTER sessions (the session subclasses this window to intercept
-    /// pointer messages). Pass <see cref="IntPtr.Zero"/> for Wintab sessions
-    /// (they create their own hidden pump window).</param>
+    /// pointer messages). Wintab sessions create their own hidden pump window and
+    /// use this handle only to scope points to the window when
+    /// <see cref="CaptureRegion"/> is null; with <see cref="IntPtr.Zero"/> they
+    /// report points from the whole desktop.</param>
     string? Start(IntPtr appWindowHandle = default);
 
     /// <summary>Closes the input context and stops producing points.</summary>
@@ -104,10 +106,12 @@ public interface IPenSession : IDisposable
     /// screen-pixel) position. Points outside the region are dropped before
     /// they are queued.
     ///
-    /// <para><c>null</c> (the default) means <b>window-scoped</b>: the session
-    /// reports points only within the application window passed to
-    /// <see cref="Start"/>. (Framework pointer sessions are already scoped to
-    /// their control, so <c>null</c> leaves that natural scope unchanged.)</para>
+    /// <para><c>null</c> (the default) depends on the backend. Wintab and
+    /// WM_POINTER sessions report points only within the window passed to
+    /// <see cref="Start"/>; a Wintab session started with
+    /// <see cref="IntPtr.Zero"/> reports points from the whole desktop. Framework
+    /// pointer sessions do not filter: they receive only the events their
+    /// control receives.</para>
     ///
     /// <para>Set <see cref="PenCaptureRegion.Unbounded"/> for desktop-wide
     /// capture — honored only by backends advertising

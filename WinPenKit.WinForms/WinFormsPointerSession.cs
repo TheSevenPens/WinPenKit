@@ -38,7 +38,7 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
         PenTimestampSource.PerformanceCounter);
 
     public PenCapabilities Capabilities =>
-        PenCapabilities.Pressure | PenCapabilities.Tilt |
+        PenCapabilities.Pressure | PenCapabilities.Tilt | PenCapabilities.Twist |
         PenCapabilities.Buttons | PenCapabilities.Eraser |
         (_hiRes ? PenCapabilities.HiRes : PenCapabilities.None);
 
@@ -177,10 +177,24 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
         if (m.Msg == PointerApi.WM_POINTERUPDATE)
         {
             var history = new PointerApi.POINTER_PEN_INFO[64];
-            uint count = 64;
+            uint count = (uint)history.Length;
             if (PointerApi.GetPointerPenInfoHistory(pointerId, ref count, history) && count > 1)
             {
-                for (int i = (int)count - 1; i >= 0; i--)
+                // On return, count is how many entries Windows holds for this message, which can be more
+                // than the buffer has room for; the buffer then holds only the newest. Ask again with room
+                // for all of them, and never read past what the buffer holds.
+                if (count > history.Length)
+                {
+                    var all = new PointerApi.POINTER_PEN_INFO[count];
+                    uint allCount = count;
+                    if (PointerApi.GetPointerPenInfoHistory(pointerId, ref allCount, all))
+                    {
+                        history = all;
+                        count = allCount;
+                    }
+                }
+                int n = (int)Math.Min(count, (uint)history.Length);
+                for (int i = n - 1; i >= 0; i--)
                     EnqueuePenInfo(history[i]);
                 return false; // Let WinForms also process the message.
             }
@@ -252,20 +266,7 @@ public sealed class WinFormsPointerSession : IPenSession, IMessageFilter
     private static void TiltToSpherical(double tiltX, double tiltY,
         out double azimuth, out double altitude)
     {
-        double mag = Math.Sqrt(tiltX * tiltX + tiltY * tiltY);
-
-        altitude = Math.Clamp(90.0 - mag, 0.0, 90.0);
-
-        if (mag > 0.5)
-        {
-            double rad = Math.Atan2(-tiltX, tiltY);
-            double deg = rad * 180.0 / Math.PI;
-            azimuth = ((deg % 360.0) + 360.0) % 360.0;
-        }
-        else
-        {
-            azimuth = 0.0;
-        }
+        (azimuth, altitude) = PenTilt.ToSpherical(tiltX, tiltY);
     }
 }
 

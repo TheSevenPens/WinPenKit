@@ -29,7 +29,8 @@ public enum InputApi
     /// Works in Avalonia apps only.</summary>
     AvaloniaPointer,
 
-    /// <summary>WinForms Pointer — WM_POINTER via NativeWindow WndProc override.
+    /// <summary>WinForms Pointer — WM_POINTER received through an application-wide
+    /// <c>IMessageFilter</c> (<c>Application.AddMessageFilter</c>).
     /// Works in WinForms apps only.</summary>
     WinFormsPointer,
 }

@@ -87,8 +87,9 @@ public enum PenCursorNumbering
 /// <item><term>Qt (<c>Scribble.Qt</c>, not WinPenKit)</term><description><b>15.6 ms, on
 /// hardware.</b> The one injected figure that survived contact with a tablet: across 809 gaps
 /// the smallest is 15 ms</description></item>
-/// <item><term>Wintab</term><description>not established; see
-/// <see cref="DeviceTicks"/></description></item>
+/// <item><term>Wintab</term><description><b>1 ms, on hardware, one stamp per point.</b> 1683
+/// points through the high-res context carried 1683 distinct timestamps. The unit comes from
+/// <c>pkTime</c>, which counts milliseconds; see <see cref="DeviceTicks"/></description></item>
 /// </list>
 /// <para><b>Synthetic injection sets the floor it appears to measure</b>, which is no longer a
 /// caution but an observed fact. <c>InjectSyntheticPointerInput</c> stamps its own events, so a

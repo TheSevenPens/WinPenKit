@@ -40,7 +40,7 @@ public sealed class WpfStylusSession : IPenSession
         PenTimestampSource.SystemTicks);
 
     public PenCapabilities Capabilities =>
-        PenCapabilities.Pressure | PenCapabilities.Tilt |
+        PenCapabilities.Pressure | PenCapabilities.Tilt | PenCapabilities.Twist |
         PenCapabilities.Buttons | PenCapabilities.Eraser;
 
     public int MaxPressure => 1024; // PressureFactor 0.0–1.0 → scaled to 0–1024
@@ -222,19 +222,6 @@ public sealed class WpfStylusSession : IPenSession
     private static void TiltToSpherical(double tiltX, double tiltY,
         out double azimuth, out double altitude)
     {
-        double mag = Math.Sqrt(tiltX * tiltX + tiltY * tiltY);
-
-        altitude = Math.Clamp(90.0 - mag, 0.0, 90.0);
-
-        if (mag > 0.5)
-        {
-            double rad = Math.Atan2(-tiltX, tiltY);
-            double deg = rad * 180.0 / Math.PI;
-            azimuth = ((deg % 360.0) + 360.0) % 360.0;
-        }
-        else
-        {
-            azimuth = 0.0;
-        }
+        (azimuth, altitude) = PenTilt.ToSpherical(tiltX, tiltY);
     }
 }

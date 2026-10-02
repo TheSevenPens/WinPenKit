@@ -1,4 +1,5 @@
 #include "wintab_session_impl.h"
+#include "tilt.h"
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
@@ -400,12 +401,8 @@ void WintabSessionImpl::on_packet(WPARAM serial) {
 
     // Convert Azimuth/Altitude (spherical, Wintab tenths) → TiltX/TiltY (planar, degrees).
     double tilt_x = 0.0, tilt_y = 0.0;
-    {
-        double tilt_mag = 90.0 - pkt.pkOrientation.orAltitude / 10.0; // degrees from vertical
-        double az_rad = pkt.pkOrientation.orAzimuth / 10.0 * M_PI / 180.0;
-        tilt_x = -tilt_mag * std::sin(az_rad);
-        tilt_y =  tilt_mag * std::cos(az_rad);
-    }
+    spherical_to_planar(pkt.pkOrientation.orAzimuth / 10.0, pkt.pkOrientation.orAltitude / 10.0,
+                        tilt_x, tilt_y);
 
     PenPoint pt = {};
     pt.desktop_x = desktop_x;

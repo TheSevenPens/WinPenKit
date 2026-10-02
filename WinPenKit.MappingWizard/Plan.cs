@@ -16,8 +16,9 @@ internal enum ScalingSetup
     Mixed,
     /// <summary>
     /// Monitor 1 at a higher scaling than every other monitor. Both directions are planned
-    /// because they behave differently: measured on 28 Sep 2026, the Wacom driver's positions
-    /// were off by (lowest scaling / primary scaling), which is 1 when the primary is lowest.
+    /// because they behave differently: measured on 28 Sep 2026, the Huion V20 driver's positions
+    /// (first attributed to Wacom's driver) were off by (lowest scaling / primary scaling), which
+    /// is 1 when the primary is lowest. Wacom's driver passed every step.
     /// </summary>
     MixedHigher,
 }

@@ -34,8 +34,8 @@ public static class WinFormsPenApis
             .Where(api => api != InputApi.WmPointer)
             .ToList();
 
-        // Same messages as WmPointer, received through a NativeWindow WndProc override
-        // instead of a subclass -- so it needs the same API to be present.
+        // Same messages as WmPointer, received through an IMessageFilter instead of a
+        // subclass -- so it needs the same API to be present.
         if (PointerApi.IsAvailable())
             apis.Add(InputApi.WinFormsPointer);
         return apis;

@@ -1,4 +1,5 @@
 #include "wm_pointer_session_impl.h"
+#include "tilt.h"
 
 #pragma comment(lib, "comctl32.lib")
 #include <cstdio>
@@ -194,11 +195,23 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
 
     // For WM_POINTERUPDATE with coalesced events, use history to recover them.
     if (msg == WM_POINTERUPDATE && get_pointer_pen_info_history_) {
-        POINTER_PEN_INFO history[64];
-        UINT32 count = 64;
-        if (get_pointer_pen_info_history_(pointer_id, &count, history) && count > 1) {
+        std::vector<POINTER_PEN_INFO> history(64);
+        UINT32 count = static_cast<UINT32>(history.size());
+        if (get_pointer_pen_info_history_(pointer_id, &count, history.data()) && count > 1) {
+            // On return, count is how many entries Windows holds for this message, which can be more
+            // than the buffer has room for; the buffer then holds only the newest. Ask again with room
+            // for all of them, and never read past what the buffer holds.
+            if (count > history.size()) {
+                std::vector<POINTER_PEN_INFO> all(count);
+                UINT32 all_count = count;
+                if (get_pointer_pen_info_history_(pointer_id, &all_count, all.data())) {
+                    history.swap(all);
+                    count = all_count;
+                }
+            }
+            const int n = static_cast<int>((std::min)(static_cast<size_t>(count), history.size()));
             std::lock_guard<std::mutex> lock(points_mutex_);
-            for (int i = static_cast<int>(count) - 1; i >= 0; i--) {
+            for (int i = n - 1; i >= 0; i--) {
                 auto& pi = history[i];
                 double tx = (pi.penMask & PEN_MASK_TILT_X) ? static_cast<double>(pi.tiltX) : 0.0;
                 double ty = (pi.penMask & PEN_MASK_TILT_Y) ? static_cast<double>(pi.tiltY) : 0.0;
@@ -314,22 +327,7 @@ void WmPointerSessionImpl::on_pointer_message(UINT msg, WPARAM wp, LPARAM lp) {
 void WmPointerSessionImpl::tilt_to_spherical(
     double tiltX, double tiltY, double& azimuth, double& altitude)
 {
-    double tilt_magnitude = std::sqrt(tiltX * tiltX + tiltY * tiltY);
-
-    // Altitude: 90 (vertical) minus the tilt magnitude.
-    altitude = 90.0 - tilt_magnitude;
-    if (altitude < 0.0) altitude = 0.0;
-    if (altitude > 90.0) altitude = 90.0;
-
-    // Azimuth: compass direction of the tilt vector.
-    // atan2(-tiltX, tiltY) gives angle from Y+ axis (north), clockwise.
-    if (tilt_magnitude > 0.5) { // degrees threshold
-        double angle_rad = std::atan2(-tiltX, tiltY);
-        double angle_deg = angle_rad * 180.0 / M_PI;
-        azimuth = std::fmod(std::fmod(angle_deg, 360.0) + 360.0, 360.0);
-    } else {
-        azimuth = 0.0;
-    }
+    planar_to_spherical(tiltX, tiltY, azimuth, altitude);
 }
 
 } // namespace wintab

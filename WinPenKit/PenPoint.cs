@@ -27,18 +27,17 @@ public readonly record struct PenPoint(
 
     /// <summary>Raw X from the input API, in whatever units that API reports natively.</summary>
     /// <remarks>
-    /// <para>The unit differs per backend, and there is no field saying which one you have:</para>
+    /// <para>The unit differs per backend. <see cref="PenConventions.RawUnits"/> on
+    /// <see cref="IPenSession.Conventions"/> says which one a session uses:</para>
     /// <list type="bullet">
     /// <item><description>Wintab digitizer context: tablet-native units</description></item>
     /// <item><description>Wintab system context: screen pixels, already mapped by the driver</description></item>
-    /// <item><description>WM_POINTER: hundredths of a millimetre, from <c>ptHimetricLocationRaw</c></description></item>
-    /// <item><description>Avalonia, WPF stylus and WinUI: <see cref="DesktopX"/> truncated to an
-    /// <c>int</c>, because those frameworks expose no device-native coordinate</description></item>
+    /// <item><description>WM_POINTER and WinForms: hundredths of a millimetre, from <c>ptHimetricLocationRaw</c></description></item>
+    /// <item><description>Avalonia, WPF stylus and WinUI: 0, with <see cref="PenRawUnits.None"/>,
+    /// because those frameworks expose no device-native coordinate</description></item>
     /// </list>
     /// <para>Treat this as a diagnostic rather than as a position. Sane values here against a
-    /// wrong <see cref="DesktopX"/> point at the mapping; both wrong points upstream of it. The
-    /// last case above carries no information <see cref="DesktopX"/> does not already carry,
-    /// which is tracked in issue 24.</para>
+    /// wrong <see cref="DesktopX"/> point at the mapping; both wrong points upstream of it.</para>
     /// </remarks>
     int RawX,
 
@@ -69,7 +68,8 @@ public readonly record struct PenPoint(
     /// <summary>Height above the tablet surface. 0 if unsupported.</summary>
     int Z,
 
-    /// <summary>Packet status flags.</summary>
+    /// <summary>Packet status flags: Wintab's <c>pkStatus</c>, 0 on the pointer backends.
+    /// See <see cref="IsInProximity"/>.</summary>
     uint Status,
 
     /// <summary>Button state (encoding is API-specific; use helper properties).</summary>
@@ -163,10 +163,18 @@ public readonly record struct PenPoint(
     /// Returns true if the pen is in proximity of the tablet surface.
     /// </summary>
     /// <remarks>
-    /// Only meaningful when the session advertises
-    /// <see cref="PenCapabilities.Proximity"/>. Without it this reads a bit nothing sets, so
-    /// it is false on every point -- including the hover points the pointer backends do
-    /// produce -- and false means "not reported" rather than "not in proximity".
+    /// Bit 0 of <see cref="Status"/> is Wintab's <c>TPS_PROXIMITY</c>, which the Wintab
+    /// specification defines as "the cursor is out of the context". It is set on the packet a
+    /// driver sends when the pen leaves, so this property is the inverse of the bit. It once read
+    /// the bit directly and so reported true only on that leaving packet.
+    /// <para>The pointer backends leave <see cref="Status"/> at zero, so this is true on every
+    /// point they deliver. That is correct for those points, which arrive only while the pen is
+    /// in range, but those backends send no point when the pen leaves. Only a session that
+    /// advertises <see cref="PenCapabilities.Proximity"/> reports the leaving point with this
+    /// property false.</para>
     /// </remarks>
-    public bool IsInProximity => (Status & 0x0001) != 0;
+    public bool IsInProximity => (Status & TpsProximity) == 0;
+
+    /// <summary>Wintab's <c>TPS_PROXIMITY</c> status bit: set when the cursor is out of the context.</summary>
+    private const uint TpsProximity = 0x0001;
 }

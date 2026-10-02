@@ -31,14 +31,19 @@ namespace {
 /// reason: a number with no stated scale is not a measurement.
 constexpr int kAssumedMaxPressure = 1024;
 
-/// The same conversion WinPenKit applies, so the two report comparable numbers rather than two
-/// defensible ones. A linear fall-off from 90 degrees, not the trigonometric form.
+/// The same conversion WinPenKit applies (PenTilt.ToSpherical, tilt.h), so the two report
+/// comparable numbers rather than two defensible ones. The exact trigonometric form:
+/// tan(tiltX) and tan(tiltY) are the horizontal components of the pen's direction over its
+/// vertical component.
 void tiltToSpherical(double tiltX, double tiltY, double& azimuth, double& altitude) {
-    const double mag = std::sqrt(tiltX * tiltX + tiltY * tiltY);
-    altitude = std::clamp(90.0 - mag, 0.0, 90.0);
+    constexpr double kPi = 3.14159265358979323846;
+    const double tx = std::tan(std::clamp(tiltX, -90.0, 90.0) * kPi / 180.0);
+    const double ty = std::tan(std::clamp(tiltY, -90.0, 90.0) * kPi / 180.0);
+    const double fromVertical = std::atan(std::sqrt(tx * tx + ty * ty)) * 180.0 / kPi;
+    altitude = std::clamp(90.0 - fromVertical, 0.0, 90.0);
 
-    if (mag > 0.5) {
-        const double deg = std::atan2(-tiltX, tiltY) * 180.0 / 3.14159265358979323846;
+    if (fromVertical > 0.5) {
+        const double deg = std::atan2(-tx, ty) * 180.0 / kPi;
         azimuth = std::fmod(std::fmod(deg, 360.0) + 360.0, 360.0);
     } else {
         azimuth = 0.0;
