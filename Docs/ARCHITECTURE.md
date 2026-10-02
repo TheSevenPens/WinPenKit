@@ -108,11 +108,11 @@ from live state, not fixed at creation:
 |---|---|---|---|---|---|---|---|---|---|
 | Wintab system | yes | yes | yes | yes | yes | yes | no | yes | yes |
 | Wintab digitizer | yes | yes | yes | yes | yes | yes | while the hi-res context is open | yes | yes |
-| WM_POINTER, WinForms | yes | yes | no ¹ | no | yes | yes | while device rects are available | no | no |
-| WPF, WinUI, Avalonia | yes | yes | no ¹ | no | yes | yes | no | no | no |
+| WM_POINTER, WinForms | yes | yes | yes ¹ | no | yes | yes | while device rects are available | no | no |
+| WPF, WinUI, Avalonia | yes | yes | yes ¹ | no | yes | yes | no | no | no |
 
-¹ These sessions write a twist value when the API provides one, but do not set the `Twist`
-flag. See [Values](#values).
+¹ `Twist` means the backend reads twist from its API. A pen without a rotation sensor reports 0
+on every backend, including Wintab. See [Values](#values).
 
 The native C ABI computes `HiRes` the same way in `pen_session_get_capabilities`
 (`WinPenKit.Native/src/pen_session_exports.cpp`).
@@ -276,14 +276,16 @@ Every pointer backend asks for the merged samples:
 
 | Backend | Call | Order returned | Replayed |
 |---|---|---|---|
-| WM_POINTER, WinForms, native WM_POINTER | `GetPointerPenInfoHistory`, `WM_POINTERUPDATE` only, buffer of 64 entries | newest first | in reverse, oldest first |
+| WM_POINTER, WinForms, native WM_POINTER | `GetPointerPenInfoHistory`, `WM_POINTERUPDATE` only, buffer of 64 entries, asked again with a larger buffer when more are held | newest first | in reverse, oldest first |
 | WPF | `GetStylusPoints(element)` | oldest first | in order |
 | WinUI | `GetIntermediatePoints(element)` | newest first (measured; Microsoft documents the opposite) | in reverse |
 | Avalonia | `GetIntermediatePoints(element)` | oldest first (measured; undocumented) | in order |
 
 The history path is used only when it returns more than one entry. With a count of one,
 `GetPointerPenInfo` is used instead, because the single-entry history result differs from it.
-At most 64 points are recovered from one message. When a framework collection is empty or
+On return, the history count is the number of entries Windows holds for the message, which
+can be more than 64. The sessions then call again with a buffer of that size, and never read
+past the buffer they hold. When a framework collection is empty or
 null, `GetCurrentPoint` is used.
 
 Measured on hardware at hand speed, Avalonia's `GetIntermediatePoints` returned one point per
@@ -426,18 +428,25 @@ code is in [HOW_TO_USE.md](HOW_TO_USE.md#coordinate-conversion).
 | `TiltX`, `TiltY` | computed from azimuth and altitude | `tiltX`, `tiltY` if masked, else 0 | `X/YTiltOrientation / 100` | `XTilt`, `YTilt` | `XTilt`, `YTilt` |
 | `Twist` | `orTwist / 10` | `rotation` if `PEN_MASK_ROTATION`, else 0 | `TwistOrientation / 100` | `Twist` | `Twist` |
 | `Z` | `pkZ` | 0 | 0 | 0 | 0 |
-| `Status` | `pkStatus` (bit 0 is proximity) | 0 | 0 | 0 | 0 |
+| `Status` | `pkStatus` (bit 0, `TPS_PROXIMITY`, is set when the pen is out of the context) | 0 | 0 | 0 | 0 |
 | `Buttons` | `pkButtons`, relative: `(action << 16) \| button` | bit 0 `PEN_FLAG_BARREL`, bit 1 `PEN_FLAG_ERASER` | bit 0 any non-tip stylus button down, bit 1 `Inverted` | bit 0 `IsBarrelButtonPressed`, bit 1 `IsEraser` | bit 0 `IsBarrelButtonPressed`, bit 1 `IsEraser` |
 | `Cursor` | `pkCursor`, passed through | 14 if `PEN_FLAG_INVERTED`, else 13 | 14 if `Inverted`, else 13 | 14 if `IsEraser`, else 13 | 14 if `IsEraser`, else 13 |
 
-Tilt formulas, in degrees. Wintab to planar: `tiltMag = 90 - Altitude`,
-`TiltX = -tiltMag * sin(Azimuth)`, `TiltY = tiltMag * cos(Azimuth)`. Planar to spherical:
-`mag = sqrt(TiltX^2 + TiltY^2)`, `Altitude = clamp(90 - mag, 0, 90)`, and
-`Azimuth = atan2(-TiltX, TiltY)` mod 360 when `mag > 0.5`, otherwise 0.
+Tilt formulas, in degrees. `PenTilt` (`WinPenKit/PenTilt.cs`) converts in both directions, and
+the native DLL uses the same relation in `WinPenKit.Native/src/tilt.h`. With
+`θ = 90 - Altitude`, the angle from vertical, the relation is exact:
+`tan(TiltX) = -tan(θ) * sin(Azimuth)` and `tan(TiltY) = tan(θ) * cos(Azimuth)`.
+`PenTilt.ToPlanar(azimuth, altitude)` is used by the Wintab sessions.
+`PenTilt.ToSpherical(tiltX, tiltY)` is used by the pointer backends; it returns `Altitude` from 0
+to 90 and `Azimuth = atan2(-tan(TiltX), tan(TiltY))` mod 360, or 0 when the pen is within
+`PenTilt.UprightThreshold` (0.5 degrees) of vertical. Earlier versions used the linear form
+`TiltX = -(90 - Altitude) * sin(Azimuth)`. Values on the axes are unchanged; off the axes they
+moved by up to 8.3 degrees (azimuth 45, altitude 30). The sign convention is unchanged, and
+whether it matches the direction a Wintab driver means by `orAzimuth` has not been measured.
 
-**Twist.** Only the Wintab sessions set `PenCapabilities.Twist`. The WM_POINTER, WinForms, WPF,
-WinUI and Avalonia sessions fill `Twist` from the API when it is present but do not set the flag,
-so the flag cannot be used to decide whether a pointer backend's `Twist` is meaningful.
+**Twist.** Every session sets `PenCapabilities.Twist`, and the native WM_POINTER session sets
+`PEN_CAP_TWIST`. The flag means the backend reads twist from its API. It does not say that the
+pen has a rotation sensor: a pen without one reports 0 on every backend.
 
 **Pressure range.** `MaxPressure` is the largest value the device reports, not a count of
 distinguishable levels. A Wacom DTH246 over Wintab reports 32767 and resolves 8192, in steps of
@@ -479,8 +488,14 @@ readout.
 the same fields in the same order; `pen_session_get_point_size` and
 `pen_session_get_conventions_size` let a binding check its struct sizes at startup.
 
-`IsEraser` compares `Cursor` with 14. `IsInProximity` reads bit 0 of `Status`, which only the
-Wintab sessions set. `ButtonAction`, `ButtonNumber`, `IsTipPressed`, `IsButtonPressed` and
+`IsEraser` compares `Cursor` with 14. `IsInProximity` is `(Status & TPS_PROXIMITY) == 0`, where
+`TPS_PROXIMITY` is bit 0, which the Wintab specification defines as set when the cursor is out of
+the context. A Wintab driver sets it on the packet it sends when the pen leaves, so
+`IsInProximity` is false on that point. The pointer backends leave `Status` at 0, so the property
+is true on every point they deliver. They deliver points only while the pen is in range and send
+no point when it leaves; only sessions that advertise `PenCapabilities.Proximity` (Wintab) report
+a leaving point. The bit's meaning has not been checked against a logged `pkStatus` stream.
+`ButtonAction`, `ButtonNumber`, `IsTipPressed`, `IsButtonPressed` and
 `IsButtonReleased` are obsolete: they decode the Wintab encoding on every point.
 
 ### IPenSession
@@ -515,6 +530,7 @@ share no code.
 | WM_POINTER discovery | `GetPointerType` exists | `GetPointerPenInfo` exists |
 | Position mapping | as described above | the same: `scale_axis` onto `lcSys`, HIMETRIC through `GetPointerDeviceRects` |
 | Timestamps | `PenTimestamp` | the same arithmetic inline |
+| Tilt conversion | `PenTilt` | the same relation in `src/tilt.h` |
 | `OnActivated` | `WTEnable` + `WTOverlap` | the same, through `pen_session_on_activated` |
 | Context check and reopen | in every drain, once a second | **none** |
 | Packet counts | `IPacketCounts` on the Wintab sessions | **none** |
@@ -560,7 +576,7 @@ since pen input over the part of a window off screen is not delivered.
 - `IPenSession`, `PenPoint`, `PenSessionFactory`, `InputApi` and `InputApiExtensions`
 - `PenCapabilities`, `PenConventions` and its four enums, `PenRawUnitsExtensions`
 - `IPenCaptureRegion` and `PenCaptureRegion`
-- `PenTimestamp`, `PenButtonTracker`, `PenButtonAction`, `PenButtonNumber`, `PenCursorType`
+- `PenTimestamp`, `PenTilt`, `PenButtonTracker`, `PenButtonAction`, `PenButtonNumber`, `PenCursorType`
 - `WindowPlacement`
 - `WinPenKit.Diagnostics` (see [Diagnostics](#diagnostics))
 

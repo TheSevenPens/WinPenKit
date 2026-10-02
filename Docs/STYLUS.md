@@ -86,8 +86,10 @@ screen pixels (system context) or maps tablet units onto the driver's screen rec
 `GetPointerDeviceRects`, falling back to `ptPixelLocationRaw` when the device rectangles are
 unavailable. The framework sessions convert the framework's DIPs to pixels. Wintab reports
 azimuth and altitude and computes planar tilt; the pointer backends report planar tilt and
-compute azimuth and altitude. These conversions are lossy at extreme angles but accurate enough
-for brush engines. Calligraphy brushes may prefer Azimuth, physics-based brushes may prefer
+compute azimuth and altitude. Both conversions go through `PenTilt` (`WinPenKit/PenTilt.cs`),
+which uses the exact relation: with `θ = 90 - Altitude`, `tan(TiltX) = -tan(θ) * sin(Azimuth)`
+and `tan(TiltY) = tan(θ) * cos(Azimuth)`. They lose only the precision of the source units, such
+as WM_POINTER's whole degrees. Calligraphy brushes may prefer Azimuth, physics-based brushes may prefer
 TiltX/TiltY.
 
 The per-backend source fields, mapping formulas, tilt formulas and conventions are in

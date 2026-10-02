@@ -193,9 +193,9 @@ Every `PenPoint` contains:
 | `Altitude` | `double` | Spherical: angle from surface in degrees (0.0–90.0). 90 = perpendicular. |
 | `TiltX` | `double` | Planar: tilt right/left in degrees (-90.0 to +90.0). |
 | `TiltY` | `double` | Planar: tilt toward/away in degrees (-90.0 to +90.0). |
-| `Twist` | `double` | Barrel rotation in degrees (0.0–360.0). 0 when the API reports none. Only the Wintab sessions set `PenCapabilities.Twist`; the others fill this field when the API provides it without setting the flag. |
+| `Twist` | `double` | Barrel rotation in degrees (0.0–360.0). 0 when the API reports none. Every session sets `PenCapabilities.Twist`, which means the backend reads twist from its API. A pen without a rotation sensor reports 0 on every backend. |
 | `Z` | `int` | Height above tablet surface. 0 unless the session advertises `ZHeight`. |
-| `Status` | `uint` | Packet flags, carrying the proximity bit. 0 unless the session advertises `Proximity`, which only the Wintab backends do. |
+| `Status` | `uint` | Wintab's `pkStatus`. Bit 0 (`TPS_PROXIMITY`) is set when the pen is out of the context. 0 on the pointer backends, which do not advertise `Proximity`. `pt.IsInProximity` is `(Status & 1) == 0`: false only on the Wintab point sent when the pen leaves, and true on every point a pointer backend delivers. |
 | `Buttons` | `uint` | Button state, in one of two encodings named by `session.Conventions.Buttons`. Wintab: `(action << 16) \| buttonNumber`. Pointer backends: a flag bitmask, bit 0 barrel, bit 1 eraser. Read it through `PenButtonTracker`. |
 | `Cursor` | `uint` | Cursor type, numbered as `session.Conventions.Cursor` says. Pointer backends normalise to 13 tip / 14 eraser; Wintab passes the driver's own number through. |
 | `Source` | `InputApi` | Which backend produced this point. |
@@ -350,6 +350,15 @@ c.Timestamp  // which clock TimestampMicroseconds counts on, or None
 `PenCapabilities` answers a different question -- *supported or not*, like `Proximity` and `ZHeight`. `Conventions` answers *which convention*. Asking one flag to answer both is how a hi-res capability once survived a fallback that had turned hi-res off.
 
 Both tilt representations are always present — Wintab backends compute TiltX/TiltY from Azimuth/Altitude, and WM_POINTER backends compute Azimuth/Altitude from TiltX/TiltY.
+
+Both directions use the exact relation in `PenTilt`, which you can also call yourself:
+
+```csharp
+var (tiltX, tiltY) = PenTilt.ToPlanar(azimuth, altitude);
+var (az, alt) = PenTilt.ToSpherical(tiltX, tiltY);
+```
+
+With `θ = 90 - altitude`, `tan(TiltX) = -tan(θ) * sin(azimuth)` and `tan(TiltY) = tan(θ) * cos(azimuth)`. `ToSpherical` returns azimuth 0 when the pen is within `PenTilt.UprightThreshold` (0.5 degrees) of vertical. Earlier versions used a linear form that agreed on the axes and differed by up to 8.3 degrees off them, so tilt values recorded with an earlier version do not match current ones.
 
 ## Coordinate Conversion
 
