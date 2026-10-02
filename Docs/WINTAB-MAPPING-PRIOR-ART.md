@@ -1,5 +1,13 @@
 # WinTab position mapping: how other open-source apps do it
 
+## Settled conclusions
+
+- The wrong positions measured in this research came from Huion's V20 driver. Wacom's driver reported physical pixels in every tested configuration and is WinPenKit's reference. See [ARCHITECTURE.md → Wacom is the reference](ARCHITECTURE.md#wacom-is-the-reference) and [MAPPING-WIZARD.md → What it has found](MAPPING-WIZARD.md#what-it-has-found).
+- WinPenKit maps Wintab (high-res) tablet units onto the driver's `lcSys` and applies none of the cursor-based or per-monitor corrections listed under "Ideas relevant to us". See [ARCHITECTURE.md → Wintab digitizer (high-res)](ARCHITECTURE.md#wintab-digitizer-high-res).
+- `RefreshMapping()` re-reads `lcSys`. The application calls it when the display configuration changes. See [HOW_TO_USE.md → Wintab high-res mapping](HOW_TO_USE.md#wintab-high-res-mapping).
+- WM_POINTER positions are taken from the HIMETRIC field mapped through `GetPointerDeviceRects`. This is used for WM_POINTER only, not for Wintab. See [ARCHITECTURE.md → WM_POINTER and WinForms](ARCHITECTURE.md#wm_pointer-and-winforms).
+- A driver and layout are checked against the cursor with the mapping wizard or `--probe-wintab-mapping`. See [HOW_TO_USE.md → Is the pen landing under the cursor?](HOW_TO_USE.md#is-the-pen-landing-under-the-cursor).
+
 This was researched on 2026-09-28 for issue #129. The source was read through `gh api` (GitHub), the GitLab API (invent.kde.org), the Jira REST API (Qt) and the Bugzilla REST API (KDE). Secondary sources were read with a web fetch.
 
 Legend: **[src]** means I read it in the source code myself. **[doc]** means it comes from official documentation or a bug tracker. **[inferred]** is my own reasoning, not verified.

@@ -1,5 +1,13 @@
 # Wintab contexts are leaked by processes that do not close them
 
+## Settled conclusions
+
+- A managed Wintab session reopens its context by itself after the tablet service restarts, but only while the application calls `DrainPoints`. The native DLL does not. See [ARCHITECTURE.md → Context keep-alive and reopen](ARCHITECTURE.md#context-keep-alive-and-reopen).
+- The managed log is `%TEMP%\WinPenKit.<pid>.log`, one per process, with the driver's context counters before opening, after opening and after closing. A log with no "after closing" line came from a process that ended without `WTClose`. See [ARCHITECTURE.md → Context counts and the log](ARCHITECTURE.md#context-counts-and-the-log).
+- The context counter is not a capacity check: opens succeeded past the stated maximum of 32, up to 334. See [HOW_TO_USE.md → Asking the driver](HOW_TO_USE.md#asking-the-driver).
+- A session that is stopped or disposed returns its context, and switching pen API does not leak. A process that ends without `WTClose` leaves contexts behind, and the driver collects about half of them at the next pen input. See [What WinPenKit does](#what-winpenkit-does-and-what-it-does-not-cause) and [Half of a leak comes back](#half-of-a-leak-comes-back-once-the-next-time-the-pen-is-used).
+- Do not close another process's context while the pen is in use. See [Advice](#advice).
+
 **Live-input follow-up, September 14 evening:** a test combining physical pen input, child
 termination, and manager reclamation was followed by a `Wacom_Tablet.exe` crash with exception
 `0xc0000374`. The earlier idle reclamation successes do **not** establish operational safety.

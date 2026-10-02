@@ -8,7 +8,7 @@ This is a unified pen input SDK for modern Windows writen for someone devleoping
 - You don't need to know anything about the complications of WinTab drivers
 - Both managed and unmanaged libraries are provided so you can use the languages you want
 - Can switch APIs in your apps dynamically without even restarting the app
-- Consistent spatial scope across every API — Wintab, WM_POINTER, and framework pointer events all deliver pen data over the same region
+- One capture region can give every API the same spatial scope: Wintab, WM_POINTER and framework pointer events then deliver pen data over the same area
 - Supports WinTab high-resolution 
 
 ## Packages
@@ -24,17 +24,26 @@ This is a unified pen input SDK for modern Windows writen for someone devleoping
 
 ## Scribble Apps
 
-These demo apps proving the SDK end-to-end, all with bitmap-backed rendering and ribbon UI:
+Demo apps that exercise the SDK end-to-end, all with bitmap-backed rendering and ribbon UI. See [Docs/SCRIBBLE-APPS.md](Docs/SCRIBBLE-APPS.md).
 
 | App | Framework | Renderer | Language |
 |---|---|---|---|
 | Scribble.Win32 | Win32/GDI | GDI BitBlt | C++ |
 | Scribble.Rust | egui | tiny-skia | Rust |
 | Scribble.WinUI | WinUI 3 | SkiaSharp | C# |
+| Scribble.WinUINative | WinUI 3 (C++/WinRT) | Skia C API | C++ |
 | Scribble.Wpf | WPF | SkiaSharp | C# |
 | Scribble.WinForms | WinForms | SkiaSharp | C# |
 | Scribble.Avalonia | Avalonia | SkiaSharp | C# |
-| WinPenKit.TestConsole | Console | (headless) | C# |
+| Scribble.Qt | Qt 6 Widgets | QPainter | C++ (Qt's own tablet support, no WinPenKit, for comparison) |
+
+## Tools
+
+| Project | Purpose |
+|---|---|
+| WinPenKit.TestConsole | Console host for the Wintab sessions, the clock self-test, and the Wintab epoch and mapping probes |
+| WinPenKit.MappingWizard | Checks whether each pen API puts the pen under the cursor across display and tablet configurations ([Docs/MAPPING-WIZARD.md](Docs/MAPPING-WIZARD.md)) |
+| Samples/ContextCount | Plain C programs that read and leak Wintab contexts ([Docs/WINTAB-CONTEXT-LEAK.md](Docs/WINTAB-CONTEXT-LEAK.md)) |
 
 ### Verifying a build
 
@@ -67,12 +76,19 @@ for what each check catches and what is deliberately left uncovered.
 ```csharp
 using WinPenKit;
 
-// Discover available APIs.
+// Discover available APIs. (A WPF, WinForms, Avalonia or WinUI app calls its
+// framework package's GetAvailable() instead.)
 var apis = PenSessionFactory.GetAvailableApis();
 
-// Create and start a session.
-using var session = PenSessionFactory.Create(apis[0]);
-session.Start();
+// Create a session and start it with your window handle. Wintab uses the window as its
+// default capture region; with no window it reports the pen anywhere on the desktop.
+var session = PenSessionFactory.Create(apis[0]);
+var error = session.Start(hwnd);
+if (error != null) { /* show error */ }
+
+// Tell the session when your window is activated, or Wintab loses the first stroke
+// after the user returns from another application.
+Activated += (_, _) => session.OnActivated();
 
 // Poll on a render timer (~60fps).
 var points = session.DrainPoints();
@@ -93,7 +109,11 @@ PenInputApi apis[8];
 int count = pen_session_get_available_apis(apis, 8);
 
 PenSessionHandle session = pen_session_create(apis[0]);
-pen_session_start(session, app_hwnd);
+const char* error = pen_session_start(session, app_hwnd);   // NULL on success
+if (error) { /* show error */ }
+
+// In WM_ACTIVATE, when LOWORD(wParam) != WA_INACTIVE:
+pen_session_on_activated(session);
 
 PenPoint points[64];
 int n = pen_session_drain_points(session, points, 64);
@@ -104,15 +124,22 @@ pen_session_destroy(session);
 ## Documentation
 
 See the [Docs/](Docs/) folder for:
-- [GETTING-STARTED.md](Docs/GETTING-STARTED.md) — Project overview and setup
-- [HOW_TO_USE.md](Docs/HOW_TO_USE.md) — Usage guide with gotchas and best practices
-- [SCRIBBLE-APPS.md](Docs/SCRIBBLE-APPS.md) — Details on each scribble demo app
-- [SELF-TEST.md](Docs/SELF-TEST.md) — `--selftest` and `--replay`: what they check, and what they do not
-- [WINTAB-CONTEXT-LEAK.md](Docs/WINTAB-CONTEXT-LEAK.md) — a killed process never gives its Wintab context back, and what that costs a developer
-- [WinTabUtils](https://github.com/TheSevenPens/WinTabUtils) — a separate repository: a window showing how many Wintab contexts a driver has open, and a button to restart the Wacom driver.
-- [BUILD.md](Docs/BUILD.md) — Build instructions
-- [CI.md](Docs/CI.md) — CI/Release workflow, versioning, and releasing
-- [Planning/](Docs/Planning/) — NuGet publishing plan
+- [GETTING-STARTED.md](Docs/GETTING-STARTED.md): Project overview and setup
+- [HOW_TO_USE.md](Docs/HOW_TO_USE.md): Usage guide with gotchas and best practices
+- [ARCHITECTURE.md](Docs/ARCHITECTURE.md): How WinPenKit works, backend by backend: delivery, timing, position mapping, values, and managed versus native
+- [STYLUS.md](Docs/STYLUS.md): The Wintab and WM_POINTER input paths, and runtime switching between them
+- [TIMESTAMPS.md](Docs/TIMESTAMPS.md): How each backend's timestamp was measured, and how wrapping counters are handled
+- [SCRIBBLE-APPS.md](Docs/SCRIBBLE-APPS.md): Details on each scribble demo app
+- [SELF-TEST.md](Docs/SELF-TEST.md): `--selftest` and `--replay`: what they check, and what they do not
+- [MAPPING-WIZARD.md](Docs/MAPPING-WIZARD.md): Checking where each pen API puts the pen across display and tablet configurations
+- [WINTAB-CONTEXT-LEAK.md](Docs/WINTAB-CONTEXT-LEAK.md): Wintab contexts left behind by processes that do not close them, and what that costs a developer
+- [WINTAB-INVESTIGATION-2026-09.md](Docs/WINTAB-INVESTIGATION-2026-09.md): The experiment record behind the context-leak findings
+- [WINTAB-MAPPING-PRIOR-ART.md](Docs/WINTAB-MAPPING-PRIOR-ART.md): How other open-source applications map Wintab positions
+- [FUTURES.md](Docs/FUTURES.md): Known issues and ideas
+- [WinTabUtils](https://github.com/TheSevenPens/WinTabUtils): A separate repository with a window showing how many Wintab contexts a driver has open, and a button to restart the Wacom driver.
+- [BUILD.md](Docs/BUILD.md): Build instructions
+- [CI.md](Docs/CI.md): CI/Release workflow, versioning, and releasing
+- [Planning/](Docs/Planning/): NuGet publishing plan
 
 For general pen input knowledge (API comparisons, DPI handling, Wintab gotchas), see the [devnotes](https://github.com/TheSevenPens/devnotes) repo.
 

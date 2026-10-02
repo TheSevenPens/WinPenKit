@@ -1,5 +1,13 @@
 # Wintab investigation, September 2026
 
+## Settled conclusions
+
+- Closing known leaked contexts through the Wintab manager API works on an idle tablet, and was followed by a driver crash during live pen input. It is not safe for production use. See [WINTAB-CONTEXT-LEAK.md → Why the reclamation crash happened](WINTAB-CONTEXT-LEAK.md#why-the-reclamation-crash-happened-and-the-rule-that-follows).
+- The driver collects leaked contexts from its packet-delivery path, about half at the next pen input, and nothing while the tablet is idle. See [WINTAB-CONTEXT-LEAK.md → Half of a leak comes back](WINTAB-CONTEXT-LEAK.md#half-of-a-leak-comes-back-once-the-next-time-the-pen-is-used).
+- Opens with a NULL window were refused on x64 and x86. WinPenKit's Wintab sessions open on a real hidden window. See [ARCHITECTURE.md → Threads and windows](ARCHITECTURE.md#threads-and-windows).
+- The context counter is not a capacity check, and one virtual open can add two entries. See [WINTAB-CONTEXT-LEAK.md → IFC_NCONTEXTS is not an enforced ceiling](WINTAB-CONTEXT-LEAK.md#ifc_ncontexts-is-not-an-enforced-ceiling-of-32).
+- The original driver-wide refusal (count frozen at 253, about 90 ms per refused open) is still unexplained. See [WINTAB-CONTEXT-LEAK.md → Not established](WINTAB-CONTEXT-LEAK.md#not-established).
+
 Work order: [issue #121](https://github.com/TheSevenPens/WinPenKit/issues/121).
 Started 2026-09-14. This is the experiment record; settled guidance belongs in
 [WINTAB-CONTEXT-LEAK.md](WINTAB-CONTEXT-LEAK.md).
