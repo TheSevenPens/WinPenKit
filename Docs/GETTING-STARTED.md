@@ -21,7 +21,7 @@ See [BUILD.md](BUILD.md) for build instructions, prerequisites, and build order.
 
 ### Scribble Apps
 
-Seven demo apps proving the SDK end-to-end across C#, C++, and Rust. All feature bitmap-backed rendering, ribbon UI, runtime API switching, and four-coordinate position display.
+Eight demo apps. Seven use WinPenKit, across C#, C++ and Rust: Scribble.Win32, Scribble.Rust, Scribble.WinUI, Scribble.WinUINative, Scribble.Wpf, Scribble.WinForms and Scribble.Avalonia. They feature bitmap-backed rendering, ribbon UI, runtime API switching, and four-coordinate position display. The eighth, Scribble.Qt, uses Qt's own tablet support and no WinPenKit, as an independent comparison.
 
 See [SCRIBBLE-APPS.md](SCRIBBLE-APPS.md) for details on each app.
 
@@ -29,13 +29,17 @@ See [SCRIBBLE-APPS.md](SCRIBBLE-APPS.md) for details on each app.
 
 | Project | Purpose |
 |---|---|
-| **WinPenKit.TestConsole** | Headless console app for testing Wintab backends |
-| **ExtensionTestApp** | WinForms app for tablet extension controls (ExpressKeys, Touch Rings) |
-| **WintabDN** | Low-level Wintab .NET library — used by ExtensionTestApp only |
+| **WinPenKit.TestConsole** | Console app for testing Wintab backends, with the clock self-test and the Wintab epoch and mapping probes |
+| **WinPenKit.MappingWizard** | Checks whether each pen API puts the pen under the cursor across display and tablet configurations. See [MAPPING-WIZARD.md](MAPPING-WIZARD.md) |
+| **Samples/ContextCount** | Plain C programs and scripts that read the Wintab driver's context counters. See [WINTAB-CONTEXT-LEAK.md](WINTAB-CONTEXT-LEAK.md) |
 
 ## See Also
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — WinPenKit architecture and design decisions
-- [HOW_TO_USE.md](HOW_TO_USE.md) — Usage guide with gotchas and best practices
-- [devnotes](https://github.com/TheSevenPens/devnotes) — General pen input knowledge (API comparisons, DPI handling, Wintab gotchas)
-- [Wintab Basics](https://developer-docs.wacom.com/docs/icbt/windows/wintab/wintab-basics/) — Wacom's Wintab documentation
+- [ARCHITECTURE.md](ARCHITECTURE.md): How WinPenKit works, and its design decisions
+- [HOW_TO_USE.md](HOW_TO_USE.md): Usage guide with gotchas and best practices
+- [STYLUS.md](STYLUS.md): The Wintab and WM_POINTER input paths
+- [TIMESTAMPS.md](TIMESTAMPS.md): Timestamp measurements per backend
+- [SELF-TEST.md](SELF-TEST.md): The `--selftest` and `--replay` checks
+- [MAPPING-WIZARD.md](MAPPING-WIZARD.md): Checking pen position against the cursor
+- [devnotes](https://github.com/TheSevenPens/devnotes): General pen input knowledge (API comparisons, DPI handling, Wintab gotchas)
+- [Wintab Basics](https://developer-docs.wacom.com/docs/icbt/windows/wintab/wintab-basics/): Wacom's Wintab documentation

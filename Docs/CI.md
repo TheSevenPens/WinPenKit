@@ -1,6 +1,6 @@
 # CI/Release
 
-GitHub Actions builds all projects on every push to main and on pull requests. Tagged releases produce downloadable artifacts and a GitHub Release.
+GitHub Actions builds the projects in both solutions, the WinUI projects and Scribble.Rust on every push to main and on pull requests. Scribble.WinUINative and Scribble.Qt are not built in CI; build them locally (see [BUILD.md](BUILD.md)). Tagged releases produce downloadable artifacts and a GitHub Release.
 
 ## Workflow: `.github/workflows/build.yml`
 
@@ -9,14 +9,15 @@ GitHub Actions builds all projects on every push to main and on pull requests. T
 - **`release/v*` tags** — full build + upload artifacts + create GitHub Release
 
 ### Build order
-1. **C++ first** — `msbuild WinPenKitNative.sln` (produces WinPenKit.Native.dll/.lib)
-2. **.NET** — `dotnet build WinPenKit.slnx` (all managed projects except WinUI)
-3. **WinUI** — `msbuild` on individual .csproj files (see CI notes)
-4. **Rust** — `cargo build --release` in Scribble.Rust (links against WinPenKit.Native.lib)
+1. **C++ first**: `msbuild WinPenKitNative.sln` (produces WinPenKit.Native.dll/.lib)
+2. **.NET**: `dotnet build WinPenKit.slnx` (all managed projects except WinUI, including WinPenKit.TestConsole and WinPenKit.MappingWizard)
+3. **WinUI**: `msbuild` on individual .csproj files (see CI notes)
+4. **Rust**: `cargo build --release` in Scribble.Rust (links against WinPenKit.Native.lib)
 
 ### Release artifacts
 On tagged releases, the workflow uploads:
 - WinPenKit.Native (DLL + lib + header)
+- WinPenKit.Managed (the WinPenKit, WinPenKit.Wpf, WinPenKit.WinForms, WinPenKit.Avalonia and WinPenKit.WinUI assemblies, with PDB and XML files where they exist)
 - Scribble.Win32 (exe + DLL)
 - Scribble.Rust (exe + DLL)
 - Scribble.WinUI, Scribble.Wpf, Scribble.WinForms, Scribble.Avalonia (build output)
@@ -25,9 +26,10 @@ On tagged releases, the workflow uploads:
 
 | Solution | Contents | Built with |
 |---|---|---|
-| `WinPenKit.slnx` | All managed projects except WinUI | `dotnet build` |
+| `WinPenKit.slnx` | All managed projects except WinUI (libraries, Scribble.Wpf/WinForms/Avalonia, TestConsole, MappingWizard) | `dotnet build` |
 | `WinPenKitNative.sln` | WinPenKit.Native + Scribble.Win32 | `msbuild` |
 | WinUI projects | WinPenKit.WinUI + Scribble.WinUI | `msbuild` (individual .csproj) |
+| Not in CI | Scribble.WinUINative (`msbuild` on its .vcxproj), Scribble.Qt (CMake) | built locally |
 
 ### CI notes
 - The runner has VS 2022 (v143 toolset). The C++ build overrides `PlatformToolset=v143` since the local projects use v145 (VS 2025).

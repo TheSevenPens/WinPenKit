@@ -1,28 +1,42 @@
 # How to Use WinPenKit
 
-A guide for developers building pen-enabled applications with the WinPenKit library.
+A guide for developers building pen-enabled applications with the WinPenKit library. How the
+library works internally is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Quick Start (C#)
 
 ```csharp
 using WinPenKit;
 
-// 1. Discover available APIs. In a framework application, ask that framework's package
-//    instead -- see "Filling an API dropdown" below.
-var apis = PenSessionFactory.GetAvailableApis();
+IPenSession? _session;
 
-// 2. Create and start a session.
-using var session = PenSessionFactory.Create(apis[0]);
-var error = session.Start();
-if (error != null)
+void StartPen(IntPtr hwnd)   // your main window's handle
 {
-    Console.WriteLine($"Start failed: {error}");
-    return;
+    // 1. Discover available APIs. In a framework application, ask that framework's package
+    //    instead -- see "Filling an API dropdown" below.
+    var apis = PenSessionFactory.GetAvailableApis();
+
+    // 2. Create a session and start it with your window. WM_POINTER needs the window to
+    //    subclass. For Wintab it sets the default capture region: Start() with no window
+    //    reports the pen anywhere on the desktop, including over other applications.
+    _session = PenSessionFactory.Create(apis[0]);
+    var error = _session.Start(hwnd);
+    if (error != null)
+    {
+        Console.WriteLine($"Start failed: {error}");
+        _session.Dispose();
+        _session = null;
+        return;
+    }
 }
 
-// 3. Poll on a render timer (~60 fps).
-var points = session.DrainPoints();
-foreach (var pt in points)
+// 3. Tell the session when your window is activated. Without this, Wintab loses the first
+//    stroke after the user returns from another application. (WPF shown; see
+//    "Window activation" below for other frameworks.)
+Activated += (_, _) => _session?.OnActivated();
+
+// 4. Poll on a render timer (~60 fps).
+foreach (var pt in _session.DrainPoints())
 {
     // pt.DesktopX/Y  — physical screen pixels (double)
     // pt.Pressure    — 0 to session.MaxPressure
@@ -30,11 +44,11 @@ foreach (var pt in points)
     // pt.TiltX/TiltY — planar tilt (degrees)
 }
 
-// 4. Switch APIs at runtime — no restart needed.
-session.Stop();
-session.Dispose();
-var newSession = PenSessionFactory.Create(InputApi.WintabDigitizer);
-newSession.Start();
+// 5. Switch APIs at runtime — no restart needed.
+_session.Stop();
+_session.Dispose();
+_session = PenSessionFactory.Create(InputApi.WintabDigitizer);
+var switchError = _session.Start(hwnd);
 ```
 
 ## Quick Start (C++ / Rust)
@@ -48,8 +62,20 @@ int count = pen_session_get_available_apis(apis, 8);
 const char* name = pen_session_get_api_label(apis[0]);   // "Wintab", for a dropdown
 PenSessionHandle session = pen_session_create(apis[0]);
 
-// Start (pass HWND for WM_POINTER, NULL for Wintab).
-pen_session_start(session, app_hwnd);
+// Start with the application window. WM_POINTER requires it. For Wintab it sets the default
+// capture region, and NULL reports the pen anywhere on the desktop.
+const char* error = pen_session_start(session, app_hwnd);
+if (error) {
+    // show error
+    pen_session_destroy(session);
+    session = NULL;
+}
+
+// In the window procedure: tell the session when the window is activated.
+case WM_ACTIVATE:
+    if (LOWORD(wParam) != WA_INACTIVE && session)
+        pen_session_on_activated(session);
+    break;
 
 // Poll.
 PenPoint points[64];
@@ -77,7 +103,9 @@ IPenSession session = new WinFormsPointerSession(form);
 IPenSession session = new AvaloniaPointerSession(control);
 ```
 
-All implement `IPenSession` — the polling code is identical regardless of backend.
+All implement `IPenSession` — the polling code is identical regardless of backend. Start them
+with the window handle like any other session: WinForms uses it for its default capture region,
+and the WPF, WinUI and Avalonia sessions ignore it.
 
 ## Filling an API dropdown
 
@@ -107,7 +135,50 @@ framework application. Offering it would put a dead entry in the dropdown.
 
 `InputApi.Label()` gives the name to show — `"Wintab (high-res)"`, not `"WintabDigitizer"`.
 The C ABI has the same thing in `pen_session_get_api_label`, so a native or Rust application
-spells an API the same way a C# one does.
+spells an API the same way a C# one does. `InputApi.IsFrameworkAgnostic()` is true for the
+three APIs `PenSessionFactory.Create` accepts.
+
+## Window activation
+
+Call `session.OnActivated()` from your window's activation event, on every session. Wintab
+delivers packets to the context at the top of the driver's overlap order, and when another
+application takes focus your context moves down it and stays there. The first stroke after
+returning to your window then produces no points; later strokes draw normally. `OnActivated`
+moves the context back to the top (`WTEnable` and `WTOverlap`). The pointer and framework
+sessions do nothing with it, so it is safe to call unconditionally.
+
+| Framework | Call it from |
+|---|---|
+| WPF, WinForms, Avalonia | `Activated += (_, _) => _session?.OnActivated();` |
+| WinUI 3 | `Activated += (_, e) => { if (e.WindowActivationState != WindowActivationState.Deactivated) _session?.OnActivated(); };` |
+| Win32 / C ABI | `WM_ACTIVATE` when `LOWORD(wParam) != WA_INACTIVE`: `pen_session_on_activated(session)` |
+
+If your code wraps an `IPenSession` in its own class, forward the call. `OnActivated` is a
+default interface method, so a wrapper that does not forward it compiles and does nothing.
+
+## Polling: DrainPoints and HasNewData
+
+- `DrainPoints()` returns every queued point as a new array.
+- `DrainPoints(Span<PenPoint> buffer)` copies up to `buffer.Length` points and returns the
+  count. It allocates nothing. Points that do not fit stay queued, and `HasNewData` stays true
+  so the next poll collects them.
+- `HasNewData` is true when points have been queued since the last drain.
+
+Both drains are thread-safe. On the Wintab sessions they also check, once a second, that the
+driver still knows the context (next section). The C ABI's `pen_session_drain_points` and
+`pen_session_has_new_data` behave like the span overload.
+
+## Wintab context recovery
+
+Restarting the tablet service invalidates every open Wintab context without telling the
+applications that hold them. The managed Wintab sessions detect this inside `DrainPoints`, at
+most once a second, and open a new context on their own. A failed reopen is retried every five
+seconds. The log records each step.
+
+**The check runs only while you drain.** An application that stops calling `DrainPoints` (for
+example, one that stops its render timer while idle) does not recover until it drains again.
+The native DLL does not recover at all: restart the session or the application. Details in
+[ARCHITECTURE.md](ARCHITECTURE.md#context-keep-alive-and-reopen).
 
 ## PenPoint Fields
 
@@ -115,16 +186,16 @@ Every `PenPoint` contains:
 
 | Field | Type | Description |
 |---|---|---|
-| `DesktopX/Y` | `double` | Physical screen pixels. Sub-pixel precision in digitizer mode. |
+| `DesktopX/Y` | `double` | Physical screen pixels, with a fraction where the source has one. Whole pixels on Wintab system, and on Wintab (high-res) and WM_POINTER when they have fallen back (`HiRes` cleared). |
 | `RawX/Y` | `int` | Device-native position, in units given by `session.Conventions.RawUnits`. Zero when that is `None`. See below. |
 | `Pressure` | `uint` | Raw tip pressure. 0 = hovering. Normalize: `(float)pt.Pressure / session.MaxPressure`. That maximum is a **range, not a level count** — see below. |
 | `Azimuth` | `double` | Spherical: compass direction in degrees (0.0–360.0). |
 | `Altitude` | `double` | Spherical: angle from surface in degrees (0.0–90.0). 90 = perpendicular. |
 | `TiltX` | `double` | Planar: tilt right/left in degrees (-90.0 to +90.0). |
 | `TiltY` | `double` | Planar: tilt toward/away in degrees (-90.0 to +90.0). |
-| `Twist` | `double` | Barrel rotation in degrees (0.0–360.0). |
+| `Twist` | `double` | Barrel rotation in degrees (0.0–360.0). 0 when the API reports none. Every session sets `PenCapabilities.Twist`, which means the backend reads twist from its API. A pen without a rotation sensor reports 0 on every backend. |
 | `Z` | `int` | Height above tablet surface. 0 unless the session advertises `ZHeight`. |
-| `Status` | `uint` | Packet flags, carrying the proximity bit. 0 unless the session advertises `Proximity`, which only the Wintab backends do. |
+| `Status` | `uint` | Wintab's `pkStatus`. Bit 0 (`TPS_PROXIMITY`) is set when the pen is out of the context. 0 on the pointer backends, which do not advertise `Proximity`. `pt.IsInProximity` is `(Status & 1) == 0`: false only on the Wintab point sent when the pen leaves, and true on every point a pointer backend delivers. |
 | `Buttons` | `uint` | Button state, in one of two encodings named by `session.Conventions.Buttons`. Wintab: `(action << 16) \| buttonNumber`. Pointer backends: a flag bitmask, bit 0 barrel, bit 1 eraser. Read it through `PenButtonTracker`. |
 | `Cursor` | `uint` | Cursor type, numbered as `session.Conventions.Cursor` says. Pointer backends normalise to 13 tip / 14 eraser; Wintab passes the driver's own number through. |
 | `Source` | `InputApi` | Which backend produced this point. |
@@ -164,15 +235,15 @@ Differences. Two of them subtracted give elapsed microseconds, which is what sam
 velocity and any time-based smoothing need. One on its own gives nothing: the origin is
 unstated, every backend counts from somewhere different, and no two of them are comparable.
 
-**How far the backends agree.** Three things hold everywhere, and one does not:
+**How far the backends agree.** Two things hold everywhere, and three do not:
 
 | | consistent? | |
 | --- | --- | --- |
 | unit | **yes** | microseconds on every backend, always |
 | contract | **yes** | subtract two, get elapsed microseconds; never decreasing within a session |
-| wrapping | **yes** | handled in the session, not left to the caller — see below |
+| wrapping | **no** | 32-bit counters are extended in the session on Wintab, WPF and Avalonia; WM_POINTER does not need it; **WinUI is not extended** (see [TIMESTAMPS.md](TIMESTAMPS.md#counters-that-wrap)) |
 | **resolution** | **no** | 1 µs on WM_POINTER and WinUI; 1 ms on Wintab, Avalonia and WPF; 15.6 ms on Qt |
-| **one timestamp per point** | **no** | yes on four backends; on WPF a batch shares one, on Qt a coarse clock repeats one |
+| **one timestamp per point** | **no** | yes on WM_POINTER, WinForms, WinUI and Wintab; on WPF a batch shares one; on Avalonia the points recovered from one event share one; on Qt a coarse clock repeats one |
 
 The last two rows reach your code. A velocity or smoothing routine tuned against WM_POINTER
 will meet **zero deltas** on WPF and Qt, and not occasionally: drawn on by hand, 2442 WPF points
@@ -187,7 +258,7 @@ could not separate in time, which is not a claim that no time passed.
 | type | `long` (C# `Int64`, C `int64_t`, Rust `i64`) |
 | unit | microseconds, on every backend, always |
 | magnitude | microseconds since the machine booted — about 2.6 × 10¹² after 30 days up |
-| may be negative? | **yes, on WPF only**, if the session starts after ~24.9 days of uptime |
+| may be negative? | **no.** The 32-bit counters are anchored to the 64-bit system tick count, which keeps the value positive. WPF's raw `int` turns negative after ~24.9 days of uptime; the session's value does not |
 | overflow | never: `long.MaxValue` µs is about 292,000 years |
 | origin | **unspecified.** Differences are the contract; absolute values are not |
 | ordering | never decreasing within one session. A difference of zero is a normal reading |
@@ -196,12 +267,12 @@ could not separate in time, which is not a claim that no time passed.
 
 | backend | clock | source field | source type | conversion |
 | --- | --- | --- | --- | --- |
-| WM_POINTER, WinForms | `PerformanceCounter` | `POINTER_INFO.PerformanceCount` | `ulong` QPC ticks | `ticks × 10⁶ / QPF`, split to avoid overflow |
-| WinUI 3 | `SystemTicks`¹ | `PointerPoint.Timestamp` | `ulong` µs | cast only |
-| Avalonia | `SystemTicks` | `PointerEventArgs.Timestamp` | `ulong` ms | `× 1000` |
-| WPF | `SystemTicks` | `StylusEventArgs.Timestamp` | **`int`** ms | wrap-extend, then `× 1000` |
-| Qt (Scribble.Qt) | `SystemTicks` | `QInputEvent::timestamp` | `quint64` ms | `× 1000` |
-| Wintab | `DeviceTicks` | `PACKET.pkTime` | **`uint`** ms | wrap-extend, then `× 1000` |
+| WM_POINTER, WinForms | `PerformanceCounter` | `POINTER_INFO.PerformanceCount` | `ulong` QPC ticks | `PenTimestamp.FromPerformanceCount`: `ticks × 10⁶ / QPF`, split to avoid overflow |
+| WinUI 3 | `SystemTicks`¹ | `PointerPoint.Timestamp` | `ulong` µs | cast only, not anchored |
+| Avalonia | `SystemTicks` | `PointerEventArgs.Timestamp` | `ulong` ms, filled from 32-bit `GetMessageTime` | `PenTimestamp.FromSystemTicks`: anchor, then `× 1000` |
+| WPF | `SystemTicks` | `StylusEventArgs.Timestamp` | **`int`** ms | `PenTimestamp.FromSystemTicks`: anchor, then `× 1000` |
+| Qt (Scribble.Qt) | `SystemTicks` | `QInputEvent::timestamp` | `quint64` ms | the same anchoring, in the sample, then `× 1000` |
+| Wintab | `DeviceTicks` | `PACKET.pkTime` | **`uint`** ms | `PenTimestamp.FromSystemTicks`: anchor, then `× 1000` |
 
 ¹ `SystemTicks` names the epoch, which `PointerPoint.Timestamp` was measured to track, and not
 the granularity — this clock resolves to the microsecond, well past the millisecond that
@@ -217,7 +288,7 @@ than the thing it names.
   non-zero remainder mod 1000 meant WM_POINTER or WinUI. That is wrong twice over: WinUI's
   remainder is a per-run constant that cancels out of every difference, so the test flags a
   millisecond clock as fine; and WM_POINTER's measured values all ended in `000`, so it flags
-  the finest clock available as coarse. Read `Conventions.Timestamp` and the table below.
+  the finest clock available as coarse. Read `Conventions.Timestamp` and the table above.
 - **The QPC division truncates below a microsecond.** Integer division toward zero, so the error
   is under 1 µs and slightly downward. At a 200 Hz report rate that is 0.02% of one interval.
 - **The WinUI cast is lossless, and the source is finer than it first appeared.** Under
@@ -226,223 +297,27 @@ than the thing it names.
   resolved and the constant tail is gone; it belonged to the injector.
 - **No backend loses anything to the wrap extension.** It only adds a multiple of 2³² ms.
 
-### Measured resolution, and why injection could not measure it
+### Rules
 
-**Every backend in this table has now been drawn on by hand**, on a Wacom DTH246, 13 Sep 2026.
-No injected figures remain.
+- Subtract two timestamps from the same session. Do not compare across sessions or backends.
+- Expect a difference of zero and guard any division by one.
+- Read `Conventions.Timestamp` for the clock. Where it is `None`, the field is zero; zero is not
+  a time, and no session substitutes its own clock.
+- To line points up with wall-clock time, calibrate yourself, take the **smallest**
+  `wallClock - TimestampMicroseconds` seen over many points, and recalibrate after every
+  backend switch. The code is in [TIMESTAMPS.md](TIMESTAMPS.md#reading-it-as-wall-clock-time).
+- On WinUI, a session running across 49.7 days of uptime may see one backward step. This is not
+  established either way.
 
-| backend | points | distinct timestamps | step | one stamp per point? |
-| --- | --- | --- | --- | --- |
-| **WM_POINTER (WinForms)** | 2070 | 2070 | **1 µs** | yes |
-| **WinUI 3** | 1878 | 1878 | **1 µs** | yes |
-| **Avalonia** | 2167 | 2167 | 1 ms | yes |
-| **Wintab (high-res)** | 1683 | 1683 | 1 ms | yes |
-| **WPF Stylus** | 2442 | 885 | 1 ms clock, 15.6 ms batches | **no** — ~3 points share one |
-| **Qt (`Scribble.Qt`, not WinPenKit)** | 2280 | 810 | **15.6 ms** | **no** — coarse clock repeats |
+`PenTimestamp` exposes the conversions for code that reads a clock itself:
+`FromPerformanceCount(ulong)` for a QPC reading, `FromSystemTicks(long rawMs)` for a
+millisecond value on the `GetTickCount64` epoch (anchored against `Environment.TickCount64`),
+`FromSystemTicks(long rawMs, long nowMs)` against a reference you supply, and
+`FromMilliseconds(long)` for a source already known to be 64 bits. `PenTimestamp.Wrap32` is
+2³² ms.
 
-Five of these six had an injected figure to compare against; Wintab never did, because it
-ignores injected input entirely. **Four of those five were wrong.** Only Qt's survived. That is
-the headline finding of this whole exercise, and it is a fact about the instrument rather than
-about any backend: measuring a clock through `InjectSyntheticPointerInput` mostly produces the
-injector's properties.
-
-Avalonia was the last measured and corrected its figure in a different direction from the rest.
-Injection gave 172 points carrying 113 distinct timestamps, which reads as a clock too coarse to
-separate consecutive points. On hardware there are **no repeats at all** — 2167 points, 2167
-timestamps, 2166 gaps and not one of them zero. Its 1 ms resolution is real, but that comes from
-the source type rather than from the recording: `PointerEventArgs.Timestamp` is a `ulong` count
-of milliseconds. Recorded in `testdata/avalonia-hardware-stroke.csv`.
-
-The Wintab row is the only one measured on real hardware — a Wacom DTH246 over the hi-res
-digitizer context, 13 Sep 2026 — and it is the best of the set by a wide margin. **Every one of
-1683 points carried its own timestamp**, with no repeats and no backward steps, where WPF gave
-6 distinct values for 196 points. Gaps were 5 ms or 6 ms and nothing else, their greatest
-common divisor exactly 1000 µs, averaging 5555 µs: a **180 Hz** device reported on a
-millisecond clock, which is why it alternates rather than landing on 5.556 every time.
-
-It is also the one row synthetic injection did not shape, because Wintab ignores injected input
-entirely. Recorded in `testdata/winuinative-wintab-hires-stroke.csv`.
-
-Qt is in the table because `Scribble.Qt` exists to be compared against, not because WinPenKit
-produces it. It is the one backend whose injected figure survived contact with hardware: across
-809 gaps the **smallest is 15 ms**, with 504 of 16 ms and 303 of 15 ms. Nothing finer occurs at
-all. `QInputEvent::timestamp` is the coarsest clock in the table, which is worth knowing before
-treating Qt as the reference implementation.
-
-**A greatest common divisor is evidence of resolution only when the smallest gap is near it.**
-The Qt recording has a gcd of 1000 µs and no gap under 15 ms, because `gcd(15000, 16000)` is
-1000: alternating between the two ticks of a 15.625 ms timer produces that number
-arithmetically, out of nothing. On the WM_POINTER and WinUI recordings the same statistic meant
-something, because gaps that small genuinely occurred. Quote the minimum alongside the gcd, or
-the statistic will manufacture a resolution the clock does not have.
-
-**Injection was setting the floor it appeared to measure, and this is the proof.**
-
-Under injection, WM_POINTER's `PerformanceCount` arrived as exact millisecond multiples and
-matched `dwTime` one for one; this page recorded 1 ms and warned the figure was an upper bound.
-Drawn on by hand, the greatest common divisor of all 2069 gaps is **1 µs**, every one of 2070
-points carries a distinct timestamp, and consecutive gaps read 5001, 4943, 4999, 4946. It is
-the finest clock of any backend here.
-
-WinUI told the same story. Under injection every reading ended in the same sub-millisecond
-remainder — 171 µs in one run, 622 µs in another — which is exactly what a millisecond clock
-with a fixed offset looks like. On hardware the gcd is **1 µs** across 1877 gaps with 1878
-distinct timestamps. The constant tail was the injector's, not WinUI's.
-
-The general lesson is worth more than either number: `InjectSyntheticPointerInput` stamps its
-own events, so a backend cannot be shown to resolve finer than the thing feeding it. A
-measurement taken through it can only ever bound a clock from above. Recorded in
-`testdata/wmpointer-hardware-stroke.csv` and `testdata/winui-hardware-stroke.csv`.
-
-One thing all six hardware recordings agree on, and the reason to trust them: a **180 Hz**
-device. The four per-point backends read it directly, as gaps averaging 5559–5560 µs. WPF and Qt
-cannot — their timestamps step by the timer tick — but dividing points by elapsed span gives
-180.1 Hz and 179.9 Hz. Six unrelated code paths: the native C ABI, WinForms, WinUI, Avalonia,
-WPF, and Qt's own stack.
-
-### WPF is different in kind, not degree — and its clock was never the problem
-
-WPF's `StylusEventArgs` carries a whole `StylusPointCollection`, and the timestamp belongs to
-the **event**, not the point. Every point in a batch gets the same one. Drawn on by hand: 2442
-points, **885 distinct timestamps**, two to four points per value and three most of the time.
-
-The hardware recording separates two things this page used to run together. **The clock is a
-millisecond clock.** Sixteen gaps of exactly 1000 µs appear, spread through the stroke rather
-than bunched at its start, so `StylusEventArgs.Timestamp` does express a millisecond when it is
-given the chance. What steps by 15.6 ms is the **delivery** — 531 gaps of 16 ms and 329 of 15 ms,
-which is the Windows timer tick, not a property of the clock. The old 15.6 ms figure described
-the batch cadence and was attributed to the clock.
-
-That distinction matters because it says which effect a better clock would remove: none of it.
-The batching is the whole of what reaches a caller, and WPF exposes no per-point time at all, so
-this is a ceiling of the framework rather than a choice made here.
-
-Qt reaches a similar-looking number — 2280 points, 810 timestamps — by the opposite route, and
-the two should not be run together. `QTabletEvent` is a `QSinglePointEvent`, so those 2280
-points are 2280 separate events, each with its own timestamp. They repeat because the *clock*
-only advances on the 15.6 ms timer tick. WPF has a fine clock and coarse delivery; Qt has fine
-delivery and a coarse clock. A finer clock would fix Qt and would do nothing for WPF.
-
-Recorded in `testdata/wpf-hardware-stroke.csv` and `testdata/qt-hardware-stroke.csv`.
-
-Avalonia sits with the per-point group rather than with these two, and the intermediate-point
-recovery added in #110 did not change that on the run measured: `GetIntermediatePoints` returned
-a single point every time, so nothing was coalesced and nothing shared a timestamp. That path
-produces several points per timestamp when the application falls behind, not as a rule.
-
-### Two more things worth stating
-
-- **`dwTime` and `PerformanceCount` are not two readings of one clock.** Both are populated on
-  every `POINTER_INFO`. `dwTime` is milliseconds on the `GetTickCount64` epoch, `PerformanceCount`
-  is QPC, and they sat 27.08 ms apart — identically — across every sample. These backends use
-  `PerformanceCount`.
-- **Sampling rate is now established; latency still is not.** While every figure here came from
-  injection, the gaps were the injection script's and said nothing about a device. The six
-  hardware recordings do measure the device: 180 Hz, agreed on by all six. They still say nothing
-  about latency, which is the delay between the pen touching glass and the point reaching your
-  handler, and no recording of timestamps alone can measure it.
-
-### Reading it as wall-clock time
-
-You cannot, through the API. The origin is unspecified on purpose, because it differs per
-backend and only one machine has been measured.
-
-If you need wall clock anyway — lining a stroke up against a log, say — calibrate it yourself.
-At the moment a point arrives, read the wall clock too:
-
-```csharp
-long offsetUs = long.MaxValue;   // keep the smallest seen
-
-// in your point handler, per point:
-long nowUs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000;
-offsetUs = Math.Min(offsetUs, nowUs - pt.TimestampMicroseconds);
-
-// then, for any point:
-DateTimeOffset wall = DateTimeOffset.FromUnixTimeMilliseconds(
-    (pt.TimestampMicroseconds + offsetUs) / 1000);
-```
-
-The **minimum** matters. An event happens at T and your handler runs at T + latency, so every
-sample overestimates the offset by that run's latency and never underestimates it. The smallest
-difference over many points is the closest you get to the true offset. Measured handler latency
-in one run was 0.372 ms to 26.6 ms, the largest on the first point after startup — calibrating
-on a single sample would have been 26 ms out.
-
-Recalibrate per session. The offset is not valid across a backend switch. On WPF the clock
-being read is a millisecond clock, so the calibration is bounded by that rather than by the
-15.6 ms delivery cadence; on Qt the 15.6 ms *is* the clock, and no calibration beats it.
-
-
-Wintab's `pkTime` is requested on every packet — `lcPktData` is `PK_PKTBITS_ALL` — and Wintab
-documents it as milliseconds with no origin. Its **granularity is now measured** at 1 ms, with
-one timestamp per point and no repeats, which makes it the most usable clock of any backend
-here.
-
-Its **origin is now measured too**: it is the `GetTickCount64` epoch. No stroke recording could
-have answered that — `StrokeRecorder` writes times relative to the first point by design, so it
-carries no machine uptime at all — so it took a separate probe reading raw `pkTime` against the
-system clock. Over 6217 packets spanning 41.7 s, `pkTime` advanced 41703 ms against 41703 ms of
-wall clock, with the offset between them staying inside a 40 ms band. The run contained a
-deliberate five-second pause: a counter advancing only while packets arrived would have fallen
-five seconds behind across it.
-
-That is why **this backend now anchors** rather than detecting a backward jump, like every other
-backend here. Readings are in `testdata/wintab-epoch-probe.csv`. Absolute values are still not
-part of the contract — the origin is documented, not promised.
-
-Where `Conventions.Timestamp` is `None`, the field is zero. Zero is not a time; it means the
-backend supplied none. No session substitutes its own clock, which would measure when this
-library got round to reading the packet rather than when the pen moved.
-
-### Counters that wrap
-
-Two backends count milliseconds in fewer than 64 bits:
-
-| backend | raw type | wraps after | what it does |
-| --- | --- | --- | --- |
-| WPF | `int` | ~24.9 days of uptime | passes `int.MaxValue` and **continues negative** |
-| Wintab | `uint` | ~49.7 days of uptime | returns to 0 |
-
-The other four are 64-bit and do not wrap in any relevant timeframe.
-
-Left alone, a stroke drawn across either boundary would produce a difference wrong by the
-entire range — about −49.7 days, from two points a millisecond apart. Both are extended inside
-the session, so `TimestampMicroseconds` stays continuous and the caller never sees it.
-
-**Both now anchor rather than detect**, which is the stronger of the two methods and became
-available to Wintab only once its epoch was measured. Anchoring derives the wrap count from the
-reading itself: the true value is the nearest multiple of 2³² ms that agrees with the system
-clock. It carries no state between packets, so an idle session, a first packet after a wrap, and
-a session restarted across one all come back correct.
-
-Detection — a backward step of more than half the range — was what Wintab used while its origin
-was unknown, and it has a blind spot that anchoring does not: it sees only the packets it is
-given. A wrap that happened while the session was stopped, or across a gap where the capture
-region discarded every packet, was missed, and the difference across that gap was wrong by
-49.7 days. That gap is now closed.
-
-Neither wrap can be reached by ordinary testing, so there is a check that does not need to
-wait for one:
-
-```bash
-dotnet run --project WinPenKit.TestConsole -- --selftest-clock
-```
-
-Fifteen cases, no tablet and no window. Two are the wraps themselves. Five exercise the epoch
-probe's analysis
-against synthetic readings shaped like a foreign epoch, a counter that stalls when idle, and a
-clock the tick count lags — the probe needs a tablet and a person, so its verdict would
-otherwise only ever have been produced once, on one machine, with no evidence it could produce
-the other answer.
-
-Verified in both directions, which is the only claim worth making about a suite like this. With
-the extension removed, the two wrap cases fail by exactly −4,294,967,295,000 µs. With the epoch
-analysis reverted to the unsigned subtraction it originally used, `probe/tick-lags-pktime` fails
-with the same `2/3 passed` the first real hardware run produced.
-
-Four cases covering the backward-jump wrap detector went with the detector itself. Nothing uses
-that approach now that every backend anchors, and a suite that tests code no caller reaches
-reports health it cannot vouch for.
+How each figure here was measured, why synthetic injection could not measure it, and the
+history of the wrap handling are in [TIMESTAMPS.md](TIMESTAMPS.md).
 
 ### What `RawX/Y` holds
 
@@ -456,7 +331,7 @@ Ask the session: `session.Conventions.RawUnits`.
 | WM_POINTER, WinForms | `HundredthsOfMillimetre` | `ptHimetricLocationRaw` |
 | WPF, WinUI, Avalonia | `None` | **no device-native value exists; the fields are zero** |
 
-Read it as a diagnostic, not a position: sane raw values against a wrong `DesktopX` point at the mapping, and both wrong point upstream of it.
+Read it as a diagnostic, not a position: sane raw values against a wrong `DesktopX` point at the mapping, and both wrong point upstream of it. `RawUnits.Label()` gives a short unit name for a readout ("tablet", "px", "0.01mm", or empty for `None`).
 
 Those last three frameworks used to report `DesktopX` truncated to `int`. That is not a second measurement, it is the first one with its fraction removed, and it defeated the only reason to look at this field. They now report nothing and say so.
 
@@ -476,41 +351,96 @@ c.Timestamp  // which clock TimestampMicroseconds counts on, or None
 
 Both tilt representations are always present — Wintab backends compute TiltX/TiltY from Azimuth/Altitude, and WM_POINTER backends compute Azimuth/Altitude from TiltX/TiltY.
 
+Both directions use the exact relation in `PenTilt`, which you can also call yourself:
+
+```csharp
+var (tiltX, tiltY) = PenTilt.ToPlanar(azimuth, altitude);
+var (az, alt) = PenTilt.ToSpherical(tiltX, tiltY);
+```
+
+With `θ = 90 - altitude`, `tan(TiltX) = -tan(θ) * sin(azimuth)` and `tan(TiltY) = tan(θ) * cos(azimuth)`. `ToSpherical` returns azimuth 0 when the pen is within `PenTilt.UprightThreshold` (0.5 degrees) of vertical. Earlier versions used a linear form that agreed on the axes and differed by up to 8.3 degrees off them, so tilt values recorded with an earlier version do not match current ones.
+
 ## Coordinate Conversion
 
-PenPoint provides desktop screen pixels. Your app converts to canvas-local coordinates:
+`PenPoint` provides desktop pixels as `double`. To convert to your canvas without losing the
+fraction: get the canvas origin in desktop pixels from the framework, subtract it from
+`DesktopX/Y` as `double`, and divide by the DPI scale if your canvas works in DIPs. The origin
+can safely pass through an integer API, because a window's client origin is on a whole pixel.
+The pen position must not.
 
-| Framework | Conversion |
-|---|---|
-| **WinForms** | `panel.PointToClient(new Point((int)pt.DesktopX, (int)pt.DesktopY))` |
-| **WPF** | `element.PointFromScreen(new Point(pt.DesktopX, pt.DesktopY))` |
-| **WinUI 3** | `(desktopX - clientOrigin) × (96/DPI) - canvasPosition` (see DPI notes below) |
-| **Avalonia** | `topLevel.PointToClient(new PixelPoint((int)pt.DesktopX, (int)pt.DesktopY))` |
-| **Win32** | `ScreenToClient(hwnd, &pt)` |
-| **egui (Rust)** | `desktop / pixels_per_point - window_pos` |
+| Framework | Canvas origin | Canvas point | Sample |
+|---|---|---|---|
+| **WinForms** (pixels) | `var o = canvas.PointToScreen(Point.Empty);` | `(pt.DesktopX - o.X, pt.DesktopY - o.Y)` | `Scribble.WinForms/MainForm.cs` |
+| **WPF** (DIPs) | `var xf = WpfCoordinates.GetTransform(canvas);` (`OriginX/Y` in pixels, `ScaleX/Y` the DPI scale; null until the canvas is in a window) | `((pt.DesktopX - xf.OriginX) / xf.ScaleX, (pt.DesktopY - xf.OriginY) / xf.ScaleY)` | `Scribble.Wpf/MainWindow.xaml.cs` |
+| **WinUI 3** (DIPs) | `ClientToScreen(hwnd, ref o)` with `o = (0, 0)`, `scale = monitorDpi / 96`, `pos = canvas.GetPositionInWindow()` | `((pt.DesktopX - o.X) / scale - pos.X, (pt.DesktopY - o.Y) / scale - pos.Y)` | `Scribble.WinUI/WintabSessionWinUI3.cs` |
+| **Avalonia** (DIPs) | `var w = topLevel.PointToScreen(new Point(0, 0));`, `scale = topLevel.RenderScaling`, `var c = canvas.TranslatePoint(new Point(0, 0), topLevel)` | `((pt.DesktopX - w.X) / scale - c.X, (pt.DesktopY - w.Y) / scale - c.Y)`; multiply by `scale` for bitmap pixels | `Scribble.Avalonia/MainWindow.axaml.cs` |
+| **Win32** (pixels) | `POINT o = {0, canvasTop}; ClientToScreen(hwnd, &o);` | `(pt.desktop_x - o.x, pt.desktop_y - o.y)` as `double` | `Scribble.Win32/src/main.cpp` |
+| **egui (Rust)** (pixels) | `canvas_rect.min` in points | `pt.desktop_x - canvas_min.x * pixels_per_point` | `Scribble.Rust/src/main.rs` |
+
+Do not pass the pen position through WinForms `PointToClient`, WPF `PointFromScreen` or
+`PointToScreen`, Avalonia `PointToClient(PixelPoint)`, or Win32 `ScreenToClient`. Each takes or
+returns an integer pixel position (WPF's do so internally, through Win32 `ClientToScreen` and `ScreenToClient`), so
+every point lands on a whole pixel and the stroke is drawn as short straight steps between a few
+directions. Measured through WPF's `PointFromScreen` on a 1.75x display, the mean turn between
+segments went from 4.11 to 17.51 degrees, with every result on a whole pixel. `--replay` checks
+for this: `L3.conversion-snap` fails when converted points land on the pixel grid
+([SELF-TEST.md](SELF-TEST.md)).
+
+The WinUI origin must be read under a per-monitor-v2 thread DPI context (see below). The
+`Scribble.WinUI` sample's `PenSessionWinUI3` wrapper does this.
 
 ## DPI Handling
 
-`PenPoint.DesktopX`/`DesktopY` are physical screen pixels on every backend. Wintab positions are used exactly as the driver reports them, taking **Wacom as the reference**: measured on a mixed-scaling desktop (monitors at different Windows scaling), Wacom's driver reports physical pixels in every configuration tried, with the tablet mapped to one display or to all of them. Other drivers may not. Huion's V20 driver was measured scaling positions by the ratio of the monitors' scalings, and WinPenKit deliberately does not correct for any one vendor's driver (issue #132). Check a driver and layout with the mapping wizard (`Docs/MAPPING-WIZARD.md`) or the mapping probe under [Diagnostics](#diagnostics).
+`PenPoint.DesktopX`/`DesktopY` are physical screen pixels on every backend. Wintab positions are used exactly as the driver reports them, taking **Wacom as the reference**: measured on a mixed-scaling desktop (monitors at different Windows scaling), Wacom's driver reports physical pixels in every configuration tried, with the tablet mapped to one display or to all of them. Other drivers may not. Huion's V20 driver was measured scaling positions by the ratio of the monitors' scalings, and WinPenKit deliberately does not correct for any one vendor's driver (issue #132). Check a driver and layout with the mapping wizard ([MAPPING-WIZARD.md](MAPPING-WIZARD.md)) or the mapping probe under [Diagnostics](#diagnostics).
 
 Your app must be **Per-Monitor V2 DPI aware** for coordinates to match:
 
-- **WinForms (.NET 10)**: Automatic — `PointToClient()` handles DPI.
-- **WPF (.NET 10)**: Automatic — `PointFromScreen()` handles DPI.
-- **WinUI 3**: Must call `ClientToScreen` inside a `SetThreadDpiAwarenessContext(PER_MONITOR_AWARE_V2)` block.
-- **Win32 C++**: Call `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` before creating windows.
+- **WinForms (.NET 10)**: Set `<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>` in the project, as `Scribble.WinForms` does. Client coordinates are then physical pixels, so subtract the canvas origin from `PointToScreen(Point.Empty)` and do not divide.
+- **WPF (.NET 10)**: Declare `<dpiAwareness>PerMonitorV2</dpiAwareness>` in `app.manifest`, as `Scribble.Wpf` does. Without it the process is System DPI aware and, on a monitor whose DPI differs from the system DPI, strokes land away from the pen. Divide by the scale `WpfCoordinates.GetTransform` returns, which is the element's current `DpiScale`.
+- **WinUI 3**: Call `ClientToScreen` inside a `SetThreadDpiAwarenessContext(PER_MONITOR_AWARE_V2)` block, and divide by the window's monitor DPI / 96.
+- **Avalonia**: Per-monitor aware through the framework. Divide by `TopLevel.RenderScaling`, read at conversion time so a move to another monitor is followed.
+- **Win32 C++**: Call `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` before creating windows. Client coordinates are then physical pixels.
 - **WinUI 3 unpackaged**: Add `<dpiAwareness>PerMonitorV2</dpiAwareness>` to `app.manifest` or the UI is blurry.
 
 See the [devnotes DPI article](https://github.com/TheSevenPens/devnotes) for the full deep-dive.
 
-## Capture Region (Spatial Scope)
+## Wintab high-res mapping
 
-The input paths natively disagree on **where the pen has to be** for your app to get data: Wintab is desktop-global, WM_POINTER is window-scoped, and the framework pointer sessions are control-scoped. `IPenSession.CaptureRegion` normalizes this so one app behaves identically on every backend. (For *why* the backends differ, see [STYLUS.md → Spatial Scope](STYLUS.md#spatial-scope-capture-region).)
+The Wintab (high-res) session, `WintabDigitizer`, receives positions in tablet units and maps
+them onto the screen rectangle the driver reports for its default system context (`lcSys`). It
+reads that rectangle once, when the session starts. If the display configuration changes while
+the session runs (a monitor added or removed, a resolution or scaling change, the tablet
+remapped in the driver's settings), call:
 
 ```csharp
-// Default (CaptureRegion == null): window-scoped on every backend.
-// Wintab is filtered to the app window passed to Start(), matching the
-// pointer backends instead of capturing across the whole desktop.
+session.RefreshMapping();
+```
+
+It re-reads the driver's rectangle without reopening the context. On every other backend it does
+nothing. Listening for the change (`WM_DISPLAYCHANGE`, `WM_DPICHANGED`, or the framework's
+equivalent) is the application's job.
+
+The mapping is only as correct as the driver's rectangle. On a desktop whose monitors use
+different Windows scaling, it is correct when the driver reports physical pixels: Wacom's does,
+Huion's V20 does not, and WinPenKit applies no correction. If the hi-res context cannot be
+opened, the session falls back to screen pixels and clears `PenCapabilities.HiRes`. Details in
+[ARCHITECTURE.md](ARCHITECTURE.md#wintab-digitizer-high-res).
+
+## Capture Region (Spatial Scope)
+
+The input paths natively disagree on **where the pen has to be** for your app to get data: Wintab is desktop-global, WM_POINTER is window-scoped, and the framework pointer sessions are control-scoped. `IPenSession.CaptureRegion` can make one app behave the same on every backend. (For *why* the backends differ, see [STYLUS.md](STYLUS.md#spatial-scope-capture-region).)
+
+What the default (`CaptureRegion == null`) does depends on the backend:
+
+| Backend | Default scope |
+|---|---|
+| Wintab | The window passed to `Start(hwnd)`. **`Start()` with no window is unbounded**: the session reports the pen anywhere on the desktop, including over other applications. |
+| WM_POINTER | The window passed to `Start(hwnd)`, which it requires. |
+| WinForms | The window passed to `Start(hwnd)`, else the control passed to the constructor. |
+| WPF, WinUI, Avalonia | No filter. The session receives only the events its element receives. |
+
+```csharp
+// Default: pass your window to Start and Wintab is scoped to it.
 session.Start(appHwnd);
 
 // Scope to a fixed screen rectangle.
@@ -523,7 +453,9 @@ session.CaptureRegion = PenCaptureRegion.Window(appHwnd);
 session.CaptureRegion = PenCaptureRegion.Unbounded;
 ```
 
-`CaptureRegion` may be set before or after `Start()`; it takes effect on the next point.
+`CaptureRegion` may be set before or after `Start()`; it takes effect on the next point. `Window` uses the window's outer bounds, including its frame, and accepts every point when the handle is zero.
+
+The native C ABI has a capture region on Wintab sessions only: `pen_session_set_capture_window`, `pen_session_set_capture_rect` and `pen_session_set_capture_unbounded`. The default is the window passed to `pen_session_start`, or unbounded when that is NULL. The native WM_POINTER session has no capture region.
 
 ### Scope to a control (Avalonia)
 
@@ -558,7 +490,7 @@ On other backends `Unbounded` is harmless but inert — the OS still limits them
 
 `PenPoint.Buttons` carries different encodings depending on the backend:
 
-- **Wintab**: one event per packet, `(action << 16) | buttonNumber`. Action: 0=none, 1=released, 2=pressed. Button: 0=tip, 1-3=barrel.
+- **Wintab**: one event per packet, `(action << 16) | buttonNumber`. Action: 0=none, 1=released, 2=pressed. Button: 0=tip, 1-3=barrel (`PenButtonNumber.Tip`, `Barrel1` to `Barrel3`).
 - **Pointer-style backends** (WM_POINTER, WinUI Pointer, WPF Stylus, WinForms Pointer, Avalonia Pointer): absolute flag bitmask. `0x0001` = barrel button, `0x0002` = eraser.
 
 `PenButtonTracker` hides this difference. Create one per session, feed every point through it, then read state:
@@ -587,7 +519,7 @@ Use `PenButtonTracker`. It branches on `pt.Source` and decodes both encodings. I
 
 ### Eraser detection
 
-Eraser is detected via `pt.IsEraser`, which checks `pt.Cursor == 14`. In Wintab, cursor type changes on hover before contact. The pointer backends read `PEN_FLAG_INVERTED` and write 13 or 14 to match. `PenButtonTracker.IsEraser` mirrors this from the latest point.
+Eraser is detected via `pt.IsEraser`, which checks `pt.Cursor == 14` (`PenCursorType.Eraser`; `PenCursorType.PenTip` is 13). In Wintab, cursor type changes on hover before contact. The pointer backends read `PEN_FLAG_INVERTED` and write 13 or 14 to match. `PenButtonTracker.IsEraser` mirrors this from the latest point.
 
 **The match is one-way.** Wintab writes the driver's own cursor number through unchanged, and Wintab cursor indices are assigned by the device — `PenCursorType` documents 13 and 14 as *observed* values, not standard ones. On a tablet that numbers its eraser differently, `IsEraser` is false on Wintab while true on every pointer backend. Tracked in issue 48.
 
@@ -596,7 +528,7 @@ Eraser is detected via `pt.IsEraser`, which checks `pt.Cursor == 14`. In Wintab,
 `Start()` returns `null` on success, or an error string on failure. Always check:
 
 ```csharp
-var error = session.Start();
+var error = session.Start(hwnd);
 if (error != null)
 {
     // "Wintab not found. Is the tablet driver installed?"
@@ -607,16 +539,56 @@ if (error != null)
 }
 ```
 
-Always call `Dispose()` when done — this stops the session and closes the diagnostic log file.
+Always call `Dispose()` when done. It stops the session. On the Wintab sessions it also flushes the diagnostic log; the log file stays open until the process exits, so a later session in the same process appends to it.
 
 ## Diagnostics
 
-WinPenKit logs to `%TEMP%\WinPenKit.log`:
-- Context configuration before/after open
+### The log
+
+The managed Wintab sessions log to `%TEMP%\WinPenKit.<pid>.log`, one file per process.
+`WintabDiagnostics.LogPath` returns the path, for an application that wants to attach it to a
+bug report. Logs older than a week are deleted when a new one is created. The log records:
+
+- Context configuration before and after open
 - Hi-res fallback events
+- The driver's context counters before opening, after opening and after closing (a log with no
+  "after closing" line is from a process that was killed; see
+  [WINTAB-CONTEXT-LEAK.md](WINTAB-CONTEXT-LEAK.md#what-winpenkit-writes-to-its-log))
+- Loss of the context and each reopen attempt
+- `OnActivated` failures
 - Button/cursor transitions
 - Packet processing errors
-- The desktop map: whether Wintab positions are being rescaled, and by how much
+
+The native DLL logs to `%TEMP%\WintabSessionCpp.log` (`pen_session_get_log_path()`). That name is
+shared by every process using the DLL, the file is truncated by each process's first write, and
+it carries no context counters.
+
+### Packet counts
+
+The managed Wintab sessions count packets where they arrive. Ask with a type test, because other
+sessions do not implement it, and treat its absence as "this backend cannot say", not as zero:
+
+```csharp
+if (session is WinPenKit.Diagnostics.IPacketCounts counts)
+{
+    long fromDriver = counts.PacketsFromDriver;            // before any filtering
+    long dropped    = counts.PacketsOutsideCaptureRegion;  // discarded by the region
+    long delivered  = counts.PointsDelivered;              // queued for DrainPoints
+}
+```
+
+A device that stopped reporting shows `PacketsFromDriver` not increasing. A session discarding
+points shows `PacketsOutsideCaptureRegion` increasing.
+
+### Asking the driver
+
+`WintabDiagnostics` reads from the driver without opening a context:
+
+- `ContextTable()`: the open and stated-maximum context counts as a `WintabContextTable`, or
+  null. `AboveStatedMaximum` is true when more are open than the driver says it supports. It is
+  not a capacity check: opens have succeeded far past the stated maximum.
+- `DeviceName()`: the tablet's name, or null.
+- `DriverScreen()`: the default system context's screen and input ranges, as text.
 
 ### Is the pen landing under the cursor?
 
@@ -627,9 +599,34 @@ WinPenKit.TestConsole --probe-wintab-mapping [seconds-per-mode] [samples.csv]
 WinPenKit.TestConsole --report-wintab-mapping samples.csv
 ```
 
-Hover the pen (don't tap) over every monitor, corners included, in each mode; the tablet must be in pen mode. The report gives, per mode and monitor, the mean error in pixels (judged: at most 3 px per axis), the driver's actual mapping from raw values to the cursor, and how much of the monitor was covered. Samples are saved to CSV so a run can be re-reported later on the same layout. `testdata/wintab-mapping-probe-mixed-dpi.csv` is the run that found the scaling problem, with the positions the sessions produced before the fix.
+Hover the pen (don't tap) over every monitor, corners included, in each mode; the tablet must be in pen mode. The report gives, per mode and monitor, the mean error in pixels (judged: at most 3 px per axis), the driver's actual mapping from raw values to the cursor, and how much of the monitor was covered. Samples are saved to CSV so a run can be re-reported later on the same layout. `testdata/wintab-mapping-probe-mixed-dpi.csv` is the run that found the scaling problem, on Huion's V20 driver; it fails on all four mode and monitor pairs.
 
-Run it after any change to the Wintab coordinate path, and on any new monitor layout, scaling, resolution or tablet mapping.
+Run it after any change to the Wintab coordinate path, and on any new monitor layout, scaling, resolution or tablet mapping. [MAPPING-WIZARD.md](MAPPING-WIZARD.md) walks through a full plan of layouts and also checks WM_POINTER.
+
+### Self-test, replay and recording
+
+`WinPenKit.Diagnostics.SelfTest` and `SelfTestReplay` implement the `--selftest` and `--replay`
+checks every Scribble app runs, and `StrokeRecorder` and `StrokeReplay` write and read the
+`--record` format. `PresentationProbe` measures how the drawing surface reaches the screen.
+`WindowPlacement.ClampToWorkArea(hwnd)` keeps a window inside its monitor's work area, since pen
+input over the part of a window off screen is never delivered. See [SELF-TEST.md](SELF-TEST.md).
+
+### TestConsole flags
+
+`WinPenKit.TestConsole` with no flags lists the available APIs, starts the one you choose, and
+prints the latest point ten times a second. Its flags:
+
+| Flag | What it does | Needs a tablet |
+|---|---|---|
+| `--selftest-clock` | Fifteen checks of the timestamp conversions, including both wraps and the epoch analysis | no |
+| `--verify-wintab-anchoring <file>` | Replays recorded `pkTime`/tick pairs (for example `testdata/wintab-epoch-probe.csv`) through the anchoring | no |
+| `--probe-wintab-epoch [seconds] [x y]` | Reads raw `pkTime` against the system tick count to establish its epoch; `x y` places the window | yes |
+| `--probe-wintab-mapping [seconds-per-mode] [samples.csv]` | The mapping probe above | yes |
+| `--report-wintab-mapping <samples.csv>` | Reports on saved mapping samples | no |
+
+```bash
+dotnet run --project WinPenKit.TestConsole -- --selftest-clock
+```
 
 ## Native C++ / Rust Gotchas
 
@@ -682,3 +679,7 @@ Using `uint` (4 bytes) for `pkContext` in the PACKET struct silently shifts all 
 ### 12. WinForms: NativeWindow.AssignHandle crashes on Form HWNDs
 
 Use `IMessageFilter` instead — it intercepts messages at the app message pump level without touching HWND ownership. This is how `WinPenKit.WinForms` works.
+
+### 13. The native DLL does not reopen a lost Wintab context
+
+After a tablet service restart, a native Wintab session stops receiving packets and reports nothing. Stop and start the session again. The managed library reopens on its own ([Wintab context recovery](#wintab-context-recovery)).

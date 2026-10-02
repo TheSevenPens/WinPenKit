@@ -19,11 +19,14 @@ Eight demo apps. Seven prove the WinPenKit SDK end-to-end, with bitmap-backed re
 | Scribble.Win32 | Win32/GDI | GDI BitBlt | C++ | System, Digitizer, WM_Pointer |
 | Scribble.Rust | egui | tiny-skia | Rust | System, Digitizer, WM_Pointer |
 | Scribble.WinUI | WinUI 3 | SkiaSharp | C# | System, Digitizer, WinUI Pointer |
+| Scribble.WinUINative | WinUI 3 (C++/WinRT) | Skia C API | C++ | System, Digitizer, WinUI pointer events (its own `XamlPointerSource`) |
 | Scribble.Wpf | WPF | SkiaSharp | C# | System, Digitizer, WPF Stylus |
 | Scribble.WinForms | WinForms | SkiaSharp | C# | System, Digitizer, WinForms Pointer |
 | Scribble.Avalonia | Avalonia | SkiaSharp | C# | System, Digitizer, Avalonia Pointer |
-| WinPenKit.TestConsole | Console | (headless) | C# | System, Digitizer |
 | Scribble.Qt | Qt 6 Widgets | QPainter / QImage | C++ | **no WinPenKit** — Qt WM_Pointer or Qt WinTab |
+
+`WinPenKit.TestConsole` is a console tool rather than a Scribble app; it is described
+below.
 
 ## How these samples lay down ink, and why it bounds a Krita comparison
 
@@ -112,17 +115,22 @@ WinUI 3 drawing app with the most detailed ribbon UI.
   - **ORIENTATION** — azimuth, altitude, twist, tiltX, tiltY (all in degrees)
 - **SkiaSharp bitmap-backed rendering** — `SKCanvas.DrawLine()` to `SKBitmap`, copied to WinUI `WriteableBitmap` via `IBuffer.AsStream()`
 - Correct DPI handling on high-DPI multi-monitor setups (225%+ scaling)
-- Digitizer hi-res mode preserving full tablet-native precision (~5280 LPI)
+- Wintab (high-res) mode, which keeps the fractional desktop position
 - Unpackaged app — requires DPI manifest in `app.manifest`
 
-Uses `WinPenKit` + `WinPenKit.WinUI` via `PenSessionWinUI3` wrapper for desktop → canvas DIP conversion.
+Uses `WinPenKit` + `WinPenKit.WinUI` through the `PenSessionWinUI3` wrapper class, which is in
+`Scribble.WinUI/WintabSessionWinUI3.cs` (the file kept its older name). The wrapper converts
+desktop pixels to canvas DIPs and forwards `OnActivated` and `RefreshMapping` to the session.
 
 ## Scribble.Wpf
 
 WPF drawing app with SkiaSharp rendering.
 
 - **SkiaSharp bitmap-backed rendering** — `SKCanvas.DrawLine()` to `SKBitmap`, pixel-copied to WPF `WriteableBitmap` via `Buffer.MemoryCopy`
-- `PointFromScreen` for automatic DPI-correct coordinate conversion
+- Coordinate conversion through `WpfCoordinates.GetTransform`, **not** `PointFromScreen`, which
+  truncates every pen position to a whole device pixel. The canvas origin is read again on every
+  render tick that has points, so moving the window does not leave it stale
+- Per-Monitor V2 declared in `app.manifest`
 - WPF Stylus backend uses `StylusMove`/`StylusDown` events
 
 Uses `WinPenKit` + `WinPenKit.Wpf`.
@@ -147,14 +155,35 @@ Avalonia drawing app with SkiaSharp rendering.
 
 Uses `WinPenKit` + `WinPenKit.Avalonia`.
 
+## Scribble.WinUINative
+
+WinUI 3 through C++/WinRT, with no .NET runtime in the process. Full notes in
+[Scribble.WinUINative/README.md](../Scribble.WinUINative/README.md).
+
+- Pen input through `WinPenKit.Native`, the same C ABI `Scribble.Win32` uses
+- Raster through Skia's C API (`libSkiaSharp.dll`), taken from the SkiaSharp NuGet package the
+  managed samples restore
+- UI built in code rather than XAML markup
+- **No WM_POINTER entry.** A native WM_POINTER session subclassing any of the windows WinUI
+  creates received zero points, because WinUI consumes pointer input first. The pointer option is
+  WinUI's own pointer events, shaped into `PenPoint` by `XamlPointerSource`
+  (`Scribble.WinUINative/src/xamlpointer.h`)
+- Shares `Scribble.Win32/src/selftest.h`, so it answers the same checks with the same ids
+
 ## WinPenKit.TestConsole
 
-Headless console app for verifying Wintab backends without a GUI. Useful for debugging session creation, packet delivery, and telemetry values.
+Console tool for checking the Wintab backends without a GUI, and the host for the clock
+self-test and the Wintab probes.
 
 - Discovers available APIs via `PenSessionFactory.GetAvailableApis()`
 - Interactive API selection
 - Prints live pen data at 10 Hz (position, pressure, buttons, cursor)
 - WM_Pointer not available (no window handle) — correctly reports the error
+- Wintab delivers packets to the foreground application, so the console receives them only while
+  a window of its own holds the foreground
+- Flags `--selftest-clock`, `--verify-wintab-anchoring`, `--probe-wintab-epoch`,
+  `--probe-wintab-mapping` and `--report-wintab-mapping`: see
+  [HOW_TO_USE.md → TestConsole flags](HOW_TO_USE.md#testconsole-flags)
 
 ## Scribble.Qt
 
