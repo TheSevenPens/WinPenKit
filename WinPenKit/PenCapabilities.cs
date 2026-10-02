@@ -17,6 +17,10 @@ public enum PenCapabilities
     Tilt = 1 << 1,
 
     /// <summary>Barrel twist (pen rotation around its long axis).</summary>
+    /// <remarks>
+    /// Means the backend reads twist from its API. A pen without a rotation sensor still
+    /// reports 0, on every backend.
+    /// </remarks>
     Twist = 1 << 2,
 
     /// <summary>Z-axis height above the tablet surface.</summary>
@@ -48,14 +52,15 @@ public enum PenCapabilities
     GlobalCapture = 1 << 7,
 
     /// <summary>
-    /// The session reports proximity, so <see cref="PenPoint.IsInProximity"/> means something.
+    /// The session reports the pen leaving proximity, as a point with
+    /// <see cref="PenPoint.IsInProximity"/> false.
     /// </summary>
     /// <remarks>
-    /// Without this flag <see cref="PenPoint.IsInProximity"/> is false on every point the
-    /// session produces, including hover points it does report. The five pointer backends
-    /// leave <see cref="PenPoint.Status"/> at zero because the pointer APIs carry no
-    /// equivalent of Wintab's proximity bit, so a consumer that uses the property to tell
-    /// hover from no-pen has to ask this first.
+    /// Without this flag <see cref="PenPoint.IsInProximity"/> is true on every point the
+    /// session produces. The five pointer backends leave <see cref="PenPoint.Status"/> at zero
+    /// because the pointer APIs carry no equivalent of Wintab's proximity bit: every point they
+    /// deliver is in range, and no point marks the pen leaving. A consumer that needs to know
+    /// when the pen has gone has to ask this first, or time out on the absence of points.
     /// </remarks>
     Proximity = 1 << 8,
 }

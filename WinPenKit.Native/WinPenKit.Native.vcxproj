@@ -75,6 +75,7 @@
     <ClInclude Include="src\wintab_session_impl.h" />
     <ClInclude Include="src\wm_pointer_session_impl.h" />
     <ClInclude Include="src\scale_axis.h" />
+    <ClInclude Include="src\tilt.h" />
     <ClInclude Include="src\log.h" />
   </ItemGroup>
   <ItemGroup>

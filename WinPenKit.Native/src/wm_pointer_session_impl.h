@@ -44,7 +44,7 @@ public:
     int  max_pressure() const { return 1024; } // WM_POINTER fixed range
     bool is_running() const { return running_; }
 
-    void refresh_mapping() {} // no mapping needed for screen-pixel output
+    void refresh_mapping() {} // device rects are re-read when the source device changes
 
     /// Whether positions are carrying sub-pixel precision rather than whole pixels.
     bool is_hi_res() const { return hi_res_; }

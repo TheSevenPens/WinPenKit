@@ -140,9 +140,10 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
     /// </para>
     /// <para>
     /// A context is leaked by any process that dies without calling <c>WTClose</c>: killed,
-    /// crashed, or stopped from a debugger. On the driver this was measured against, the driver
-    /// never takes it back. So when a log shows an "after opening" with no "after closing", the
-    /// run it came from leaked one, and the next run's first line will be two higher. See
+    /// crashed, or stopped from a debugger. On the Wacom driver this was measured against, the
+    /// driver collected about half of a leak at the next pen input and kept the rest until the
+    /// tablet service restarted. So when a log shows an "after opening" with no "after closing",
+    /// the run it came from leaked, and the next run's "before opening" line may be higher. See
     /// <c>Docs/WINTAB-CONTEXT-LEAK.md</c>.
     /// </para>
     /// <para>
@@ -398,6 +399,8 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
 
             Interlocked.Increment(ref _delivered);
 
+            var (tiltX, tiltY) = PenTilt.ToPlanar(
+                pkt.pkOrientation.orAzimuth / 10.0, pkt.pkOrientation.orAltitude / 10.0);
             _points.Enqueue(new PenPoint(
                 DesktopX: desktopX,
                 DesktopY: desktopY,
@@ -407,8 +410,8 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
                 Azimuth: pkt.pkOrientation.orAzimuth / 10.0,
                 Altitude: pkt.pkOrientation.orAltitude / 10.0,
                 Twist: pkt.pkOrientation.orTwist / 10.0,
-                TiltX: SphericalToTiltX(pkt.pkOrientation.orAzimuth, pkt.pkOrientation.orAltitude),
-                TiltY: SphericalToTiltY(pkt.pkOrientation.orAzimuth, pkt.pkOrientation.orAltitude),
+                TiltX: tiltX,
+                TiltY: tiltY,
                 Z: pkt.pkZ,
                 Status: pkt.pkStatus,
                 Buttons: pkt.pkButtons,
@@ -453,22 +456,6 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
             return ((dIn - dInOrg) * Math.Abs(dOutExt) / Math.Abs(dInExt)) + dOutOrg;
         else
             return ((Math.Abs(dInExt) - (dIn - dInOrg)) * Math.Abs(dOutExt) / Math.Abs(dInExt)) + dOutOrg;
-    }
-
-    // ── Tilt conversion ────────────────────────────────────────────
-
-    protected static double SphericalToTiltX(int azimuth, int altitude)
-    {
-        double tiltMag = 90.0 - altitude / 10.0; // degrees from vertical
-        double azRad = azimuth / 10.0 * Math.PI / 180.0;
-        return -tiltMag * Math.Sin(azRad);
-    }
-
-    protected static double SphericalToTiltY(int azimuth, int altitude)
-    {
-        double tiltMag = 90.0 - altitude / 10.0;
-        double azRad = azimuth / 10.0 * Math.PI / 180.0;
-        return tiltMag * Math.Cos(azRad);
     }
 
     // ── Queries ──────────────────────────────────────────────────

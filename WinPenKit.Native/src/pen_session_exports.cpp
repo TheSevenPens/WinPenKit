@@ -92,7 +92,7 @@ PenSessionHandle pen_session_create(PenInputApi api) {
 
     case PEN_API_WM_POINTER:
         s->pointer = new (std::nothrow) WmPointerSessionImpl();
-        s->capabilities = PEN_CAP_PRESSURE | PEN_CAP_TILT | PEN_CAP_BUTTONS |
+        s->capabilities = PEN_CAP_PRESSURE | PEN_CAP_TILT | PEN_CAP_TWIST | PEN_CAP_BUTTONS |
                           PEN_CAP_ERASER;
         break;
 

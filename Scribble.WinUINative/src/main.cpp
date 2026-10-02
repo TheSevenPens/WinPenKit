@@ -192,7 +192,8 @@ void tick() {
         // only when something was drawn: a hover that moves and draws nothing is exactly what
         // the proximity row is for.
         g_readout.hasData     = true;
-        g_readout.inProximity = (pt.status & 0x0001) != 0 || pt.pressure > 0;
+        // Bit 0 is Wintab's TPS_PROXIMITY, set when the pen is out of the context.
+        g_readout.inProximity = (pt.status & 0x0001) == 0 || pt.pressure > 0;
         g_readout.screenX = pt.desktop_x;
         g_readout.screenY = pt.desktop_y;
         g_readout.appX    = pt.desktop_x - clientOrigin.x;

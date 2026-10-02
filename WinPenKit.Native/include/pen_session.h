@@ -42,7 +42,7 @@ typedef enum {
     PEN_API_WINUI_POINTER    = 3,  // WinUI 3 XAML events (managed only)
     PEN_API_WPF_STYLUS       = 4,  // WPF stylus events (managed only)
     PEN_API_AVALONIA_POINTER = 5,  // Avalonia pointer events (managed only)
-    PEN_API_WINFORMS_POINTER = 6   // WinForms NativeWindow WndProc (managed only)
+    PEN_API_WINFORMS_POINTER = 6   // WinForms IMessageFilter (managed only)
 } PenInputApi;
 
 // ── Capabilities flags ──────────────────────────────────────────
@@ -87,7 +87,7 @@ typedef struct {
     double   tilt_x;      // planar: degrees (-90.0 to +90.0), positive = tilt right
     double   tilt_y;      // planar: degrees (-90.0 to +90.0), positive = tilt toward user
     int32_t  z;
-    uint32_t status;
+    uint32_t status;      // Wintab pkStatus; bit 0 (TPS_PROXIMITY) is set when the pen is out of the context. 0 on WM_POINTER
     uint32_t buttons;
     uint32_t cursor;
     int32_t  source;      // PenInputApi that produced this point
