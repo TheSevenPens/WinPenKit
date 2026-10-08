@@ -338,10 +338,18 @@ Those last three frameworks used to report `DesktopX` truncated to `int`. That i
 ### How big the tablet is: `PhysicalArea`
 
 `session.PhysicalArea` is the active area in millimetres, or `null` where the session cannot say.
-Today that is the two Wintab sessions, which ask the driver: `WTInfoA(WTI_DEVICES, DVC_X / DVC_Y)`
+The Wintab sessions ask the driver: `WTInfoA(WTI_DEVICES, DVC_X / DVC_Y)`
 returns an `AXIS` whose `axUnits` (`TU_INCHES` or `TU_CENTIMETERS`) and `axResolution` (a 16.16
 fixed-point count per unit) give the size of a count. It is `null` for a driver that declares
-`TU_NONE` or `TU_CIRCLE`, or a zero resolution, and on every other backend.
+`TU_NONE` or `TU_CIRCLE`, or a zero resolution.
+
+The WM_POINTER session answers too, from `GetPointerDeviceRects`: the device rect is documented as
+HIMETRIC (0.01 mm) and the display rect is the pixels it lands on, the same two rectangles the
+position is normalised between. It has nothing to say until the pen has been seen, because the rects
+belong to the device a point came from, and it cannot tell the whole tablet from the mapped part, so
+both are the device rect. Measured on a Wacom driver, where it agrees with Wintab for the same
+tablet; not yet seen on another vendor's. The Avalonia, WPF, WinUI and WinForms sessions return
+`null`.
 
 It carries three things, because the whole device is not what `DesktopX` is drawn from:
 
