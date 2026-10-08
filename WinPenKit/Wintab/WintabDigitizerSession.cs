@@ -161,6 +161,8 @@ internal sealed class WintabDigitizerSession : WintabSessionBase
 
     private void CacheSystemMapping(in LogContext lc)
     {
+        NoteMapping(lc);
+
         _mapInOrgX = lc.lcInOrgX;
         _mapInOrgY = lc.lcInOrgY;
         _mapInExtX = lc.lcInExtX;
