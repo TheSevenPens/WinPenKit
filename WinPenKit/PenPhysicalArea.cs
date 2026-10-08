@@ -22,6 +22,13 @@ namespace WinPenKit;
 /// better than the positions are: a driver that places the pen wrongly on the desktop (see
 /// issues 129 and 130) has its distances wrong by the same factor.
 /// </para>
+/// <para>
+/// <b>The mapped figures can overstate what the pen reaches.</b> They are the context's rectangles,
+/// and neither Wintab nor WM_POINTER says when the driver has cropped the tablet to one display:
+/// measured with the display mapping set to a single monitor, only part of the tablet delivered
+/// anything while these still described all of it. The scale is unaffected; the extent is not.
+/// See <c>Docs/PEN-SWEEP.md</c>.
+/// </para>
 /// </remarks>
 /// <param name="DeviceWidthMm">The whole active area, horizontally.</param>
 /// <param name="DeviceHeightMm">The whole active area, vertically.</param>

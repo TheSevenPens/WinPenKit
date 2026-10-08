@@ -43,6 +43,7 @@ Demo apps that exercise the SDK end-to-end, all with bitmap-backed rendering and
 |---|---|
 | WinPenKit.TestConsole | Console host for the Wintab sessions, the clock self-test, and the Wintab epoch and mapping probes |
 | WinPenKit.MappingWizard | Checks whether each pen API puts the pen under the cursor across display and tablet configurations ([Docs/MAPPING-WIZARD.md](Docs/MAPPING-WIZARD.md)) |
+| WinPenKit.SweepProbe | Measures what a tablet's coordinates mean: the whole range the pen reaches against the cursor, millimetres a pixel, and any cropping ([Docs/PEN-SWEEP.md](Docs/PEN-SWEEP.md)) |
 | Samples/ContextCount | Plain C programs that read and leak Wintab contexts ([Docs/WINTAB-CONTEXT-LEAK.md](Docs/WINTAB-CONTEXT-LEAK.md)) |
 
 ### Verifying a build
@@ -128,6 +129,7 @@ See the [Docs/](Docs/) folder for:
 - [HOW_TO_USE.md](Docs/HOW_TO_USE.md): Usage guide with gotchas and best practices
 - [ARCHITECTURE.md](Docs/ARCHITECTURE.md): How WinPenKit works, backend by backend: delivery, timing, position mapping, values, and managed versus native
 - [STYLUS.md](Docs/STYLUS.md): The Wintab and WM_POINTER input paths, and runtime switching between them
+- [PEN-SWEEP.md](Docs/PEN-SWEEP.md): Measuring what a tablet's coordinates mean, and what was learned doing it
 - [TIMESTAMPS.md](Docs/TIMESTAMPS.md): How each backend's timestamp was measured, and how wrapping counters are handled
 - [SCRIBBLE-APPS.md](Docs/SCRIBBLE-APPS.md): Details on each scribble demo app
 - [SELF-TEST.md](Docs/SELF-TEST.md): `--selftest` and `--replay`: what they check, and what they do not
