@@ -92,6 +92,52 @@ internal sealed class WmPointerSession : IPenSession
     }
 
     public int MaxPressure => 1024; // WM_POINTER fixed range
+
+    /// <summary>
+    /// The tablet's size in millimetres, from the same device rect the positions are scaled by.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>GetPointerDeviceRects</c> documents the device rect as HIMETRIC, hundredths of a
+    /// millimetre, so its width and height are the surface and the display rect is the pixels
+    /// it lands on. <see cref="ResolvePosition"/> is a normalisation between exactly those two
+    /// rectangles, so the scale this reports is the one the positions were made with.
+    /// </para>
+    /// <para>
+    /// <b>Null until the pen has been seen.</b> The rects belong to the device a point came from
+    /// and are read on its first point, so there is nothing to say at <see cref="Start"/>. Also
+    /// null when the rects are unavailable and positions have fallen back to whole pixels.
+    /// </para>
+    /// <para>
+    /// <b>The device and the mapped area are the same figure here.</b> The pointer API gives one
+    /// rectangle, so it cannot say whether the driver maps only part of the tablet.
+    /// </para>
+    /// <para>
+    /// <b>Whether the rect is really HIMETRIC is the driver's claim.</b> Measured on a Wacom
+    /// driver, where it agrees with Wintab's own figure for the same tablet: 34901 x 19501
+    /// against 34900 x 19500 counts at 1000 a centimetre. Not yet seen on another vendor's.
+    /// </para>
+    /// </remarks>
+    public PenPhysicalArea? PhysicalArea
+    {
+        get
+        {
+            if (!_hiRes) return null;
+
+            // Copied once: the rects are replaced on the thread that receives pointer messages.
+            var device = _deviceRect;
+            var display = _displayRect;
+
+            if (device.Width <= 0 || device.Height <= 0 || display.Width <= 0 || display.Height <= 0)
+                return null;
+
+            double widthMm = device.Width / 100.0;
+            double heightMm = device.Height / 100.0;
+
+            return new PenPhysicalArea(
+                widthMm, heightMm, widthMm, heightMm, display.Width, display.Height);
+        }
+    }
     public bool IsRunning { get; private set; }
     public bool HasNewData => _hasNewData;
     public string DebugInfo => _debugInfo;

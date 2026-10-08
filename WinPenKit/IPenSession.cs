@@ -106,9 +106,9 @@ public interface IPenSession : IDisposable
     /// <para>
     /// The Wintab sessions ask the driver: <c>WTI_DEVICES</c> carries an <c>AXIS</c> for X and Y
     /// whose units and resolution give the size. It is null when the driver declares no physical
-    /// units for the axis (<c>TU_NONE</c>, <c>TU_CIRCLE</c>) or no resolution, and on every other
-    /// backend, which is an ordinary answer and not a fault. The pointer sessions could be
-    /// asked through the device rects and are not yet.
+    /// units for the axis (<c>TU_NONE</c>, <c>TU_CIRCLE</c>) or no resolution, and on the framework
+    /// sessions, which is an ordinary answer and not a fault. The WM_POINTER session answers from
+    /// its device rect once the pen has been seen, and null before.
     /// </para>
     /// <para>
     /// Read from the driver each time rather than cached, so it follows a change of mapping.
