@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Measures what a tablet's coordinates mean: the whole range the pen reaches, against where Windows
+    puts the cursor, in the tablet's own counts. See Docs/PEN-SWEEP.md.
+
+    A console executable on purpose. The `info` mode prints to a terminal and needs no pen; the
+    `sweep` mode opens its own window. Per-monitor DPI awareness is declared by the project and applied by ApplicationConfiguration.Initialize(), and the probe
+    prints the awareness it actually ended up with, because every number it reports depends on it.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <RootNamespace>WinPenKit.SweepProbe</RootNamespace>
+    <AssemblyName>WinPenKit.SweepProbe</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinPenKit\WinPenKit.csproj" />
+  </ItemGroup>
+
+</Project>
