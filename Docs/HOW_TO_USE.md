@@ -460,6 +460,31 @@ Read it as a diagnostic, not a position: sane raw values against a wrong `Deskto
 
 Those last three frameworks used to report `DesktopX` truncated to `int`. That is not a second measurement, it is the first one with its fraction removed, and it defeated the only reason to look at this field. They now report nothing and say so.
 
+### How big the tablet is: `PhysicalArea`
+
+`session.PhysicalArea` is the active area in millimetres, or `null` where the session cannot say.
+Today that is the two Wintab sessions, which ask the driver: `WTInfoA(WTI_DEVICES, DVC_X / DVC_Y)`
+returns an `AXIS` whose `axUnits` (`TU_INCHES` or `TU_CENTIMETERS`) and `axResolution` (a 16.16
+fixed-point count per unit) give the size of a count. It is `null` for a driver that declares
+`TU_NONE` or `TU_CIRCLE`, or a zero resolution, and on every other backend.
+
+It carries three things, because the whole device is not what `DesktopX` is drawn from:
+
+| | |
+|---|---|
+| `DeviceWidthMm`, `DeviceHeightMm` | the whole sensing surface |
+| `MappedWidthMm`, `MappedHeightMm` | the part of it the driver maps to the desktop (the context's input rectangle) |
+| `MappedWidthPixels`, `MappedHeightPixels` | the desktop pixels that part lands on (the context's system rectangle) |
+
+`MillimetresPerPixelX` and `MillimetresPerPixelY` are the mapped size over the mapped pixels,
+which is the scale `ScaleAxis` applies, so a distance in `DesktopX/Y` times them is a distance on
+the tablet. **They are per axis, and they differ.** A tablet mapped across a desktop of a
+different shape stretches it: measured on a 349 x 195 mm Wacom mapped to a 3840 x 3240 desktop,
+a pixel is 0.091 mm across and 0.060 mm down.
+
+The figure is only as good as the positions. A driver that puts the pen in the wrong place on the
+desktop (issues 129 and 130) has its distances wrong by the same factor.
+
 ## Conventions
 
 `PenPoint` has fields whose meaning depends on which backend produced them. `session.Conventions` says which convention is in force:

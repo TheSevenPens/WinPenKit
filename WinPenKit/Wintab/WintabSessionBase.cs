@@ -333,6 +333,94 @@ internal abstract class WintabSessionBase : IPenSession, Diagnostics.IPacketCoun
     protected void RefreshContext(IntPtr hCtx, ref LogContext lc)
     {
         WintabNative.WTGetA(hCtx, ref lc);
+        NoteMapping(lc);
+    }
+
+    // ── Physical area ─────────────────────────────────────────────
+
+    // The rectangles the context maps, kept as the driver last stated them. Written on the thread
+    // that opens or refreshes the context and read on whichever asks for PhysicalArea; four ints
+    // that are only ever replaced together in practice, and a torn read would be a momentary
+    // wrong scale in a diagnostic figure.
+    private int _inExtX, _inExtY, _sysExtX, _sysExtY;
+
+    /// <summary>
+    /// Remember how much of the tablet the context maps, and how many desktop pixels that lands
+    /// on, so <see cref="PhysicalArea"/> describes the same scaling the points were converted by.
+    /// </summary>
+    protected void NoteMapping(in LogContext lc)
+    {
+        _inExtX = lc.lcInExtX;
+        _inExtY = lc.lcInExtY;
+        _sysExtX = lc.lcSysExtX;
+        _sysExtY = lc.lcSysExtY;
+    }
+
+    /// <inheritdoc />
+    public PenPhysicalArea? PhysicalArea
+    {
+        get
+        {
+            try
+            {
+                if (!WintabNative.IsAvailable()) return null;
+                if (_inExtX == 0 || _inExtY == 0 || _sysExtX == 0 || _sysExtY == 0) return null;
+
+                if (!TryQueryAxis(DVC.X, out var x) || !TryQueryAxis(DVC.Y, out var y)) return null;
+                if (MillimetresPerCount(x) is not { } mmX || MillimetresPerCount(y) is not { } mmY)
+                    return null;
+
+                // An axis runs from axMin to axMax inclusive, so 0..34899 is 34900 counts. The
+                // context's extent is already a count and is not adjusted.
+                return new PenPhysicalArea(
+                    DeviceWidthMm: (x.axMax - x.axMin + 1) * mmX,
+                    DeviceHeightMm: (y.axMax - y.axMin + 1) * mmY,
+                    MappedWidthMm: Math.Abs(_inExtX) * mmX,
+                    MappedHeightMm: Math.Abs(_inExtY) * mmY,
+                    MappedWidthPixels: Math.Abs(_sysExtX),
+                    MappedHeightPixels: Math.Abs(_sysExtY));
+            }
+            catch (Exception ex)
+            {
+                Log($"PhysicalArea failed: {ex.Message}");
+                return null;
+            }
+        }
+    }
+
+    private static bool TryQueryAxis(uint index, out Axis axis)
+    {
+        using var buf = UnmanagedBuffer.Create<Axis>();
+        if (WintabNative.WTInfoA(WTI.DEVICES, index, buf.Ptr) == 0)
+        {
+            axis = default;
+            return false;
+        }
+
+        axis = buf.MarshalOut<Axis>();
+        return true;
+    }
+
+    /// <summary>
+    /// The size of one count on this axis, or null where the driver gives no physical unit.
+    /// </summary>
+    /// <remarks>
+    /// <c>axResolution</c> is a FIX32 -- 16.16 -- in counts per <c>axUnits</c>. A driver that
+    /// declares <c>TU_NONE</c> or <c>TU_CIRCLE</c>, or a resolution of zero, has said nothing
+    /// about distance, and this answers null rather than inventing a figure.
+    /// </remarks>
+    private static double? MillimetresPerCount(in Axis axis)
+    {
+        double mmPerUnit = axis.axUnits switch
+        {
+            TU.INCHES => 25.4,
+            TU.CENTIMETERS => 10.0,
+            _ => 0.0,
+        };
+
+        double countsPerUnit = axis.axResolution / 65536.0;
+
+        return mmPerUnit > 0 && countsPerUnit > 0 ? mmPerUnit / countsPerUnit : null;
     }
 
     protected void ConfigurePacketData(ref LogContext lc)

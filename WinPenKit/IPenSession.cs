@@ -97,6 +97,25 @@ public interface IPenSession : IDisposable
     /// <summary>Diagnostic info about the session configuration.</summary>
     string DebugInfo { get; }
 
+    /// <summary>
+    /// The tablet's active area in millimetres, or null where this session cannot say.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The Wintab sessions ask the driver: <c>WTI_DEVICES</c> carries an <c>AXIS</c> for X and Y
+    /// whose units and resolution give the size. It is null when the driver declares no physical
+    /// units for the axis (<c>TU_NONE</c>, <c>TU_CIRCLE</c>) or no resolution, and on every other
+    /// backend, which is an ordinary answer and not a fault. The pointer sessions could be
+    /// asked through the device rects and are not yet.
+    /// </para>
+    /// <para>
+    /// Read from the driver each time rather than cached, so it follows a change of mapping.
+    /// A consumer that wants the figure a recording was made under should read it once, when the
+    /// recording starts.
+    /// </para>
+    /// </remarks>
+    PenPhysicalArea? PhysicalArea => null;
+
     // ── Capture region ──────────────────────────────────────────
 
     /// <summary>

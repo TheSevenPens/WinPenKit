@@ -45,8 +45,19 @@ internal static class STA
 internal static class DVC
 {
     public const uint NAME        = 1;
+    public const uint X           = 12;
+    public const uint Y           = 13;
     public const uint NPRESSURE   = 15;
     public const uint ORIENTATION = 17;
+}
+
+/// <summary>AXIS.axUnits: what an axis's resolution is counted per.</summary>
+internal static class TU
+{
+    public const uint NONE        = 0;
+    public const uint INCHES      = 1;
+    public const uint CENTIMETERS = 2;
+    public const uint CIRCLE      = 3;
 }
 
 /// <summary>Context option flags.</summary>
