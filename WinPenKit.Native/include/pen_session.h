@@ -307,6 +307,33 @@ PEN_API void pen_session_on_activated(PenSessionHandle handle);
 
 PEN_API const char* pen_session_get_log_path(void);
 
+// Wintab identification, queried without opening a session/context. Strings are UTF-8.
+// A PnP ID can be a tablet serial on some Wacom devices; do not assume that meaning.
+// Device indices are driver-local, not persistent. Entries may be retained or virtual.
+typedef struct {
+    uint32_t device_index;
+    const char* name;              // raw DVC_NAME, NULL if unavailable
+    const char* plug_and_play_id;  // raw DVC_PNPID, NULL if unavailable
+} PenWintabDeviceInfo;
+
+typedef struct {
+    const char* identification;    // raw IFC_WINTABID, NULL if unavailable
+    // Packed WORD versions: major = value >> 8, minor = value & 255; -1 if unavailable.
+    // Implementation version is NOT the full installed driver package version.
+    int32_t specification_version;
+    int32_t implementation_version;
+    int32_t device_count;          // -1 if unavailable/invalid; 0 means no devices reported
+    const PenWintabDeviceInfo* devices; // device_count entries, NULL for count <= 0
+} PenWintabInfo;
+
+// NULL if WTInfoW cannot be loaded, does not respond, or the snapshot cannot be allocated.
+// Unsupported/malformed fields remain unavailable. The snapshot is best-effort, not atomic.
+// No dedicated model number, firmware, package version or Wacom Customized field is inferred.
+// The returned snapshot and ALL its pointers are owned by the DLL and remain valid until
+// pen_wintab_free_info. Do not modify them. Query again after device/driver changes.
+PEN_API const PenWintabInfo* pen_wintab_query_info(void);
+PEN_API void pen_wintab_free_info(const PenWintabInfo* info); // accepts NULL
+
 #ifdef __cplusplus
 }
 #endif

@@ -72,6 +72,7 @@
     <ClInclude Include="include\pen_session.h" />
     <ClInclude Include="include\wintab\wintab.h" />
     <ClInclude Include="src\wintab_loader.h" />
+    <ClInclude Include="src\wintab_info.h" />
     <ClInclude Include="src\wintab_session_impl.h" />
     <ClInclude Include="src\wm_pointer_session_impl.h" />
     <ClInclude Include="src\scale_axis.h" />
@@ -81,6 +82,7 @@
   <ItemGroup>
     <ClCompile Include="src\wintab_session_impl.cpp" />
     <ClCompile Include="src\pen_session_exports.cpp" />
+    <ClCompile Include="src\wintab_info.cpp" />
     <ClCompile Include="src\wm_pointer_session_impl.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

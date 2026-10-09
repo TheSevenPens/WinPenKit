@@ -159,6 +159,7 @@ typedef struct tagPACKET {
 // For dynamic loading of Wintab32.dll.
 
 typedef UINT (WINAPI *WTINFOA_FUNC)   (UINT, UINT, LPVOID);
+typedef UINT (WINAPI *WTINFOW_FUNC)   (UINT, UINT, LPVOID);
 typedef HCTX (WINAPI *WTOPENA_FUNC)   (HWND, LOGCONTEXTA*, BOOL);
 typedef BOOL (WINAPI *WTCLOSE_FUNC)   (HCTX);
 typedef BOOL (WINAPI *WTENABLE_FUNC)  (HCTX, BOOL);
