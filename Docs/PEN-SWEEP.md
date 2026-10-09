@@ -55,14 +55,15 @@ desktop is **3840 x 3240**.
 |---|---|
 | Wintab axes | 0..34899 by 0..19499, centimetres, 1000 counts a centimetre: **349 x 195 mm** |
 | Wintab system rectangle | 3840 x 3240, in all four default contexts, whatever the display mapping |
-| tablet mapped to all displays | the cursor follows the pen over the whole L-shaped layout and stops where no monitor exists; raw x reached the full 0..34899, raw y was swept to 3530 and not further |
-| reported position against the cursor | slope 1.000 on both axes, r² 0.9999 or better, in every sweep |
+| tablet mapped to all displays, one sweep of the whole tablet | raw x **2..34899** and raw y **1..19498**, cursor x 0..3839 and y 0..3239: the full tablet, the full desktop, no crop. From the reported position over those raw ends: 0.11003 px a count across (0.09088 mm a pixel), 0.16615 down (0.06019 mm a pixel), the same as `PhysicalArea` says |
+| reported position against the cursor | slope 1.000 on both axes and r² 0.9999 or better in every sweep but one. In the whole-tablet sweep y gave slope 0.991, r² 0.998. The likely cause is the part of the layout with no monitor, where the cursor stands still while the pen moves; that has not been checked sample by sample |
 | cursor against raw, across | 0.1100 px a count, 0.0909 mm a pixel |
 | cursor against raw, down | 0.1662 px a count, 0.0602 mm a pixel |
 | WM_POINTER `PhysicalArea` | 349.01 x 195.01 mm, 0.090888 and 0.060188 mm a pixel, agreeing with Wintab to four digits |
 | WM_POINTER raw units | hundredths of a millimetre, as `PenRawUnits.HundredthsOfMillimetre` says |
 | mapped to DISPLAY1 only (Wintab) | raw y reached **6500 exactly** and no lower |
 | mapped to DISPLAY2 only (Wintab and WM_POINTER) | raw x from **17360** and raw y to **6499**, the lower right of the tablet, in both APIs |
+| the same, swept with the merged `SweepProbe` (Wintab) | raw y reached **0**, the tablet's bottom edge; 0.166158 px a count down, 0.110043 across; position against cursor slope 1.0001 and 1.0000 |
 
 ## Lessons
 
@@ -114,9 +115,6 @@ mapped to one monitor when it did not.
   with itself, which is not the same as being right.
 - **Any vendor but Wacom.** Whether another driver's pointer device rect is really hundredths of a
   millimetre, or what its display mapping does, has not been seen.
-- **Whether the whole tablet delivers.** On this machine the lower third of the tablet was only
-  reached in the cropped runs, not in a single sweep with the tablet mapped to the whole desktop,
-  so the vertical scale across that last third is extrapolated.
 - **A scaled monitor under a recorder window.** Everything above ran with the tablet mapped to
   monitors at their native scale or the desktop as a whole. A Wintab position over a monitor at a
   different scale from the window's has not been compared with that window's own coordinates.
