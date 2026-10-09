@@ -63,6 +63,7 @@ desktop is **3840 x 3240**.
 | WM_POINTER raw units | hundredths of a millimetre, as `PenRawUnits.HundredthsOfMillimetre` says |
 | mapped to DISPLAY1 only (Wintab) | raw y reached **6500 exactly** and no lower |
 | mapped to DISPLAY2 only (Wintab and WM_POINTER) | raw x from **17360** and raw y to **6499**, the lower right of the tablet, in both APIs |
+| the same, swept with the merged `SweepProbe` (Wintab) | raw y reached **0**, the tablet's bottom edge; 0.166158 px a count down, 0.110043 across; position against cursor slope 1.0001 and 1.0000 |
 
 ## Lessons
 
@@ -114,9 +115,10 @@ mapped to one monitor when it did not.
   with itself, which is not the same as being right.
 - **Any vendor but Wacom.** Whether another driver's pointer device rect is really hundredths of a
   millimetre, or what its display mapping does, has not been seen.
-- **Whether the whole tablet delivers.** On this machine the lower third of the tablet was only
-  reached in the cropped runs, not in a single sweep with the tablet mapped to the whole desktop,
-  so the vertical scale across that last third is extrapolated.
+- **A single sweep of the whole tablet.** The lower third of the tablet has been reached, and
+  measured: with the tablet mapped to DISPLAY2 only, raw y went down to 0 and the cursor followed it
+  at the same 0.166 px a count as the rest. But that was in a cropped run, and the upper two-thirds
+  came from other runs. No one sweep has covered the whole tablet in one go.
 - **A scaled monitor under a recorder window.** Everything above ran with the tablet mapped to
   monitors at their native scale or the desktop as a whole. A Wintab position over a monitor at a
   different scale from the window's has not been compared with that window's own coordinates.
