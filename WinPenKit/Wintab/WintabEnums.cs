@@ -27,6 +27,10 @@ internal static class WTI
 /// <summary>WTI_INTERFACE sub-indices. What the driver is, rather than what it is doing.</summary>
 internal static class IFC
 {
+    public const uint WINTABID = 1;
+    public const uint SPECVERSION = 2;
+    public const uint IMPLVERSION = 3;
+    public const uint NDEVICES = 4;
     /// <summary>The most contexts the driver will have open at one time.</summary>
     public const uint NCONTEXTS = 6;
 }
@@ -49,6 +53,7 @@ internal static class DVC
     public const uint Y           = 13;
     public const uint NPRESSURE   = 15;
     public const uint ORIENTATION = 17;
+    public const uint PNPID       = 19;
 }
 
 /// <summary>AXIS.axUnits: what an axis's resolution is counted per.</summary>

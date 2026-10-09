@@ -51,7 +51,7 @@ public readonly record struct WintabContextTable(uint Open, uint Maximum)
 /// and whether to say anything to anyone, belongs to the application.
 /// </para>
 /// </remarks>
-public static class WintabDiagnostics
+public static partial class WintabDiagnostics
 {
     /// <summary>
     /// Where this process writes its Wintab log, whether or not it has written anything yet.

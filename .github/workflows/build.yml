@@ -42,6 +42,15 @@ jobs:
       - name: Build .NET
         run: dotnet build WinPenKit.slnx -c Release
 
+      - name: Test Wintab metadata (.NET, no tablet required)
+        run: dotnet run --project WinPenKit.TestConsole -c Release --no-build -- --selftest-wintab-info
+
+      - name: Build Wintab metadata tests (native)
+        run: msbuild WinPenKit.Native.Tests/WinPenKit.Native.Tests.vcxproj -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143
+
+      - name: Test Wintab metadata (native, no tablet required)
+        run: ./WinPenKit.Native.Tests/bin/Release/WinPenKit.Native.Tests.exe
+
       - name: Build WinUI (msbuild)
         run: |
           msbuild WinPenKit.WinUI/WinPenKit.WinUI.csproj -p:Configuration=Release -p:Platform=x64 -restore

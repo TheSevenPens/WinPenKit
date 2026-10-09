@@ -307,6 +307,79 @@ PEN_API void pen_session_on_activated(PenSessionHandle handle);
 
 PEN_API const char* pen_session_get_log_path(void);
 
+// Wintab identification, queried without opening a session/context. Strings are UTF-8.
+// A PnP ID can be a tablet serial on some Wacom devices; do not assume that meaning.
+// Device indices are driver-local, not persistent. Entries may be retained or virtual.
+typedef struct {
+    uint32_t device_index;
+    const char* name;              // raw DVC_NAME, NULL if unavailable
+    const char* plug_and_play_id;  // raw DVC_PNPID, NULL if unavailable
+} PenWintabDeviceInfo;
+
+typedef struct {
+    const char* identification;    // raw IFC_WINTABID, NULL if unavailable
+    // Packed WORD versions: major = value >> 8, minor = value & 255; -1 if unavailable.
+    // Implementation version is NOT the full installed driver package version.
+    int32_t specification_version;
+    int32_t implementation_version;
+    int32_t device_count;          // -1 if unavailable/invalid; 0 means no devices reported
+    const PenWintabDeviceInfo* devices; // device_count entries, NULL for count <= 0
+} PenWintabInfo;
+
+// NULL if WTInfoW cannot be loaded, does not respond, or the snapshot cannot be allocated.
+// Unsupported/malformed fields remain unavailable. The snapshot is best-effort, not atomic.
+// No dedicated model number, firmware, package version or Wacom Customized field is inferred.
+// The returned snapshot and ALL its pointers are owned by the DLL and remain valid until
+// pen_wintab_free_info. Do not modify them. Query again after device/driver changes.
+PEN_API const PenWintabInfo* pen_wintab_query_info(void);
+PEN_API void pen_wintab_free_info(const PenWintabInfo* info); // accepts NULL
+
+typedef enum {
+    PEN_WINDOWS_DEVICE_MISSING_IDENTIFIER = 0,
+    PEN_WINDOWS_DEVICE_NOT_FOUND = 1,
+    PEN_WINDOWS_DEVICE_AMBIGUOUS = 2,
+    PEN_WINDOWS_DEVICE_MATCHED_INSTANCE_ID = 3,
+    PEN_WINDOWS_DEVICE_MATCHED_USB_SERIAL = 4,
+    PEN_WINDOWS_DEVICE_UNAVAILABLE = 5
+} PenWindowsDeviceMatchStatus;
+
+// One present Windows device node; strings are UTF-8, NULL means unavailable.
+typedef struct {
+    const char* instance_id;
+    const char* friendly_name;
+    const char* device_description;
+    const char* bus_reported_name;
+    const char* manufacturer;
+    const char* container_id; // GUID string, NULL if unavailable
+    int32_t hardware_id_count; // -1 if unavailable
+    const char* const* hardware_ids;
+    int32_t has_unique_instance_id; // -1 unavailable, 0 false, 1 true
+    int32_t usb_vendor_id; // -1 unavailable, otherwise unsigned 16-bit
+    int32_t usb_product_id;
+    int32_t usb_device_revision; // bcdDevice; not a promised firmware version
+    const char* driver_provider;
+    const char* driver_version; // device-node INF version, not installer/package version
+    const char* driver_date; // INF date in UTC yyyy-MM-dd, not installation time
+} PenWindowsDeviceInfo;
+
+typedef struct {
+    PenWindowsDeviceMatchStatus status;
+    uint32_t candidate_count;
+    const PenWindowsDeviceInfo* candidates; // one on success, multiple on ambiguity
+    uint32_t container_device_count;
+    const PenWindowsDeviceInfo* container_devices; // matched node plus nodes with same nonempty container
+} PenWindowsDeviceLookupResult;
+
+// Optional synchronous SetupAPI lookup; call off the input/render thread. No Wintab load/context.
+// Input is a raw DVC_PNPID (UTF-8). Exact instance ID first, then whole serial on unique-ID USB
+// roots. No substring/name/hardware-ID matching. Ambiguous matches have no container_devices.
+// Windows containers may include hubs/attached peripherals; membership does not prove tablet ownership.
+// Missing input yields MISSING_IDENTIFIER. Enumeration failure yields UNAVAILABLE; NULL means
+// allocation failure or invalid UTF-8 input. No caching: hot-plug/properties may change mid-query.
+// All result pointers belong to the DLL until free; never modify or free members separately.
+PEN_API const PenWindowsDeviceLookupResult* pen_wintab_query_windows_device(const char* pnp_id);
+PEN_API void pen_wintab_free_windows_device(const PenWindowsDeviceLookupResult* result); // accepts NULL
+
 #ifdef __cplusplus
 }
 #endif

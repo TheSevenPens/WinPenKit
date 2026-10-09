@@ -29,6 +29,9 @@ internal static partial class WintabNative
     [LibraryImport("Wintab32.dll", EntryPoint = "WTInfoA")]
     internal static partial uint WTInfoA(uint wCategory, uint nIndex, IntPtr lpOutput);
 
+    [LibraryImport("Wintab32.dll", EntryPoint = "WTInfoW")]
+    internal static partial uint WTInfoW(uint wCategory, uint nIndex, IntPtr lpOutput);
+
     // ── Context lifecycle ────────────────────────────────────────
 
     [DllImport("Wintab32.dll", CharSet = CharSet.Ansi)]

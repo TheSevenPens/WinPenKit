@@ -2,6 +2,29 @@ using WinPenKit;
 using WinPenKit.Diagnostics;
 using WinPenKit.TestConsole;
 
+if (args.Contains("--selftest-wintab-info"))
+    Environment.Exit(WintabInfoSelfTest.Run() | WindowsDeviceInfoSelfTest.Run());
+
+if (args.Contains("--wintab-windows-info"))
+{
+    var devices = WintabDiagnostics.QueryInfo()?.Devices;
+    if (devices is null || devices.Count == 0) Environment.Exit(1);
+    var results = devices!.Select(device => new { device.DeviceIndex,
+        Result = WintabDiagnostics.QueryWindowsDevice(device.PlugAndPlayId) }).ToArray();
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(results,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } }));
+    Environment.Exit(results.All(r => r.Result.Status is WindowsDeviceMatchStatus.MatchedInstanceId or WindowsDeviceMatchStatus.MatchedUsbSerial) ? 0 : 2);
+}
+
+// Context-free discovery for applications that need tablet identification, not pen input.
+if (args.Contains("--wintab-info"))
+{
+    var info = WintabDiagnostics.QueryInfo();
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(info,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    Environment.Exit(info is null ? 1 : 0);
+}
+
 // The clock checks need no tablet and no window, so they run before discovery -- which asks
 // for one, and would turn a headless check into a prompt nobody answers.
 if (args.Any(a => string.Equals(a, "--selftest-clock", StringComparison.OrdinalIgnoreCase)))

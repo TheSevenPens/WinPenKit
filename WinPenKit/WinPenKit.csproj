@@ -12,6 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="WinPenKit.TestConsole" />
     <!-- The mapping wizard reports which desktop map a Wintab session chose. -->
     <InternalsVisibleTo Include="WinPenKit.MappingWizard" />
   </ItemGroup>
