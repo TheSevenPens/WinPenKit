@@ -24,6 +24,8 @@
   <ItemGroup>
     <ClCompile Include="wintab_info_test.cpp" />
     <ClCompile Include="..\WinPenKit.Native\src\wintab_info.cpp" />
+    <ClCompile Include="..\WinPenKit.Native\src\windows_device_info.cpp" />
+    <ClCompile Include="windows_device_info_test.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

@@ -125,7 +125,7 @@ pen_session_destroy(session);
 ## Documentation
 
 See the [Docs/](Docs/) folder for:
-- [WINTAB-METADATA.md](Docs/WINTAB-METADATA.md) — device names, raw PnP IDs and Wintab versions without opening a pen session
+- [WINTAB-METADATA.md](Docs/WINTAB-METADATA.md) — Wintab identification plus optional Windows device names, USB IDs and per-node driver details
 - [GETTING-STARTED.md](Docs/GETTING-STARTED.md): Project overview and setup
 - [HOW_TO_USE.md](Docs/HOW_TO_USE.md): Usage guide with gotchas and best practices
 - [ARCHITECTURE.md](Docs/ARCHITECTURE.md): How WinPenKit works, backend by backend: delivery, timing, position mapping, values, and managed versus native

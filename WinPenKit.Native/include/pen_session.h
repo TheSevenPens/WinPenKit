@@ -334,6 +334,52 @@ typedef struct {
 PEN_API const PenWintabInfo* pen_wintab_query_info(void);
 PEN_API void pen_wintab_free_info(const PenWintabInfo* info); // accepts NULL
 
+typedef enum {
+    PEN_WINDOWS_DEVICE_MISSING_IDENTIFIER = 0,
+    PEN_WINDOWS_DEVICE_NOT_FOUND = 1,
+    PEN_WINDOWS_DEVICE_AMBIGUOUS = 2,
+    PEN_WINDOWS_DEVICE_MATCHED_INSTANCE_ID = 3,
+    PEN_WINDOWS_DEVICE_MATCHED_USB_SERIAL = 4,
+    PEN_WINDOWS_DEVICE_UNAVAILABLE = 5
+} PenWindowsDeviceMatchStatus;
+
+// One present Windows device node; strings are UTF-8, NULL means unavailable.
+typedef struct {
+    const char* instance_id;
+    const char* friendly_name;
+    const char* device_description;
+    const char* bus_reported_name;
+    const char* manufacturer;
+    const char* container_id; // GUID string, NULL if unavailable
+    int32_t hardware_id_count; // -1 if unavailable
+    const char* const* hardware_ids;
+    int32_t has_unique_instance_id; // -1 unavailable, 0 false, 1 true
+    int32_t usb_vendor_id; // -1 unavailable, otherwise unsigned 16-bit
+    int32_t usb_product_id;
+    int32_t usb_device_revision; // bcdDevice; not a promised firmware version
+    const char* driver_provider;
+    const char* driver_version; // device-node INF version, not installer/package version
+    const char* driver_date; // INF date in UTC yyyy-MM-dd, not installation time
+} PenWindowsDeviceInfo;
+
+typedef struct {
+    PenWindowsDeviceMatchStatus status;
+    uint32_t candidate_count;
+    const PenWindowsDeviceInfo* candidates; // one on success, multiple on ambiguity
+    uint32_t container_device_count;
+    const PenWindowsDeviceInfo* container_devices; // matched node plus nodes with same nonempty container
+} PenWindowsDeviceLookupResult;
+
+// Optional synchronous SetupAPI lookup; call off the input/render thread. No Wintab load/context.
+// Input is a raw DVC_PNPID (UTF-8). Exact instance ID first, then whole serial on unique-ID USB
+// roots. No substring/name/hardware-ID matching. Ambiguous matches have no container_devices.
+// Windows containers may include hubs/attached peripherals; membership does not prove tablet ownership.
+// Missing input yields MISSING_IDENTIFIER. Enumeration failure yields UNAVAILABLE; NULL means
+// allocation failure or invalid UTF-8 input. No caching: hot-plug/properties may change mid-query.
+// All result pointers belong to the DLL until free; never modify or free members separately.
+PEN_API const PenWindowsDeviceLookupResult* pen_wintab_query_windows_device(const char* pnp_id);
+PEN_API void pen_wintab_free_windows_device(const PenWindowsDeviceLookupResult* result); // accepts NULL
+
 #ifdef __cplusplus
 }
 #endif

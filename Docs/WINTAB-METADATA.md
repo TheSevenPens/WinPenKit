@@ -71,8 +71,9 @@ Packet serial numbers are event sequence numbers and are unrelated to tablet ser
 
 There are no dedicated standard queries for a model number, tablet firmware values,
 the full installed driver package version, or Wacom Center's **Customized** value.
-This API does not infer them from descriptions or substitute the specification
-version for the driver version. Those values need separate platform/vendor support.
+The Wintab query does not infer them from descriptions or substitute the specification
+version for the driver version. The optional Windows lookup below adds device-node
+information; firmware and installer/package versions still need vendor-specific support.
 
 Device indices are driver-local, not stable hardware identifiers. Entries can
 include virtual devices or devices retained in driver preferences; enumeration is
@@ -85,6 +86,79 @@ WORD/UINT width. Reads reserve at least the driver's largest reported category.
 Malformed fields, allocations reported above 1 MiB, and device counts exceeding
 the 100 device categories are rejected. Wintab has no destination-capacity argument:
 as with other Wintab calls, memory safety still relies on a conforming native driver.
+
+## Optional Windows device lookup
+
+To correlate a raw Wintab identifier with richer Windows records:
+
+```csharp
+var tablet = WintabDiagnostics.QueryInfo()?.Devices?.FirstOrDefault();
+var details = WintabDiagnostics.QueryWindowsDevice(tablet?.PlugAndPlayId);
+if (details.Status is WindowsDeviceMatchStatus.MatchedInstanceId or WindowsDeviceMatchStatus.MatchedUsbSerial)
+{
+    var matched = details.Candidates[0];
+    Console.WriteLine(matched.BusReportedName ?? matched.FriendlyName ?? matched.DeviceDescription);
+    Console.WriteLine($"USB: {matched.UsbVendorId:X4}:{matched.UsbProductId:X4}");
+    foreach (var node in details.ContainerDevices)
+        Console.WriteLine($"{node.InstanceId}: {node.DriverProvider} {node.DriverVersion}");
+}
+```
+
+Native callers use `pen_wintab_query_windows_device(info->devices[i].plug_and_play_id)`
+and `pen_wintab_free_windows_device(result)`. Input/output strings are UTF-8. The
+result owns all its strings and arrays until freed, independently of the original
+Wintab snapshot. Null input produces `PEN_WINDOWS_DEVICE_MISSING_IDENTIFIER`;
+invalid UTF-8 or allocation/conversion failure can return a null result. Native
+optional numeric fields use `-1`; .NET uses null. Hardware IDs distinguish missing
+(-1 count / null list) from an empty list. Container IDs are GUID strings in C and
+nullable `Guid` values in .NET.
+
+Both bindings use SetupAPI directly: no PowerShell, WMI process, context, or service
+restart. The .NET lookup does not depend on WinPenKit.Native. It is synchronous,
+enumerates **present** device nodes and should run off the input/render thread.
+It is optional and does not change the cost or behavior of `QueryInfo()`.
+
+Matching follows these rules, case-insensitively:
+
+1. Prefer an exact Windows device-instance ID.
+2. Otherwise, compare the entire identifier with the serial segment of USB device
+   roots (`USB\VID_xxxx&PID_xxxx\serial`). Require Windows' `CM_DEVCAP_UNIQUEID`
+   capability; USB interface nodes, generated nonunique IDs and unknown capability
+   values are excluded from serial matching.
+3. Return `Ambiguous` with all candidates if more than one node matches. Never pick
+   by enumeration order, display name, hardware ID, substring, or model similarity.
+
+Statuses are `MissingIdentifier`, `NotFound`, `Ambiguous`, `MatchedInstanceId`,
+`MatchedUsbSerial`, and `Unavailable`. An enumeration failure or unreadable instance
+ID yields `Unavailable`, so a partial enumeration cannot claim a unique match.
+An individual missing/malformed property remains unavailable. Serial correlation
+is best-effort, not a universal identity guarantee; properties can change mid-query.
+
+On a unique match, `Candidates` has one entry and `ContainerDevices` contains
+present nodes with the same nonempty Windows Container ID, including the match.
+Without a container, it contains only the matched node. Unsuccessful/ambiguous
+matches have no container group. **Container membership is not proof that every
+node is part of the tablet:** the live test machine groups some USB hubs and a
+connected peripheral with the Wacom tablet. The API exposes Windows' grouping
+without selecting a single driver or attributing all members to the tablet.
+
+Each entry includes its instance ID, friendly name, device description, bus-reported
+name, manufacturer, container, raw hardware IDs, unique-instance capability, parsed
+USB vendor/product/revision, and its own driver provider/version/date. USB revision
+is `bcdDevice`, not a promised firmware value. Driver version/date come from the
+node's INF metadata, not the Wacom installer version or installation time. USB
+numbers are nullable 16-bit values (usually displayed in hexadecimal).
+
+For example, the live machine's generic Wintab `WACOM Tablet` entry resolves to a
+USB root reporting `Wacom Cintiq 24 touch`, VID/PID `056A:03FD`, and revision `0104`.
+Its composite parent uses a Microsoft driver, while tablet interface nodes report
+Wacom `4.0.0.4`. The API keeps those separate and does not guess an overall package
+version. Refresh explicitly after hardware/driver changes; no results are cached.
+
+References: [SetupAPI property queries](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdevicepropertyw),
+[USB identifiers](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/standard-usb-identifiers),
+[device driver version](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/devpkey-device-driverversion),
+[Windows Container IDs](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/devpkey-device-containerid).
 
 ## Verification
 
@@ -113,3 +187,20 @@ The managed command prints JSON including raw PnP identifiers; the native comman
 prints names/versions and whether each PnP ID is present. They exit 1 if the query
 is unavailable, 0 if a snapshot was returned. Synthetic tests do not establish how
 each tablet vendor populates these fields; the live query is for that check.
+
+The same synthetic test commands also exercise Windows matching: exact-ID priority,
+duplicate serial ambiguity, rejection of nonunique/interface IDs, absent/zero
+containers, USB hardware-ID parsing and property decoding. Managed tests additionally
+inject property growth, type mismatches and disappearing data; native tests verify
+C snapshot string/array ownership after the source records are destroyed.
+
+To exercise live Windows correlation (managed JSON contains device instance IDs):
+
+```powershell
+dotnet run --project WinPenKit.TestConsole -- --wintab-windows-info
+./WinPenKit.Native.Tests/bin/Debug/WinPenKit.Native.Tests.exe --live-windows
+```
+
+These probes return 0 on unique matches, 1 if Wintab has no devices or the query
+cannot be made, and 2 for an unsuccessful/ambiguous Windows match. Native output
+uses stderr because the live Wacom driver interferes with the probe's stdout.

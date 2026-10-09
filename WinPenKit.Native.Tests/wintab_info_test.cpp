@@ -32,7 +32,11 @@ using Info = std::unique_ptr<const PenWintabInfo, decltype(&pen_wintab_free_info
 Info read() { return Info(wintab::read_info(query), pen_wintab_free_info); }
 }
 
+int windows_device_info_tests();
+int windows_device_info_live();
+
 int main(int argc, char** argv) {
+    if (argc > 1 && std::strcmp(argv[1], "--live-windows") == 0) return windows_device_info_live();
     if (argc > 1 && std::strcmp(argv[1], "--live") == 0) {
         std::puts("Querying installed Wintab driver...");
         std::fflush(stdout);
@@ -97,5 +101,5 @@ int main(int argc, char** argv) {
     check("oversized return rejected", bad && !bad->identification);
     pen_wintab_free_info(nullptr);
     std::printf("RESULT %d failed\n", failed);
-    return failed ? 1 : 0;
+    return (failed ? 1 : 0) | windows_device_info_tests();
 }
