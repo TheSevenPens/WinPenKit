@@ -14,6 +14,7 @@ Both print a line-oriented report and **exit 0 only when every check passes**, s
 SELFTEST Scribble.Wpf
 [PASS] L0.dpi-awareness        PerMonitorV2
 [PASS] L0.window-placement     client 2672x1496 at 69,120; work area 3840x2052 at 0,0
+[PASS] L0.gesture-query        answered 0x19, expected 0x19
 [PASS] L0.scale                2.25x
 [PASS] L1.surface-physical     bitmap 2672x1230, expected 2672x1230 (= ceil(1188x547 logical x 2.25))
 [PASS] L1.surface-alignment    origin 69.00,386.00px
@@ -22,7 +23,7 @@ SELFTEST Scribble.Wpf
 [PASS] L3.conversion-snap      0.0% of converted points land on whole device pixels
 [PASS] L3.conversion-lossless   mean turn angle in 0.74 deg, out 0.74 deg (delta 0.00)
 [PASS] L3.origin-tracks-window  moved 37,23px; conversion followed
-RESULT 10/10 passed
+RESULT 11/11 passed
 ```
 
 ## Why these exist
@@ -45,6 +46,7 @@ Needs nothing. Every one of these invalidates all later measurements when wrong.
 | --- | --- |
 | `L0.dpi-awareness` | anything below Per-Monitor V2, where Win32 returns virtualized coordinates that do not match what the pen reports |
 | `L0.window-placement` | a window hanging off its monitor or under the taskbar, which **silently discards** pen input aimed there while continuing to run and paint |
+| `L0.gesture-query` | a window that does not answer Windows' question about which system gestures it wants, and so is left with Windows' defaults: a ring and a right click on press-and-hold, and a circle under a pen with a button pressed. Sends `WM_TABLET_QUERYSYSTEMGESTURESTATUS` the way Windows does and checks the answer (0x19 by default, or `WINPENKIT_TABLET_GESTURE_FLAGS`) and that the shared code gave it. See [Pen feedback and gestures](SCRIBBLE-APPS.md#pen-feedback-and-gestures) |
 | `L0.scale` | records the display scale; everything below is relative to it |
 
 ### Level 1 — drawing surface

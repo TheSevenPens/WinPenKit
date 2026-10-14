@@ -28,6 +28,32 @@ Eight demo apps. Seven prove the WinPenKit SDK end-to-end, with bitmap-backed re
 `WinPenKit.TestConsole` is a console tool rather than a Scribble app; it is described
 below.
 
+## Pen feedback and gestures
+
+Windows draws things around a pen that a drawing surface does not want: a ring, then a right click, when the pen is held still (**press and hold**); a **circle under the pen when a barrel button is pressed**; and a **wave on pen up**. Windows decides whether to by asking the window, with `WM_TABLET_QUERYSYSTEMGESTURESTATUS`, which system gestures it wants. A window that does not answer receives them all.
+
+Every app here answers: **0x19**, which is press and hold (`0x1`), the pen-tap wave (`0x8`) and the pen-button circle (`0x10`), the values and descriptions from Microsoft's page for the message. Windows sends the query on every pen contact, whether or not a button is pressed.
+
+- **The answer can be changed from the environment.** `WINPENKIT_TABLET_GESTURE_FLAGS` holds a hexadecimal mask (`0x` optional). `0` answers "disable nothing", which is Windows' default and the baseline for measuring what Windows does; `10` answers only the circle. A value that is not hexadecimal is ignored, so a typo never switches the flags off.
+- **The title bar shows how often Windows has asked**, and the answer: `| gesture queries 12, answer 0x19`. Whether the window is asked at all is the first thing to know when a ring does not go away.
+- **`L0.gesture-query`** in [`--selftest`](SELF-TEST.md) sends the query the way Windows does and checks the answer, with no pen.
+- **The cursor reads `13 (pen)` or `14 (eraser)`** (`PenCursorType.Describe`); any other number is shown bare. `Scribble.Qt` shows `Pen` or `Eraser`, because Qt reports a pointer type rather than a cursor number.
+
+Why it is there: with a real pen device (a driver such as a virtual HID digitizer or a vendor's), Windows draws the button circle, and an application removes it by answering `0x10`; a synthetic pen injected with `InjectSyntheticPointerInput` was not seen to draw it. Both results come from one machine; see the devnotes page on [press-and-hold and pen feedback](https://docs.sevenpens.com/devnotes/pen-input-on-windows/windows-pen-behaviors/disable-press-and-hold-right-click) and the issue that records what was tried (`TheSevenPens/devnotes#28`).
+
+| App | Where the answer is given | Shared code |
+|---|---|---|
+| Scribble.Wpf | `HwndSource.AddHook` | `WinPenKit/TabletGestures.cs` |
+| Scribble.WinForms | `WndProc` override | `WinPenKit/TabletGestures.cs` |
+| Scribble.Avalonia | `Win32Properties.AddWndProcHookCallback` | `WinPenKit/TabletGestures.cs` |
+| Scribble.WinUI | a `SetWindowSubclass` on the window handle | `WinPenKit/TabletGestures.cs` |
+| Scribble.Win32 | its window procedure | `Scribble.Win32/src/gestures.h` |
+| Scribble.WinUINative | a `SetWindowSubclass` on the window handle | `Scribble.Win32/src/gestures.h` |
+| Scribble.Qt | `nativeEvent` | `Scribble.Win32/src/gestures.h` |
+| Scribble.Rust | a `SetWindowSubclass` on the window handle | `Scribble.Rust/src/gestures.rs` |
+
+The native samples reimplement the logic for the same reason they reimplement the self test: no .NET runtime under them. The values, the variable and the check id are the same.
+
 ## How these samples lay down ink, and why it bounds a Krita comparison
 
 Every app here draws a straight line between consecutive pen events, with width scaled by that
@@ -200,6 +226,6 @@ Qt 6 Widgets, `QTabletEvent`, and no WinPenKit. Full notes in
 - **Qt's WinTab context is always tablet-native.** `--wintab` is comparable to `WintabDigitizer`
   and never to `WintabSystem`. There is no low-resolution option in Qt, and therefore none in
   Krita.
-- **It shares `Scribble.Win32/src/selftest.h`** and nothing else. Same check ids, same report
-  lines, same recording format, no WinPenKit dependency.
+- **It shares `Scribble.Win32/src/selftest.h`** (and the `gestures.h` that header includes) and
+  nothing else. Same check ids, same report lines, same recording format, no WinPenKit dependency.
 - Built with CMake against an external Qt 6; it is not in either solution.

@@ -9,6 +9,8 @@ public sealed class MainForm : Form
 {
     private IPenSession? _session;
     private readonly System.Windows.Forms.Timer _renderTimer = new() { Interval = 16 };
+    private readonly System.Windows.Forms.Timer _titleTimer = new() { Interval = 500 };
+    private string _titleBase = "Scribble WinForms - WinPenKit";
 
     // PointF, not Point. The pen reports sub-pixel positions and Skia draws in floats; an
     // integer here would quantize the path to the pixel grid between the two, which is exactly
@@ -73,7 +75,9 @@ public sealed class MainForm : Form
         // does on window activation, which is why Qt apps do not have the bug.
         Activated += (_, _) => _session?.OnActivated();
 
-        Text = "Scribble WinForms - WinPenKit";
+        _titleTimer.Tick += (_, _) => ShowTitle();
+        _titleTimer.Start();
+        Text = _titleBase;
         Size = new Size(1200, 700);
 
         // ── Ribbon ───────────────────────────────────────────────
@@ -357,6 +361,20 @@ public sealed class MainForm : Form
         return (x - origin.X, y - origin.Y);
     }
 
+    /// <summary>The window title: the base text and, always, how often Windows has asked about system gestures and what this window answers.</summary>
+    private void ShowTitle() => Text = $"{_titleBase}  |  {TabletGestures.TitleSuffix()}";
+
+    /// <summary>
+    /// This window answers Windows' gesture query (see TabletGestures): no press-and-hold right click, no tap wave, no pen-button circle. The count of queries is in the title bar, because whether the window is asked at all is the first thing to know when a ring does not go away.
+    /// </summary>
+    protected override void WndProc(ref Message m)
+    {
+        bool handled = false;
+        var answer = TabletGestures.Hook(m.HWnd, (uint)m.Msg, m.WParam, m.LParam, ref handled);
+        if (handled) { m.Result = answer; return; }
+        base.WndProc(ref m);
+    }
+
     /// <remarks>
     /// Asynchronous because of <c>L1.presentation-sampling</c>, which watches the screen until
     /// the markers it drew appear there. Awaiting yields this thread, which is the one that has
@@ -368,6 +386,7 @@ public sealed class MainForm : Form
 
         t.CheckDpiAwareness();
         t.CheckWindowPlacement(Handle);
+        t.CheckGestureQuery(Handle);
         t.ReportScale(DeviceDpi / 96.0);
 
         // Layout units are device pixels here, so the logical-to-physical ratio is 1.0 even
@@ -495,7 +514,8 @@ public sealed class MainForm : Form
             if (error != null)
             {
                 System.Diagnostics.Debug.WriteLine($"[Scribble.WinForms] Start failed: {error}");
-                Text = $"Scribble WinForms - {error}";
+                _titleBase = $"Scribble WinForms - {error}";
+                ShowTitle();
                 _session.Dispose();
                 _session = null;
                 return;
@@ -513,7 +533,8 @@ public sealed class MainForm : Form
             if (_epochPath != null)
                 _epochSampler = WintabEpochSampler.TryAttach(_session);
 
-            Text = "Scribble WinForms - WinPenKit";
+            _titleBase = "Scribble WinForms - WinPenKit";
+            ShowTitle();
             _renderTimer.Start();
         }
         finally
@@ -591,7 +612,7 @@ public sealed class MainForm : Form
         _lastPointTime = DateTime.UtcNow;
 
         _proximityLabel.Text = "🟢 Proximity";
-        _cursorLabel.Text = $"Cursor: {last.Cursor}";
+        _cursorLabel.Text = $"Cursor: {PenCursorType.Describe(last.Cursor)}";
 
         // The unit comes from the session. This backend reports HIMETRIC, which is not the
         // same space as DesktopX and should not be read as though it were.

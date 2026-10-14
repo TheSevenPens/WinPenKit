@@ -1,3 +1,4 @@
+mod gestures;
 mod pen_session_ffi;
 mod selftest;
 
@@ -51,6 +52,8 @@ struct ScribbleApp {
     session: Option<PenSession>,
     points_buffer: Vec<PenPoint>,
     hwnd: *mut std::ffi::c_void,
+    /// When the title was last rewritten with the gesture-query count (see `gestures`).
+    title_at: std::time::Instant,
 
     pixmap: Option<Pixmap>,
     texture: Option<egui::TextureHandle>,
@@ -109,6 +112,7 @@ impl ScribbleApp {
             conventions: PenConventions::default(),
             points_buffer: vec![PenPoint::default(); 128],
             hwnd: std::ptr::null_mut(),
+            title_at: std::time::Instant::now(),
             pixmap: None,
             texture: None,
             canvas_size: [0, 0],
@@ -412,7 +416,18 @@ impl eframe::App for ScribbleApp {
                 // manager cascades, so a 600-point window on a 2.25x display can start with
                 // its lower edge under the taskbar - where pen input is discarded silently.
                 selftest::clamp_to_work_area(hwnd);
+                // This window answers Windows' gesture query (see `gestures`): no press-and-hold right click, no tap wave, no pen-button circle.
+                gestures::install(hwnd);
             }
+        }
+
+        // Whether Windows asks the window about gestures at all is the first thing to know when a ring does not go away, so the count is kept in the title.
+        if self.title_at.elapsed() >= std::time::Duration::from_millis(500) {
+            self.title_at = std::time::Instant::now();
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
+                "Scribble Rust - WinPenKit  |  {}",
+                gestures::title_suffix()
+            )));
         }
 
         // ── Ribbon ───────────────────────────────────────────────
@@ -476,7 +491,7 @@ impl eframe::App for ScribbleApp {
                         if in_prox { "Proximity" } else { "Out" }
                     ));
                     if let Some(pt) = &self.last_point {
-                        ui.label(format!("Cursor: {}", pt.cursor));
+                        ui.label(format!("Cursor: {}", gestures::describe_cursor(pt.cursor)));
                     }
                 });
                 ui.separator();
@@ -712,6 +727,7 @@ impl eframe::App for ScribbleApp {
                 let mut r = selftest::Report::new("Scribble.Rust");
                 r.check_dpi_awareness();
                 r.check_window_placement(self.hwnd);
+                r.check_gesture_query(self.hwnd);
                 r.report_scale(ppp);
 
                 // egui lays out in points, so the ratio here is pixels_per_point.

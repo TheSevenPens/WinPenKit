@@ -21,11 +21,27 @@ public sealed partial class MainWindow : Window
     private readonly CanvasInfoCache _canvasInfo = new();
 
     private readonly DispatcherTimer _renderTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    private readonly DispatcherTimer _titleTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    private string _titleBase = "WinTab Scribble - WinUI 3";
+    // Kept in a field: the native subclass holds only a function pointer, so a delegate that is collected would be called after it is gone.
+    private readonly SubclassProc _gestureProc;
 
     public MainWindow()
     {
         this.InitializeComponent();
         _renderTimer.Tick += RenderTimer_Tick;
+
+        // This window answers Windows' gesture query (see TabletGestures): no press-and-hold right click, no tap wave, no pen-button circle. The count of queries is in the title bar, because whether the window is asked at all is the first thing to know when a ring does not go away.
+        _gestureProc = GestureProc;
+        var windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        SetWindowSubclass(windowHandle, _gestureProc, new UIntPtr(1), UIntPtr.Zero);
+        _titleTimer.Tick += (_, _) => ShowTitle();
+        _titleTimer.Start();
+        Closed += (_, _) =>
+        {
+            _titleTimer.Stop();
+            RemoveWindowSubclass(windowHandle, _gestureProc, new UIntPtr(1));
+        };
 
         // The window manager cascades each launch a little further down, so an application that
         // fits on one run hangs below the work area a few runs later - and pen input aimed at
@@ -111,13 +127,15 @@ public sealed partial class MainWindow : Window
         if (error != null)
         {
             System.Diagnostics.Debug.WriteLine($"[Scribble.WinUI] Start failed: {error}");
-            Title = $"WinTab Scribble - {error}";
+            _titleBase = $"WinTab Scribble - {error}";
+            ShowTitle();
             return;
         }
 
         if (_session.IsRunning)
         {
-            Title = "WinTab Scribble - WinUI 3";
+            _titleBase = "WinTab Scribble - WinUI 3";
+            ShowTitle();
             Toolbar.SetMode(_session.Api);
             _renderTimer.Start();
         }
@@ -209,6 +227,27 @@ public sealed partial class MainWindow : Window
         return ((x - origin.X) / scale - pos.X, (y - origin.Y) / scale - pos.Y);
     }
 
+    /// <summary>The window title: the base text and, always, how often Windows has asked about system gestures and what this window answers.</summary>
+    private void ShowTitle() => Title = $"{_titleBase}  |  {TabletGestures.TitleSuffix()}";
+
+    private delegate IntPtr SubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr refData);
+
+    private static IntPtr GestureProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr refData)
+    {
+        bool handled = false;
+        var answer = TabletGestures.Hook(hWnd, msg, wParam, lParam, ref handled);
+        return handled ? answer : DefSubclassProc(hWnd, msg, wParam, lParam);
+    }
+
+    [System.Runtime.InteropServices.DllImport("comctl32.dll")]
+    private static extern bool SetWindowSubclass(IntPtr hWnd, SubclassProc proc, UIntPtr id, UIntPtr refData);
+
+    [System.Runtime.InteropServices.DllImport("comctl32.dll")]
+    private static extern bool RemoveWindowSubclass(IntPtr hWnd, SubclassProc proc, UIntPtr id);
+
+    [System.Runtime.InteropServices.DllImport("comctl32.dll")]
+    private static extern IntPtr DefSubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
     /// <summary>Runs the launch-time acceptance checks against this window.</summary>
     /// <remarks>
     /// Asynchronous because of <c>L1.presentation-sampling</c>, which watches the screen until
@@ -225,6 +264,7 @@ public sealed partial class MainWindow : Window
 
         t.CheckDpiAwareness();
         t.CheckWindowPlacement(hwnd);
+        t.CheckGestureQuery(hwnd);
         t.ReportScale(scale);
 
         // ActualWidth is in XAML effective pixels, so the ratio here is the rasterization

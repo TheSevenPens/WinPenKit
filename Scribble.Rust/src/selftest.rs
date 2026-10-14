@@ -86,6 +86,34 @@ impl Report {
     /// Pen input is delivered by absolute screen position, so any part of the window off its
     /// monitor - or under the taskbar - receives nothing while the window keeps running and
     /// painting, which reads as a bug in whatever is being tested.
+    /// `L0.gesture-query`: the window answers Windows' question about which system gestures it wants
+    /// (`WM_TABLET_QUERYSYSTEMGESTURESTATUS`) with the mask in `gestures`. Sends the message the way Windows
+    /// does (`SendMessageTimeoutW`) and checks both the answer and that the `gestures` code was what gave it.
+    /// A window that does not answer is left with Windows' defaults: a ring and a right click on
+    /// press-and-hold, and a circle under a pen with a button pressed. Needs no pen; runs on the window's thread.
+    pub fn check_gesture_query(&mut self, hwnd: *mut c_void) {
+        const ID: &str = "L0.gesture-query";
+        if hwnd.is_null() {
+            self.check(ID, false, "could not run: no window handle".into());
+            return;
+        }
+        let before = crate::gestures::queries();
+        let mut answer: usize = 0;
+        let sent = unsafe { SendMessageTimeoutW(hwnd, crate::gestures::QUERY_MESSAGE, 0, 0, SMTO_ABORTIFHUNG, 2000, &mut answer) };
+        if sent == 0 {
+            self.check(ID, false, "could not run: SendMessageTimeout failed or timed out".into());
+            return;
+        }
+        let got = answer as u32;
+        let expected = crate::gestures::flags();
+        let counted = crate::gestures::queries() > before;
+        let ok = got == expected && counted;
+        let mut detail = format!("answered 0x{got:X}, expected 0x{expected:X}");
+        if !counted { detail.push_str("; the gestures code was not reached"); }
+        if !ok { detail.push_str("  <- Windows will draw its press-and-hold ring and a circle on a pen button press"); }
+        self.check(ID, ok, detail);
+    }
+
     pub fn check_window_placement(&mut self, hwnd: *mut c_void) {
         const ID: &str = "L0.window-placement";
         if hwnd.is_null() {
@@ -461,7 +489,10 @@ struct Point { x: i32, y: i32 }
 #[derive(Default)]
 struct MonitorInfo { cb_size: u32, rc_monitor: Rect, rc_work: Rect, dw_flags: u32 }
 
+const SMTO_ABORTIFHUNG: u32 = 0x0002;
+
 unsafe extern "system" {
+    fn SendMessageTimeoutW(hwnd: *mut c_void, msg: u32, wparam: usize, lparam: isize, flags: u32, timeout: u32, result: *mut usize) -> isize;
     fn GetThreadDpiAwarenessContext() -> *mut c_void;
     fn AreDpiAwarenessContextsEqual(a: *mut c_void, b: *mut c_void) -> i32;
     fn GetClientRect(hwnd: *mut c_void, rect: *mut Rect) -> i32;

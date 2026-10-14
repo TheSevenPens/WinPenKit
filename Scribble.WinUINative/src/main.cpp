@@ -8,6 +8,8 @@
 #include "selftest.h"
 
 #include <microsoft.ui.xaml.window.h>   // IWindowNative
+#include <commctrl.h>                    // SetWindowSubclass
+#pragma comment(lib, "comctl32.lib")
 
 #include <algorithm>
 #include <thread>
@@ -46,6 +48,16 @@ enum class Backend { None, Native, XamlPointer };
 Backend g_backend = Backend::None;
 UIElement g_canvasHost{ nullptr };
 DispatcherTimer g_timer{ nullptr };
+DispatcherTimer g_titleTimer{ nullptr };
+
+// Answers Windows' question about which system gestures the window wants (see gestures.h): no
+// press-and-hold right click, no tap wave, no pen-button circle. WinUI owns the window
+// procedure, so the answer is given from a subclass; everything else goes on to WinUI.
+LRESULT CALLBACK gestureProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    LRESULT answer = 0;
+    if (gestures::answer(msg, gestures::flags(), &answer)) return answer;
+    return ::DefSubclassProc(hwnd, msg, wp, lp);
+}
 
 std::optional<Point> g_lastCanvasPoint;
 HWND g_hwnd = nullptr;
@@ -335,6 +347,7 @@ struct ScribbleApp : ApplicationT<ScribbleApp> {
         if (auto native = g_window.try_as<::IWindowNative>()) {
             native->get_WindowHandle(&g_hwnd);
         }
+        if (g_hwnd) ::SetWindowSubclass(g_hwnd, gestureProc, 1, 0);
 
         g_canvasHost = host;
         g_canvas = std::make_unique<scribble::Canvas>(image, host, g_hwnd);
@@ -357,6 +370,17 @@ struct ScribbleApp : ApplicationT<ScribbleApp> {
         g_timer.Interval(std::chrono::milliseconds(16));
         g_timer.Tick([](auto&&, auto&&) { tick(); });
         g_timer.Start();
+
+        // The title carries how often Windows has asked about system gestures and what the
+        // window answers: whether the window is asked at all is the first thing to know when
+        // a ring does not go away.
+        g_titleTimer = DispatcherTimer();
+        g_titleTimer.Interval(std::chrono::milliseconds(500));
+        g_titleTimer.Tick([](auto&&, auto&&) {
+            const std::string text = std::string("Scribble WinUI Native - WinPenKit  |  ") + gestures::title_suffix();
+            g_window.Title(hstring{ std::wstring(text.begin(), text.end()) });   // ASCII only
+        });
+        g_titleTimer.Start();
 
         // Written on close rather than incrementally: a partial file that looks complete is
         // worse than none, and the whole stroke is in memory anyway.

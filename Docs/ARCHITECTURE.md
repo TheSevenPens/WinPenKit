@@ -454,7 +454,7 @@ distinguishable levels. A Wacom DTH246 over Wintab reports 32767 and resolves 81
 
 **Cursor numbers.** 13 and 14 are the values observed from Wacom drivers (`PenCursorType`). The
 pointer sessions write them; Wintab passes the driver's number through, so on a tablet that
-numbers its eraser differently `IsEraser` is false on Wintab.
+numbers its eraser differently `IsEraser` is false on Wintab. `PenCursorType.Describe` names the two for display (`13 (pen)`, `14 (eraser)`) and returns any other number bare.
 
 **Buttons.** `PenButtonTracker` (`WinPenKit/PenButtonTracker.cs`) decodes both encodings and
 holds Wintab's state between events. The pointer encoding has one barrel bit, so a second or
@@ -577,6 +577,7 @@ since pen input over the part of a window off screen is not delivered.
 - `PenCapabilities`, `PenConventions` and its four enums, `PenRawUnitsExtensions`
 - `IPenCaptureRegion` and `PenCaptureRegion`
 - `PenTimestamp`, `PenTilt`, `PenButtonTracker`, `PenButtonAction`, `PenButtonNumber`, `PenCursorType`
+- `TabletGestures`: the answer a window gives to `WM_TABLET_QUERYSYSTEMGESTURESTATUS` (press-and-hold, the pen-tap wave and the pen-button circle switched off), with an environment override and a count of queries; used by the Scribble apps, see [Scribble apps](SCRIBBLE-APPS.md#pen-feedback-and-gestures)
 - `WindowPlacement`
 - `WinPenKit.Diagnostics` (see [Diagnostics](#diagnostics))
 

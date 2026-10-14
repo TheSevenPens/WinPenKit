@@ -109,7 +109,7 @@ public sealed partial class ScribbleRibbon : UserControl
         if (_buttons.LastRawButtons != 0)
             RawButtonValue.Text = $"0x{_buttons.LastRawButtons:X8}";
 
-        CursorValue.Text = $"{pt.Cursor}";
+        CursorValue.Text = PenCursorType.Describe(pt.Cursor);
     }
 
     /// <summary>Resets the tracker — call when restarting a session.</summary>

@@ -18,6 +18,7 @@
 
 #include <windows.h>
 #include <shellapi.h>   // CommandLineToArgvW
+#include "gestures.h"   // the answer to Windows' gesture query, checked by L0.gesture-query below
 #include <array>
 #include <fstream>
 #include <iomanip>
@@ -151,6 +152,34 @@ public:
             wa.right - wa.left, wa.bottom - wa.top, wa.left, wa.top,
             inside ? "" : "  <- input outside the work area is silently discarded");
         check("L0.window-placement", inside, buf);
+    }
+
+    // L0.gesture-query: the window answers Windows' question about which system gestures it
+    // wants (WM_TABLET_QUERYSYSTEMGESTURESTATUS) with the mask in gestures.h. Sends the message
+    // the way Windows does (SendMessageTimeout) and checks both the answer and that the
+    // gestures.h code was what gave it. A window that does not answer is left with Windows'
+    // defaults: a ring and a right click on press-and-hold, and a circle under a pen with a
+    // button pressed. Needs no pen; runs on the window's own thread.
+    void check_gesture_query(HWND hwnd) {
+        if (!hwnd) { skip("L0.gesture-query", "no window handle"); return; }
+
+        const long long before = gestures::queries();
+        DWORD_PTR answer = 0;
+        if (!SendMessageTimeoutW(hwnd, gestures::kQueryMessage, 0, 0, SMTO_ABORTIFHUNG, 2000, &answer)) {
+            skip("L0.gesture-query", "SendMessageTimeout failed or timed out");
+            return;
+        }
+
+        const unsigned got = static_cast<unsigned>(answer);
+        const unsigned expected = gestures::flags();
+        const bool counted = gestures::queries() > before;
+        const bool ok = got == expected && counted;
+
+        char buf[256];
+        _snprintf_s(buf, sizeof(buf), _TRUNCATE, "answered 0x%X, expected 0x%X%s%s", got, expected,
+            counted ? "" : "; the gestures.h code was not reached",
+            ok ? "" : "  <- Windows will draw its press-and-hold ring and a circle on a pen button press");
+        check("L0.gesture-query", ok, buf);
     }
 
     void report_scale(double scale) {

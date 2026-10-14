@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "ribbon.h"
 #include "xamlpointer.h"
+#include "gestures.h"   // shared with Scribble.Win32 and Scribble.Qt, like selftest.h
 
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>
 #include <winrt/Windows.UI.Text.h>
@@ -315,7 +316,10 @@ void Ribbon::setReadout(PenReadout const& r) {
 
     setDot(proxDot_, r.inProximity);
     proxText_.Text(r.inProximity ? L"Proximity" : L"Out");
-    cursor_.Text(hstring{ std::format(L"{}", r.cursor) });
+    {
+        const std::string name = gestures::describe_cursor(r.cursor);   // "13 (pen)", "14 (eraser)", else the bare number
+        cursor_.Text(hstring{ std::wstring(name.begin(), name.end()) });
+    }
 
     setDot(dotTip_, r.tip);
     setDot(dotEraser_, r.eraser, true);

@@ -16,6 +16,8 @@ public partial class MainWindow : Window
     private IPenSession? _session;
     private IntPtr _hwnd;
     private bool _renderActive;
+    private readonly System.Windows.Threading.DispatcherTimer _titleTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    private string _titleBase = "Scribble WPF - WinPenKit";
 
     private Point? _lastCanvasPoint;
     private double _brushSize = 6;
@@ -102,6 +104,12 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>The window title: the base text and, always, how often Windows has asked about system gestures and what this window answers.</summary>
+    private void ShowTitle() => Title = $"{_titleBase}  |  {TabletGestures.TitleSuffix()}";
+
+    private static IntPtr GestureHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+        TabletGestures.Hook(hwnd, (uint)msg, wParam, lParam, ref handled);
+
     /// <summary>
     /// Runs the launch-time acceptance checks against this window and returns the report.
     /// Called after the first layout pass, since the surface does not exist before then.
@@ -121,6 +129,7 @@ public partial class MainWindow : Window
 
         t.CheckDpiAwareness();
         t.CheckWindowPlacement(_hwnd);
+        t.CheckGestureQuery(_hwnd);
         t.ReportScale(_renderScale);
 
         t.CheckSurfacePhysical(_bitmapWidth, _bitmapHeight,
@@ -201,9 +210,16 @@ public partial class MainWindow : Window
 
         CompositionTarget.Rendering += RenderTimer_Tick;
 
+        _titleTimer.Tick += (_, _) => ShowTitle();
+        _titleTimer.Start();
+        Closed += (_, _) => _titleTimer.Stop();
+
         Loaded += (_, _) =>
         {
             _hwnd = new WindowInteropHelper(this).Handle;
+
+            // This window answers Windows' gesture query (see TabletGestures): no press-and-hold right click, no tap wave, no pen-button circle. The count of queries is in the title bar, because whether the window is asked at all is the first thing to know when a ring does not go away.
+            HwndSource.FromHwnd(_hwnd)?.AddHook(GestureHook);
 
             // The window manager cascades each launch a little further down, so an application
             // that fits on one run hangs below the work area a few runs later - and pen input
@@ -364,7 +380,8 @@ public partial class MainWindow : Window
         var error = _session.Start(_hwnd);
         if (error != null)
         {
-            Title = $"Scribble WPF - {error}";
+            _titleBase = $"Scribble WPF - {error}";
+            ShowTitle();
             _session.Dispose();
             _session = null;
             return;
@@ -375,7 +392,8 @@ public partial class MainWindow : Window
         // spans-more-than-one-session path instead of relabelling everything captured so far.
         _recorder?.Describe(_session.GetType().Name, _session.MaxPressure, _session.Conventions.Timestamp);
 
-        Title = "Scribble WPF - WinPenKit";
+        _titleBase = "Scribble WPF - WinPenKit";
+        ShowTitle();
         _renderActive = true;
     }
 
@@ -458,7 +476,7 @@ public partial class MainWindow : Window
 
         ProximityDot.Fill = Brushes.LimeGreen;
         ProximityLabel.Text = "Proximity";
-        CursorLabel.Text = $"Cursor: {last.Cursor}";
+        CursorLabel.Text = $"Cursor: {PenCursorType.Describe(last.Cursor)}";
 
         // The unit comes from the session; this backend has no device-native coordinate, so
         // it reports None and the readout says so rather than printing zeros.
