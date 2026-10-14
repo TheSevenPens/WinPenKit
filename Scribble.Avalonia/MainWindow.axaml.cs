@@ -17,6 +17,8 @@ public partial class MainWindow : Window
 {
     private IPenSession? _session;
     private readonly DispatcherTimer _renderTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    private readonly DispatcherTimer _titleTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    private string _titleBase = "Scribble Avalonia - WinPenKit";
 
     private Point? _lastCanvasPoint;
     private double _brushSize = 6;
@@ -49,6 +51,16 @@ public partial class MainWindow : Window
         Activated += (_, _) => _session?.OnActivated();
 
         InitializeComponent();
+
+        // This window answers Windows' gesture query (see TabletGestures): no press-and-hold right click, no tap wave, no pen-button circle. The count of queries is in the title bar, because whether the window is asked at all is the first thing to know when a ring does not go away.
+        Win32Properties.AddWndProcHookCallback(this, TabletGestures.Hook);
+        _titleTimer.Tick += (_, _) => ShowTitle();
+        _titleTimer.Start();
+        Closed += (_, _) =>
+        {
+            _titleTimer.Stop();
+            Win32Properties.RemoveWndProcHookCallback(this, TabletGestures.Hook);
+        };
 
         _renderTimer.Tick += RenderTimer_Tick;
 
@@ -131,6 +143,9 @@ public partial class MainWindow : Window
         _recorder = new StrokeRecorder();
     }
 
+    /// <summary>The window title: the base text and, always, how often Windows has asked about system gestures and what this window answers.</summary>
+    private void ShowTitle() => Title = $"{_titleBase}  |  {TabletGestures.TitleSuffix()}";
+
     /// <summary>Runs the launch-time acceptance checks against this window.</summary>
     /// <remarks>
     /// Asynchronous because of <c>L1.presentation-sampling</c>, which watches the screen until
@@ -145,6 +160,7 @@ public partial class MainWindow : Window
 
         t.CheckDpiAwareness();
         t.CheckWindowPlacement(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
+        t.CheckGestureQuery(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
         t.ReportScale(scale);
 
         // Bounds are DIPs in Avalonia, so the ratio here is the render scaling.
@@ -316,7 +332,8 @@ public partial class MainWindow : Window
         var error = _session.Start(hwnd);
         if (error != null)
         {
-            Title = $"Scribble Avalonia - {error}";
+            _titleBase = $"Scribble Avalonia - {error}";
+            ShowTitle();
             _session.Dispose();
             _session = null;
             return;
@@ -326,7 +343,8 @@ public partial class MainWindow : Window
         // running, and the header has to name the session the points actually came from.
         _recorder?.Describe(_session.GetType().Name, _session.MaxPressure, _session.Conventions.Timestamp);
 
-        Title = "Scribble Avalonia - WinPenKit";
+        _titleBase = "Scribble Avalonia - WinPenKit";
+        ShowTitle();
         _renderTimer.Start();
     }
 
@@ -439,7 +457,7 @@ public partial class MainWindow : Window
 
         ProximityDot.Fill = Brushes.LimeGreen;
         ProximityLabel.Text = "Proximity";
-        CursorLabel.Text = $"Cursor: {last.Cursor}";
+        CursorLabel.Text = $"Cursor: {PenCursorType.Describe(last.Cursor)}";
 
         // The unit comes from the session, because RawX means four different things across
         // the backends and three of them have no device-native value at all. Printing the

@@ -7,6 +7,7 @@
 #include <QResizeEvent>
 #include <QShowEvent>
 #include <QTabletEvent>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -291,6 +292,16 @@ ScribbleWindow::ScribbleWindow(PenApi requested, PenApi obtained, QWidget* paren
     setWindowTitle(QStringLiteral("Scribble Qt - WinPenKit comparison"));
     resize(1200, 700);
 
+    // The title carries how often Windows has asked about system gestures and what this window
+    // answers (see gestures.h): whether the window is asked at all is the first thing to know
+    // when a ring does not go away.
+    auto* titleTimer = new QTimer(this);
+    connect(titleTimer, &QTimer::timeout, this, [this] {
+        setWindowTitle(QStringLiteral("Scribble Qt - WinPenKit comparison  |  ") +
+                       QString::fromStdString(gestures::title_suffix()));
+    });
+    titleTimer->start(500);
+
     auto* central = new QWidget(this);
     auto* column = new QVBoxLayout(central);
     column->setContentsMargins(0, 0, 0, 0);
@@ -390,6 +401,18 @@ void ScribbleWindow::saveRecording() {
     fprintf(stderr, "[record] %d points -> %s\n", written, m_canvas->recordPath().c_str());
 }
 
+bool ScribbleWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result) {
+    if (eventType == "windows_generic_MSG") {
+        const MSG* msg = static_cast<const MSG*>(message);
+        LRESULT answer = 0;
+        if (gestures::answer(msg->message, gestures::flags(), &answer)) {
+            *result = static_cast<qintptr>(answer);
+            return true;
+        }
+    }
+    return QMainWindow::nativeEvent(eventType, message, result);
+}
+
 int ScribbleWindow::runSelfTest(const std::string& replayPath) {
     selftest::Report r("Scribble.Qt");
 
@@ -400,6 +423,7 @@ int ScribbleWindow::runSelfTest(const std::string& replayPath) {
 
     r.check_dpi_awareness();
     r.check_window_placement(hwnd);
+    r.check_gesture_query(hwnd);
     r.report_scale(dpr);
 
     // Which pen API this run is actually on, and whether that is the one asked for.

@@ -88,6 +88,7 @@ int runSelfTest(Canvas& canvas, HWND hwnd, PenSession& pen, bool xamlPointerBack
 
     r.check_dpi_awareness();
     r.check_window_placement(hwnd);
+    r.check_gesture_query(hwnd);
     r.report_scale(scale);
 
     // Which backend this run is actually on, against the one that was asked for. A check

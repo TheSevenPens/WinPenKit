@@ -128,6 +128,33 @@ public sealed class SelfTest
             (inside ? "" : "  <- input outside the work area is silently discarded"));
     }
 
+    /// <summary>
+    /// <b>L0.gesture-query</b>: the window answers Windows' question about which system gestures it wants
+    /// (<c>WM_TABLET_QUERYSYSTEMGESTURESTATUS</c>) with the mask in <see cref="TabletGestures"/>. Sends the
+    /// message the way Windows does (<c>SendMessageTimeout</c>) and checks both the answer and that the
+    /// <see cref="TabletGestures"/> hook was the one that gave it. A window that does not answer is left with
+    /// Windows' defaults: a ring and a right click on press-and-hold, and a circle under a pen with a button pressed.
+    /// Needs no pen. Must run on the window's own thread (a self test already does).
+    /// </summary>
+    /// <param name="hwnd">The application window.</param>
+    public void CheckGestureQuery(IntPtr hwnd)
+    {
+        const string id = "L0.gesture-query";
+        if (hwnd == IntPtr.Zero) { Skip(id, "no window handle"); return; }
+
+        long before = TabletGestures.Queries;
+        var asked = SendMessageTimeout(hwnd, TabletGestures.QueryMessage, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 2000, out IntPtr answer);
+        if (asked == IntPtr.Zero) { Skip(id, "SendMessageTimeout failed or timed out"); return; }
+
+        uint got = unchecked((uint)(ulong)answer.ToInt64());
+        bool counted = TabletGestures.Queries > before;
+        bool ok = got == TabletGestures.Flags && counted;
+        Check(id, ok,
+            $"answered 0x{got:X}, expected 0x{TabletGestures.Flags:X}" +
+            (counted ? "" : "; the TabletGestures hook was not reached") +
+            (ok ? "" : "  <- Windows will draw its press-and-hold ring and a circle on a pen button press"));
+    }
+
     /// <summary>Records the display scale. Never fails; everything below is relative to it.</summary>
     public void ReportScale(double scale) =>
         Check("L0.scale", scale > 0, $"{scale:F2}x");
@@ -314,6 +341,7 @@ public sealed class SelfTest
     private const int ATTACH_PARENT_PROCESS = -1;
     private const int STD_OUTPUT_HANDLE = -11;
     private const int MONITOR_DEFAULTTONEAREST = 2;
+    private const uint SMTO_ABORTIFHUNG = 0x0002;
     private static readonly IntPtr DPI_AWARENESS_CONTEXT_UNAWARE = -1;
     private static readonly IntPtr DPI_AWARENESS_CONTEXT_SYSTEM_AWARE = -2;
     private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE = -3;
@@ -363,6 +391,10 @@ public sealed class SelfTest
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int dwFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]

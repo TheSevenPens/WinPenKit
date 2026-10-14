@@ -109,6 +109,11 @@ protected:
     void showEvent(QShowEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
+    /// Answers Windows' question about which system gestures this window wants
+    /// (WM_TABLET_QUERYSYSTEMGESTURESTATUS, see gestures.h): no press-and-hold right click, no tap
+    /// wave, no pen-button circle. Qt hands the raw message to the widget before it handles it.
+    bool nativeEvent(const QByteArray& eventType, void* message, qintptr* result) override;
+
 private:
     /// Rounds the ribbon up to a height that is a whole number of device pixels, so the canvas
     /// below it starts on the pixel grid.

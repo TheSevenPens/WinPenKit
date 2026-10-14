@@ -565,14 +565,8 @@ static void paint_ribbon(HDC hdc) {
         DrawTextA(hdc, proximity ? "Proximity" : "Out", -1, &prc, DT_LEFT | DT_SINGLELINE);
         SelectObject(hdc, old);
 
-        char cur_buf[32];
-        snprintf(cur_buf, sizeof(cur_buf), "Cursor: %u", g_last_pen.cursor);
-        rp.draw_label_value(pen_x, 1, "Cursor: ", cur_buf + 8);
-        // Overwrite with just the value after label
-        {
-            char cbuf[16]; snprintf(cbuf, sizeof(cbuf), "%u", g_last_pen.cursor);
-            // redraw properly
-        }
+        const std::string cursor_name = gestures::describe_cursor(g_last_pen.cursor);
+        rp.draw_label_value(pen_x, 1, "Cursor: ", cursor_name.c_str());
     } else {
         rp.draw_value(pen_x, 0, "--");
         rp.draw_label_value(pen_x, 1, "Cursor: ", "--");
@@ -733,8 +727,25 @@ static void paint_ribbon(HDC hdc) {
 
 // ── Window procedure ────────────────────────────────────────────
 
+// The window title carries how often Windows has asked about system gestures and what this
+// window answers (see gestures.h): whether the window is asked at all is the first thing to
+// know when a ring does not go away.
+static int g_title_ticks = 0;
+static void show_title(HWND hwnd) {
+    const std::string title = std::string("Scribble C++ - WinPenKit Native  |  ") + gestures::title_suffix();
+    SetWindowTextA(hwnd, title.c_str());
+}
+
 static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+
+    // This window answers Windows' gesture query: no press-and-hold right click, no tap wave,
+    // no pen-button circle (see gestures.h).
+    case gestures::kQueryMessage: {
+        LRESULT answer = 0;
+        gestures::answer(msg, gestures::flags(), &answer);
+        return answer;
+    }
 
     case WM_CREATE:
         g_dpi = static_cast<int>(GetDpiForWindow(hwnd));
@@ -808,6 +819,10 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_TIMER:
         process_points(hwnd);
+        if (++g_title_ticks >= 30) {   // about twice a second
+            g_title_ticks = 0;
+            show_title(hwnd);
+        }
         return 0;
 
     case WM_SIZE: {
@@ -971,6 +986,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
 
         r.check_dpi_awareness();
         r.check_window_placement(hwnd);
+        r.check_gesture_query(hwnd);
         r.report_scale(GetDpiForWindow(hwnd) / 96.0);
 
         // Win32 lays out in physical pixels, so the logical-to-physical ratio is 1.0 even
